@@ -1,0 +1,21 @@
+__pycache__/
+.pytest_cache/
+.venv/
+.env
+.tmp/
+dist/
+build/
+*.egg-info/
+
+# Contexto local no versionado (detalles de red/hardware, endpoints, secretos)
+/local/
+
+# Contexto, memoria e historico de agentes IA: particular del entorno de cada
+# desarrollador, nunca del repo publico
+.claude/
+.codex/
+.cursor/
+.continue/
+.gemini/
+.windsurf/
+.aider*

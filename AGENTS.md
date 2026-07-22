@@ -5,8 +5,9 @@ Antes de proponer o valorar cualquier cambio de diseno, lee en este orden:
 1. `IA_NEST_EXTENDED_CONTEXT.md`
 2. `docs/ALCANCE.md`
 3. `docs/DEPENDENCIAS.md`
-4. `docs/PLAN.md`
-5. ADRs en `docs/decision_records/`
+4. `docs/VISION_MEMORIA.md` (el fin de la memoria y su frontera con conscience)
+5. `docs/PLAN.md`
+6. ADRs en `docs/decision_records/`
 
 Contexto del core (repo `ia_nest_core`): esta capa DEPENDE de sus contratos
 publicos (`CORE_CONTRACT.md`) y de la doctrina del ente (`docs/FRONTERAS.md`,
@@ -18,4 +19,8 @@ tag se decide en la reconciliacion del usuario.
 
 Multi-IA en modo ciego: si detectas una inconsistencia, senalala, no la corrijas
 por inferencia (puede ser trabajo de otra IA); solo el resultado reconciliado
-por el usuario se registra. Sin acentos en docs; repo publico sin datos internos.
+por el usuario se registra. Repo publico sin datos internos.
+
+Convencion de texto: los docs se escriben en ASCII puro, sin acentos y sin `n`
+con virgulilla (`diseno`, `pequeno`, `dueno`). Los identificadores de codigo y
+claves van en ingles snake_case (core ADR 0016).

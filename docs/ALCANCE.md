@@ -2,9 +2,11 @@
 
 ## Dentro
 
-- Memoria: modelo de tiers, recuperacion por identidad, write-back y
-  consolidacion. Incluye la "memoria de comportamiento" que conscience
-  sedimentara (core ADR 0034).
+- Memoria: registro de tipos, recuperacion por identidad, write-back y el
+  MECANISMO de consolidacion (ADR 0002). Extended HOSPEDA y sirve la memoria de
+  comportamiento e identidad que conscience sedimentara (core ADR 0034), pero no
+  la escribe: son memorias delegadas cuyo dueno de escritura es conscience.
+  El fin de la memoria esta en `docs/VISION_MEMORIA.md`.
 - RAG: ingesta de conocimiento acotado y recuperacion para enriquecer el prompt.
 - Datos web: recuperacion de informacion actual para enriquecer el prompt.
 - El contrato de enriquecimiento (como esta capa envuelve al core) y su
@@ -14,7 +16,8 @@
 
 - Cualquier cambio en el core (esta capa NO toca `ia_nest_core`).
 - Accion sobre sistemas externos con efecto -> `tool_contracts` / `external_*`.
-- Personalidad / etica / deliberacion -> conscience.
+- Personalidad / etica / deliberacion, y el JUICIO de que merece consolidarse
+  -> conscience (ADR 0002). Aqui vive el mecanismo, no el juicio.
 - Regulacion tecnica (limites, homeostasis) -> pulse.
 - Presentacion / GUI -> `ia_nest_web`.
 
