@@ -34,8 +34,8 @@ Dos decisiones duras que si se fijan aqui:
    relevante dentro del presupuesto, con regla anti-colision entre dominios
    incompatibles (leccion de la cantera `ia_nest`).
 
-Criterio: forma y ambas decisiones escritas y reconciliadas, marcadas como no
-congeladas.
+Detalle en `docs/FORMA_ENRIQUECIMIENTO.md`. Criterio: forma y ambas decisiones
+escritas y reconciliadas, marcadas como no congeladas.
 
 ## Fase 2: Memoria - registro y clases de tipos (ADR 0002)
 
@@ -48,10 +48,10 @@ escritura por capacidad. Las estrictas se implementan por el mismo contrato que
 usaran las delegadas (dogfooding). Motor detras de un port intercambiable, no
 casado.
 
-Pendiente de reconciliar en esta fase: el ROSTER concreto (que tipos existen, de
-que clase, con que gradiente de tiers) y donde cae `entities`. Un nivel del
-gradiente solo se justifica si cambia su modo de recuperacion y su compresion, no
-solo su filtro de fecha (Leccion 1).
+El modelo de relevancia y el gradiente de tiers estan decididos (ADR 0003:
+Opcion C, tres tiers definidos por vector de pesos; motor `postgres + pgvector`).
+Pendiente de reconciliar en esta fase: el ROSTER de namespaces y la clase de cada
+tipo, incluido `entities` (un perfil no decae, se actualiza; su propia ronda).
 
 Criterio (falsable):
 

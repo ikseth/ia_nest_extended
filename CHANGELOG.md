@@ -18,6 +18,15 @@ Sin acentos por convencion.
   evolutivo), la frontera sustrato/juicio con conscience, las funciones de memoria
   deseadas heredadas de la cantera `ia_nest`, y la separacion entre memoria y
   conocimiento (RAG). Anadido al orden de lectura de `AGENTS.md`.
+- `docs/FORMA_ENRIQUECIMIENTO.md` (Fase 1): forma no congelada del enriquecimiento,
+  mapeo identidad->clave y politica de composicion/presupuesto. En el orden de
+  lectura de `AGENTS.md`.
+- Modelo de relevancia y gradiente de tiers (ADR 0003): recuperacion por ranking
+  ponderado (recencia, similitud, estabilidad, score; dominio como filtro); un
+  tier se define por su vector de pesos, no por una ventana. Gradiente de tres
+  tiers (conversacional / episodica / semantica); corto/medio/largo se disuelven
+  en la curva de recencia y el namespace `tasks`. Motor `postgres + pgvector`.
+  Numeros de arranque configurables. Impacto de version: ninguno.
 
 ### Cambiado
 - PLAN reconciliado en sus fases de memoria: Fase 1 pasa a FORMA no congelada

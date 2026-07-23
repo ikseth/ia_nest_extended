@@ -78,8 +78,13 @@ la cantera y vinculante para el modelo de tipos (ADR 0002).
 - Decidido: el fin, la frontera con conscience y el MECANISMO (registro de tipos,
   clases estrictas y delegadas, autoridad de escritura por capacidad, costura de
   consolidacion). Ver ADR 0002.
-- Pendiente (Fase 2): el ROSTER concreto y donde cae `entities`. Un nivel del
-  gradiente solo se justifica si cambia su modo de recuperacion y su compresion,
-  no solo su filtro de fecha (Leccion 1, core ADR 0011).
-- Aparcado: el motor de almacenamiento (la inclinacion es hibrido relacional +
-  vectorial), detras de un port intercambiable (core ADR 0009).
+- Decidido: el modelo de relevancia y el gradiente de tiers (Opcion C: tres tiers
+  -conversacional / episodica / semantica- definidos por su vector de pesos, no
+  por ventanas de fecha; el gradiente corto/medio/largo se disuelve en la curva
+  de recencia y en el namespace `tasks`). Motor: `postgres + pgvector`. Ver
+  ADR 0003.
+- Pendiente (Fase 2): el ROSTER de namespaces y la clase de cada tipo, incluido
+  `entities` (un perfil no decae, se actualiza; no encaja en el gradiente y tiene
+  su propia reconciliacion).
+- Dependencia por decidir (Fase 2/3): el modelo de embeddings y su dimensionalidad
+  (servible por el Ollama del lab).
