@@ -46,8 +46,8 @@ tipificacion concreta (clase, tier, namespace) se reconcilia en la Fase 2 del PL
 | Medio plazo | hitos de relevancia media/alta, detalle segun relevancia | estricta |
 | Largo plazo | hitos antiguos de alta relevancia, detalle bajo | estricta |
 | Entidades | perfiles de personas, objetos y proyectos con los que se relaciona | delegada (conscience), con etiquetado mecanico de extended (ADR 0004) |
-| Historica | principios, experiencias de impacto (incluidas las negativas) | delegada (conscience) |
-| Identidad | quien soy, que hago, caracterizacion del yo | delegada (conscience) |
+| Formativa | experiencias que justifican principios (incluidas las negativas) | disuelta en enlaces `evidence_refs` hacia engramas (ADR 0005) |
+| Identidad | quien soy, que hago, caracterizacion del yo; con `principles`, la personalidad | delegada (conscience), inyeccion permanente |
 | Conocimientos | conocimiento tecnico y humanistico documental | no es memoria (ver abajo) |
 
 Dos aportes sobre la ambicion original de la cantera:
@@ -87,7 +87,9 @@ la cantera y vinculante para el modelo de tipos (ADR 0002).
   actualiza, no decae) y el modelo multi-espacio de recuperacion (cada espacio en
   su representacion natural; lo exacto no se aproxima). Ver ADR 0004. Vocabulario:
   ENGRAMA = registro individual de memoria.
-- Propuesto (reconciliacion pendiente): el roster concreto de tipos,
-  `docs/ROSTER_MEMORIA.md`.
+- Decidido: no hay tipo `historic`; personalidad = `identity` + `principles`
+  (inyeccion permanente) y la evidencia formativa son enlaces hacia engramas.
+  Ver ADR 0005.
+- Decidido: el roster de tipos, `docs/ROSTER_MEMORIA.md` (reconciliado).
 - Dependencia por decidir (Fase 2/3): el modelo de embeddings y su dimensionalidad
   (servible por el Ollama del lab).

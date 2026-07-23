@@ -1,12 +1,14 @@
 # Roster de tipos de memoria (Fase 2)
 
-Estado: PROPUESTA (reconciliacion pendiente)
-Version: 0.1 - 2026-07-18
+Estado: RECONCILIADO
+Version: 0.2 - 2026-07-18
 
 Instancia concreta del mecanismo: clases y autoridad (ADR 0002), tiers y
-relevancia (ADR 0003), entities y multi-espacio (ADR 0004). Cada fila es una
-declaracion del registro de tipos; `memory_type.validate` exige que no haya dos
-filas experienciales con el mismo vector de pesos (Leccion 1).
+relevancia (ADR 0003), entities y multi-espacio (ADR 0004), disolucion de
+historic (ADR 0005). Cada fila es una declaracion del registro de tipos;
+`memory_type.validate` exige que no haya dos filas coincidentes en TODOS sus
+ejes (modo de recuperacion, dueno, scope, namespace): eso seria aliasing
+(Leccion 1). Dos tipos pueden compartir tier si difieren en otro eje.
 
 ## Tipos estrictos (dueno de escritura: extended)
 
@@ -26,20 +28,25 @@ Notas:
 
 ## Tipos delegados (declarados; dueno de escritura: conscience)
 
-| Tipo | Patron | Scope | Contenido |
-|---|---|---|---|
-| `entities` | perfil mutable versionado (no decae, se actualiza) | `entity_id` propio | perfiles de personas, proyectos, objetos |
-| `historic` | sedimento (sin TTL destructivo) | por decidir por el dueno | hitos de impacto, experiencias que marcaron criterio (incluidas negativas) |
-| `identity` | sedimento | entidad global (propuesto; lo fija el dueno) | quien soy, que hago; el yo del ente (ns `persona`) |
-| `principles` | registro evolutivo versionado | entidad global (propuesto) | criterios/valores/heuristicas con refuerzo y estados |
-| `safety` | sedimento | `user_id` (propuesto) | limites y salvaguardas por usuario |
+| Tipo | Patron | Modo de recuperacion | Scope | Contenido |
+|---|---|---|---|---|
+| `entities` | perfil mutable versionado (no decae, se actualiza) | lookup de perfil; gate por `entity_ref` | `entity_id` propio | perfiles de personas, proyectos, objetos |
+| `identity` | sedimento versionado | inyeccion permanente | entidad global | quien soy, que hago; el yo del ente (ns `persona`) |
+| `principles` | registro evolutivo versionado | inyeccion permanente | entidad global | criterios/valores/heuristicas con refuerzo y estados |
+| `safety` | sedimento | inyeccion permanente | `user_id` | limites y salvaguardas por usuario |
 
 Notas:
 
+- PERSONALIDAD = `identity` + `principles` (ADR 0005): el estado actual del yo,
+  inyectado siempre en contexto (system prompt por perfil, core ADR 0025).
+- No hay tipo `historic` (ADR 0005): la evidencia formativa son `evidence_refs`
+  desde `identity`/`principles` hacia engramas (vivos o archivados; el archivo
+  es direccionable porque no hay borrado fisico). El relato formativo por
+  relevancia queda diferido con nombre.
+- Ninguna delegada usa el ranking del ADR 0003: se inyectan o se consultan.
 - Declarados y vacios hasta que conscience exista (ADR 0002): el retrieval los
-  ve vacios y sigue; no hay logica especulativa construida.
-- El scope de los delegados lo fija su dueno; el sustrato debe soportar scope de
-  entidad global ademas de `user_id`.
+  ve vacios y sigue; no hay logica especulativa construida. El dueno podra
+  ajustar scope y politica dentro de los railes del registro.
 - Extended etiqueta `entity_refs` inequivocos en el write-back (mecanico); el
   perfil de `entities` y la resolucion de ambiguedades son juicio del dueno.
 

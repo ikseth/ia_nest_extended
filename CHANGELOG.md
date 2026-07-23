@@ -34,9 +34,15 @@ Sin acentos por convencion.
   juicio de conscience). Asociacion graduada y temporal registradas y diferidas.
   Vocabulario: engrama. Impacto de version: ninguno.
 - `docs/ROSTER_MEMORIA.md`: roster de tipos de memoria de la Fase 2 (estrictos
-  `dialog`/`episodic`/`semantic`; delegados `entities`/`historic`/`identity`/
-  `principles`/`safety`; `ops` y RAG fuera), en estado PROPUESTA. En el orden de
-  lectura de `AGENTS.md`.
+  `dialog`/`episodic`/`semantic`; delegados `entities`/`identity`/`principles`/
+  `safety`; `ops` y RAG fuera), RECONCILIADO. En el orden de lectura de
+  `AGENTS.md`.
+- Disolucion de `historic` (ADR 0005, supersede parcial de la enumeracion del
+  ADR 0002): personalidad = `identity` + `principles` con inyeccion permanente;
+  la evidencia formativa son `evidence_refs` desde delegadas hacia engramas (el
+  archivo es direccionable por no-borrado); relato formativo por relevancia
+  diferido. Regla de aliasing precisada: coincidir en TODOS los ejes. Impacto de
+  version: ninguno.
 
 ### Cambiado
 - PLAN reconciliado en sus fases de memoria: Fase 1 pasa a FORMA no congelada

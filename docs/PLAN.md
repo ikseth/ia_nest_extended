@@ -41,17 +41,17 @@ escritas y reconciliadas, marcadas como no congeladas.
 
 La memoria es un REGISTRO de tipos declarados (namespace, comportamiento de tier,
 read-scope, write-scope, `writer_principal`). Dos clases: estrictas (dueno
-extended, utiles hoy) y delegadas (dueno otra capa; `persona`/`historica`/
-`principles` de conscience, declaradas y vacias). Extended posee los invariantes
+extended, utiles hoy) y delegadas (dueno otra capa; `identity`/`principles`/
+`entities`/`safety` de conscience, declaradas y vacias). Extended posee los invariantes
 (3 lecciones core ADR 0011) como validacion del registro y fuerza la autoridad de
 escritura por capacidad. Las estrictas se implementan por el mismo contrato que
 usaran las delegadas (dogfooding). Motor detras de un port intercambiable, no
 casado.
 
 Decidido: modelo de relevancia y gradiente de tiers (ADR 0003), entities y modelo
-multi-espacio (ADR 0004). El roster concreto de tipos esta propuesto en
-`docs/ROSTER_MEMORIA.md` (reconciliacion pendiente); tras reconciliarlo, esta
-fase pasa a implementable.
+multi-espacio (ADR 0004), disolucion de historic (ADR 0005). El roster esta
+RECONCILIADO en `docs/ROSTER_MEMORIA.md`: la fase es implementable (esquema,
+contrato de declaracion, registro y validacion).
 
 Criterio (falsable):
 
