@@ -1,0 +1,58 @@
+# Roster de tipos de memoria (Fase 2)
+
+Estado: PROPUESTA (reconciliacion pendiente)
+Version: 0.1 - 2026-07-18
+
+Instancia concreta del mecanismo: clases y autoridad (ADR 0002), tiers y
+relevancia (ADR 0003), entities y multi-espacio (ADR 0004). Cada fila es una
+declaracion del registro de tipos; `memory_type.validate` exige que no haya dos
+filas experienciales con el mismo vector de pesos (Leccion 1).
+
+## Tipos estrictos (dueno de escritura: extended)
+
+| Tipo | Tier / patron | Scope | Namespaces | Escritura | H |
+|---|---|---|---|---|---|
+| `dialog` | conversacional | `session_id` | (crudo, sin ns) | write-back directo de turnos | ~4 h |
+| `episodic` | episodica | `user_id` | `facts`, `tasks`, `preferences` | write-back con politica (dedup, filtro anti-ruido) + `entity_refs` | ~30 d |
+| `semantic` | semantica | `user_id` | `facts`, `preferences` | solo consolidacion (Fase 4), comprimida | off |
+
+Notas:
+
+- `dialog` guarda los turnos de la sesion tal cual; el etiquetado y la
+  destilacion a `episodic` los hace el write-back, no el dialogo mismo.
+- `tasks` no asciende a `semantic`: los compromisos se completan o expiran, no
+  se sedimentan (el patron que revele una tarea repetida es un `fact`).
+- Los vectores de pesos y H son los del ADR 0003, configurables por registro.
+
+## Tipos delegados (declarados; dueno de escritura: conscience)
+
+| Tipo | Patron | Scope | Contenido |
+|---|---|---|---|
+| `entities` | perfil mutable versionado (no decae, se actualiza) | `entity_id` propio | perfiles de personas, proyectos, objetos |
+| `historic` | sedimento (sin TTL destructivo) | por decidir por el dueno | hitos de impacto, experiencias que marcaron criterio (incluidas negativas) |
+| `identity` | sedimento | entidad global (propuesto; lo fija el dueno) | quien soy, que hago; el yo del ente (ns `persona`) |
+| `principles` | registro evolutivo versionado | entidad global (propuesto) | criterios/valores/heuristicas con refuerzo y estados |
+| `safety` | sedimento | `user_id` (propuesto) | limites y salvaguardas por usuario |
+
+Notas:
+
+- Declarados y vacios hasta que conscience exista (ADR 0002): el retrieval los
+  ve vacios y sigue; no hay logica especulativa construida.
+- El scope de los delegados lo fija su dueno; el sustrato debe soportar scope de
+  entidad global ademas de `user_id`.
+- Extended etiqueta `entity_refs` inequivocos en el write-back (mecanico); el
+  perfil de `entities` y la resolucion de ambiguedades son juicio del dueno.
+
+## Fuera del roster
+
+- `ops`: telemetria/operacional (core ADR 0010/0015), no memoria. Esta capa la
+  EMITE (Fase 3), no la recuerda.
+- Conocimientos (RAG): subsistema hermano (Fase 5), no un tipo de memoria
+  (`docs/VISION_MEMORIA.md`).
+
+## Dependencias de implementacion (Fase 2/3)
+
+- Motor: `postgres + pgvector` (ADR 0003).
+- Modelo de embeddings y dimensionalidad: por decidir (servible por Ollama).
+- Diferidas con nombre (ADR 0004): grafo de asociacion entre entidades,
+  asociacion temporal por ventana.

@@ -45,7 +45,7 @@ tipificacion concreta (clase, tier, namespace) se reconcilia en la Fase 2 del PL
 | Corto plazo | temas recientes, contexto medio | estricta |
 | Medio plazo | hitos de relevancia media/alta, detalle segun relevancia | estricta |
 | Largo plazo | hitos antiguos de alta relevancia, detalle bajo | estricta |
-| Entidades | perfiles de personas, objetos y proyectos con los que se relaciona | por decidir |
+| Entidades | perfiles de personas, objetos y proyectos con los que se relaciona | delegada (conscience), con etiquetado mecanico de extended (ADR 0004) |
 | Historica | principios, experiencias de impacto (incluidas las negativas) | delegada (conscience) |
 | Identidad | quien soy, que hago, caracterizacion del yo | delegada (conscience) |
 | Conocimientos | conocimiento tecnico y humanistico documental | no es memoria (ver abajo) |
@@ -83,8 +83,11 @@ la cantera y vinculante para el modelo de tipos (ADR 0002).
   por ventanas de fecha; el gradiente corto/medio/largo se disuelve en la curva
   de recencia y en el namespace `tasks`). Motor: `postgres + pgvector`. Ver
   ADR 0003.
-- Pendiente (Fase 2): el ROSTER de namespaces y la clase de cada tipo, incluido
-  `entities` (un perfil no decae, se actualiza; no encaja en el gradiente y tiene
-  su propia reconciliacion).
+- Decidido: entities como tercer patron (perfil mutable versionado que se
+  actualiza, no decae) y el modelo multi-espacio de recuperacion (cada espacio en
+  su representacion natural; lo exacto no se aproxima). Ver ADR 0004. Vocabulario:
+  ENGRAMA = registro individual de memoria.
+- Propuesto (reconciliacion pendiente): el roster concreto de tipos,
+  `docs/ROSTER_MEMORIA.md`.
 - Dependencia por decidir (Fase 2/3): el modelo de embeddings y su dimensionalidad
   (servible por el Ollama del lab).

@@ -27,6 +27,16 @@ Sin acentos por convencion.
   tiers (conversacional / episodica / semantica); corto/medio/largo se disuelven
   en la curva de recencia y el namespace `tasks`. Motor `postgres + pgvector`.
   Numeros de arranque configurables. Impacto de version: ninguno.
+- Entities y modelo multi-espacio (ADR 0004): cada espacio de cercania en su
+  representacion natural (semantico denso; temporal y entidades exactos; dominio
+  como filtro); entities como tercer patron (perfil mutable versionado + registro
+  de `entity_id` + etiquetado `entity_refs` mecanico en write-back; perfilar es
+  juicio de conscience). Asociacion graduada y temporal registradas y diferidas.
+  Vocabulario: engrama. Impacto de version: ninguno.
+- `docs/ROSTER_MEMORIA.md`: roster de tipos de memoria de la Fase 2 (estrictos
+  `dialog`/`episodic`/`semantic`; delegados `entities`/`historic`/`identity`/
+  `principles`/`safety`; `ops` y RAG fuera), en estado PROPUESTA. En el orden de
+  lectura de `AGENTS.md`.
 
 ### Cambiado
 - PLAN reconciliado en sus fases de memoria: Fase 1 pasa a FORMA no congelada

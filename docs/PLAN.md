@@ -48,10 +48,10 @@ escritura por capacidad. Las estrictas se implementan por el mismo contrato que
 usaran las delegadas (dogfooding). Motor detras de un port intercambiable, no
 casado.
 
-El modelo de relevancia y el gradiente de tiers estan decididos (ADR 0003:
-Opcion C, tres tiers definidos por vector de pesos; motor `postgres + pgvector`).
-Pendiente de reconciliar en esta fase: el ROSTER de namespaces y la clase de cada
-tipo, incluido `entities` (un perfil no decae, se actualiza; su propia ronda).
+Decidido: modelo de relevancia y gradiente de tiers (ADR 0003), entities y modelo
+multi-espacio (ADR 0004). El roster concreto de tipos esta propuesto en
+`docs/ROSTER_MEMORIA.md` (reconciliacion pendiente); tras reconciliarlo, esta
+fase pasa a implementable.
 
 Criterio (falsable):
 
