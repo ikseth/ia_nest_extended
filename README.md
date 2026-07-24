@@ -30,11 +30,43 @@ Opciones disponibles:
 - `--skip-db`: prepara `.venv`, instala el paquete y ejecuta las pruebas con los
   skips esperados de PostgreSQL.
 - `--skip-tests`: prepara los recursos, pero no ejecuta pytest.
+- `--core-url`, `--ollama-url`, `--embedding-model`,
+  `--embedding-dimension` y `--extraction-model`: fijan la configuracion local
+  sin preguntas.
+- `--pull-models`: descarga los modelos configurados despues de comprobar que
+  Ollama es alcanzable.
 - `--help`: muestra la ayuda completa.
 
 El script es idempotente: se puede ejecutar de nuevo para reutilizar la DB y
-actualizar el entorno Python. El compose publica PostgreSQL solo en
-`127.0.0.1:55432`.
+actualizar el entorno Python. En modo interactivo pregunta las URL y los modelos
+de apoyo, proponiendo los recomendados; `--assume-yes` los toma sin preguntar.
+La configuracion queda en `.env`, que no se versiona. El compose publica
+PostgreSQL solo en `127.0.0.1:55432`.
+
+Las variables de la capa usan el prefijo `IANEST_EXTENDED_`. `.env.example`
+documenta URL del core y Ollama, modelos, dimension, telemetria, presupuesto,
+top-k y umbrales.
+
+## Chat minimo con memoria
+
+Con PostgreSQL, el core y Ollama locales disponibles:
+
+    python -m ianest_extended.chat \
+        --user operador \
+        --session sesion-1 \
+        --domain general \
+        "Recuerda que prefiero respuestas breves"
+
+Para inspeccionar el bloque inyectado antes del prompt:
+
+    python -m ianest_extended.chat \
+        --user operador \
+        --session sesion-1 \
+        --show-context \
+        "Que recuerdas?"
+
+Cada interaccion emite eventos JSONL `enrich.recall` y
+`enrich.write_back` en el directorio de telemetria configurado.
 
 Para parar la DB sin borrar sus datos:
 

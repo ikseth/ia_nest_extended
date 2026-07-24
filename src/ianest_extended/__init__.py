@@ -1,14 +1,24 @@
-"""Sustrato de memoria de ia_nest_extended."""
+"""Capa de enriquecimiento de ia_nest_extended."""
 
+from .clients import CoreClient, CoreResult, OllamaEmbedder
+from .config import ExtendedConfig
 from .embedders import FakeEmbedder
+from .enrichment import EnrichResult, MemoryEnricher, RecallBundle
 from .errors import (
     AliasedDeclarationError,
     AliasedTierError,
+    CoreClientError,
+    CoreConnectionError,
+    CoreResponseError,
     EngramNotFoundError,
+    ExtendedConfigError,
     InvalidEmbeddingDimensionError,
     InvalidEngramError,
     InvalidMemoryTypeError,
     InvalidNamespaceError,
+    OllamaConnectionError,
+    OllamaEmbedderError,
+    OllamaResponseError,
     ScopeViolationError,
     UnknownMemoryTypeError,
     UnsupportedWriteError,
@@ -31,31 +41,47 @@ from .models import (
 )
 from .registry import MemoryTypeRegistry, seed_memory_types
 from .ranking import calculate_relevance
+from .telemetry import TelemetryWriter
 
 __all__ = [
     "AliasedDeclarationError",
     "AliasedTierError",
+    "CoreClient",
+    "CoreClientError",
+    "CoreConnectionError",
+    "CoreResponseError",
+    "CoreResult",
+    "EnrichResult",
     "Engram",
     "EngramNotFoundError",
     "EngramStatus",
     "EngramWrite",
     "EntityProfile",
+    "ExtendedConfig",
+    "ExtendedConfigError",
     "FakeEmbedder",
     "InvalidEmbeddingDimensionError",
     "InvalidEngramError",
     "InvalidMemoryTypeError",
     "InvalidNamespaceError",
     "MemoryClass",
+    "MemoryEnricher",
     "MemoryIdentity",
     "MemoryKey",
     "MemoryType",
     "MemoryTypeRegistry",
+    "OllamaConnectionError",
+    "OllamaEmbedder",
+    "OllamaEmbedderError",
+    "OllamaResponseError",
     "Principal",
+    "RecallBundle",
     "RecallItem",
     "RecallQuery",
     "RetrievalMode",
     "Scope",
     "ScopeViolationError",
+    "TelemetryWriter",
     "UnknownMemoryTypeError",
     "UnsupportedWriteError",
     "WriteAuthorityError",

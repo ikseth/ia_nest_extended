@@ -77,6 +77,22 @@ class MemoryType:
 class MemoryIdentity:
     user_id: str | None = None
     session_id: str | None = None
+    service: str | None = None
+    domain_tag: str | None = None
+    namespace: str | None = None
+
+    def to_core_dict(self) -> dict[str, str]:
+        return {
+            key: value
+            for key, value in (
+                ("user_id", self.user_id),
+                ("service", self.service),
+                ("session_id", self.session_id),
+                ("domain_tag", self.domain_tag),
+                ("namespace", self.namespace),
+            )
+            if value is not None
+        }
 
 
 @dataclass(frozen=True, slots=True)
