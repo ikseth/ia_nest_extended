@@ -25,8 +25,8 @@ Campos de identidad del core: `user_id`, `service`, `session_id`, `domain_tag`,
 
 | Campo | Papel |
 |---|---|
-| `user_id` | columna vertebral de la clave (siempre) |
-| `namespace` | parte de la clave (siempre); una unica derivacion para lectura y escritura (Leccion 3) |
+| `user_id` | columna vertebral de la clave de los tipos experienciales; los delegados de scope global o de entidad no lo llevan (ver roster) |
+| `namespace` | parte de la clave (salvo `dialog`, turnos crudos sin namespace); una unica derivacion para lectura y escritura (Leccion 3) |
 | `session_id` | entra en la clave SOLO para tipos con scope de sesion (decision por tipo, Fase 2) |
 | `service` | PROCEDENCIA (metadato), no clave: segmentar por service fragmentaria la continuidad de la entidad, que el core advierte evitar |
 | `domain_tag` | FACETA de lectura (recuperar lo coherente con el dominio), no clave dura |

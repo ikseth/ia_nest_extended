@@ -59,3 +59,9 @@ Sin acentos por convencion.
   conscience.
 - `AGENTS.md`: convencion de texto explicita (ASCII puro, sin acentos ni `n` con
   virgulilla) e identificadores en ingles snake_case (core ADR 0016).
+- Reconciliadas las tres senalizaciones de la entrega de fase 2:
+  `FORMA_ENRIQUECIMIENTO.md` corregida (`user_id` vertebra los tipos
+  experienciales, no los delegados globales/entidad; `namespace` en clave salvo
+  `dialog`), namespaces homonimos de las delegadas ratificados en el roster
+  (`entities`/`principles`/`safety`), e interpretacion del criterio A4 sobre
+  senales ratificada.

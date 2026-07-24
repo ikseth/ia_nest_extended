@@ -30,10 +30,10 @@ Notas:
 
 | Tipo | Patron | Modo de recuperacion | Scope | Contenido |
 |---|---|---|---|---|
-| `entities` | perfil mutable versionado (no decae, se actualiza) | lookup de perfil; gate por `entity_ref` | `entity_id` propio | perfiles de personas, proyectos, objetos |
+| `entities` | perfil mutable versionado (no decae, se actualiza) | lookup de perfil; gate por `entity_ref` | `entity_id` propio | perfiles de personas, proyectos, objetos (ns `entities`) |
 | `identity` | sedimento versionado | inyeccion permanente | entidad global | quien soy, que hago; el yo del ente (ns `persona`) |
-| `principles` | registro evolutivo versionado | inyeccion permanente | entidad global | criterios/valores/heuristicas con refuerzo y estados |
-| `safety` | sedimento | inyeccion permanente | `user_id` | limites y salvaguardas por usuario |
+| `principles` | registro evolutivo versionado | inyeccion permanente | entidad global | criterios/valores/heuristicas con refuerzo y estados (ns `principles`) |
+| `safety` | sedimento | inyeccion permanente | `user_id` | limites y salvaguardas por usuario (ns `safety`) |
 
 Notas:
 
