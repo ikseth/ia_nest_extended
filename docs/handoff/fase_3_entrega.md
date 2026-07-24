@@ -61,14 +61,41 @@ ADR 0006 y este brief fijan `bge-m3` a 1024 dimensiones. Mantener el esquema de
 dimension anterior evita borrado fisico y las pruebas PostgreSQL usan ahora la
 dimension configurada (1024 por defecto).
 
+## Correcciones e2e
+
+Se corrigieron exactamente los tres hallazgos del e2e de laboratorio:
+
+- H1: el prompt de extraccion usa namespaces concretos, confianza real, un
+  ejemplo durable con `confidence: 0.9`, un ejemplo de smalltalk vacio y
+  prohibicion de fences/texto exterior. El parser elimina fences y recupera el
+  primer objeto JSON valido aunque haya texto colgante. La prueba unitaria
+  cubre la confianza `0.0`, el namespace compuesto copiado y la salida fenced
+  observados en qwen.
+- H2: `IANEST_EXTENDED_TEST_DSN` es solo un DSN semilla. El fixture deriva
+  `<dbname>_test`, la crea de forma idempotente, instala pgvector y ejecuta
+  `migrate()` exclusivamente ahi. Pytest no usa ni modifica
+  `IANEST_EXTENDED_DATABASE_DSN`; README y `.env.example` documentan la
+  separacion.
+- H3: `.env.example`, README y el instalador aclaran que
+  `IANEST_EXTENDED_EXTRACTION_MODEL` es un ID existente en `models[]` de la
+  config del core, consultable con `model.list`, no necesariamente el tag de
+  Ollama. La sugerencia `qwen2.5:7b` se mantiene y el instalador interactivo
+  lista los IDs si el core es alcanzable.
+
+Evidencia local posterior: `python -m pytest` deja `19 passed, 10 skipped`; los
+skips son los esperados porque no hay PostgreSQL local. `bash -n install.sh` y
+`python -m compileall -q src tests` quedan limpios. Impacto de version: ninguno;
+no cambia contrato publico.
+
 ## Estado de validacion
 
-- `python -m pytest`: `17 passed, 10 skipped`.
+- `python -m pytest`: `19 passed, 10 skipped`.
 - Los diez skips tienen aviso explicito por
   `IANEST_EXTENDED_TEST_DSN no definido`: seis pruebas PostgreSQL de fase 2 y
   cuatro criterios de aceptacion de fase 3.
-- `./install.sh --skip-db --assume-yes`: verde e idempotente en ejecuciones
-  consecutivas; mismo resultado `17 passed, 10 skipped`.
+- La validacion original de `./install.sh --skip-db --assume-yes` fue verde e
+  idempotente en ejecuciones consecutivas (`17 passed, 10 skipped` antes de
+  anadir las dos evidencias unitarias de H1).
 - `bash -n install.sh`: limpio.
 - `python -m compileall -q src tests`: limpio.
 - `python -m pip check`: sin dependencias rotas.

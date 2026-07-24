@@ -5,6 +5,13 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+### Corregido
+- Hallazgos H1/H2/H3 del e2e de Fase 3: prompt y parser de extraccion
+  resistentes a valores copiados, fences y texto colgante; PostgreSQL de pytest
+  aislado en `<dbname>_test`; e ID del modelo de extraccion documentado y
+  mostrado desde `model.list` cuando el core local responde. Sin cambios en el
+  contrato publico; impacto de version: ninguno.
+
 ### Anadido
 - Vertical minimo de memoria de la Fase 3: configuracion
   `IANEST_EXTENDED_*`, clientes tipados para `prompt.run` y embeddings de

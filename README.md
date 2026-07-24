@@ -47,6 +47,18 @@ Las variables de la capa usan el prefijo `IANEST_EXTENDED_`. `.env.example`
 documenta URL del core y Ollama, modelos, dimension, telemetria, presupuesto,
 top-k y umbrales.
 
+`IANEST_EXTENDED_EXTRACTION_MODEL` es el ID del modelo declarado en `models[]`
+de la configuracion del core de la instalacion, no necesariamente el tag de
+Ollama. El ID se consulta con `model.list` (`GET /model/list`); por ejemplo, una
+instalacion puede exponer `qwen_tech` aunque el tag servido sea `qwen2.5:7b`.
+El instalador mantiene `qwen2.5:7b` como sugerencia y, si el core esta
+alcanzable durante la configuracion interactiva, muestra los IDs disponibles.
+
+Pytest toma `IANEST_EXTENDED_TEST_DSN` solo como DSN semilla. Su fixture deriva
+y crea `<dbname>_test`, instala ahi pgvector y ejecuta la migracion. La base
+indicada por `IANEST_EXTENDED_DATABASE_DSN` es la base runtime y pytest nunca
+la migra ni escribe.
+
 ## Chat minimo con memoria
 
 Con PostgreSQL, el core y Ollama locales disponibles:

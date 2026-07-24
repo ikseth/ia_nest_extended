@@ -77,8 +77,9 @@ Opciones:
                 Modelo de embeddings (default: bge-m3).
   --embedding-dimension N
                 Dimension del embedding (default: 1024).
-  --extraction-model MODELO
-                Modelo de extraccion (default: qwen2.5:7b).
+  --extraction-model ID
+                ID en models[] de la config del core
+                (sugerencia: qwen2.5:7b).
   --pull-models Descargar los modelos solo si Ollama es alcanzable.
   --help        Mostrar esta ayuda.
 EOF
@@ -115,6 +116,30 @@ prompt_setting() {
     fi
 }
 
+list_core_model_ids() {
+    command -v curl >/dev/null 2>&1 || return
+
+    local response=""
+    local model_ids=""
+    response="$(curl --fail --silent --show-error --max-time 3 \
+        "${core_url%/}/model/list" 2>/dev/null)" || return
+    model_ids="$(
+        printf '%s\n' "${response}" |
+            grep -Eo '"id"[[:space:]]*:[[:space:]]*"[^"]*"' |
+            sed -E 's/^"id"[[:space:]]*:[[:space:]]*"([^"]*)"$/\1/' ||
+            true
+    )"
+    if [[ -z "${model_ids}" ]]; then
+        log "El core responde, pero model.list no declara ids."
+        return
+    fi
+
+    log "IDs disponibles segun model.list:"
+    while IFS= read -r model_id; do
+        log "  ${model_id}"
+    done <<<"${model_ids}"
+}
+
 configure_extended() {
     if [[ "${assume_yes}" == false ]]; then
         if [[ "${core_url_set}" == false ]]; then
@@ -133,9 +158,10 @@ configure_extended() {
                 "${embedding_dimension}" \
                 embedding_dimension
         fi
+        list_core_model_ids
         if [[ "${extraction_model_set}" == false ]]; then
             prompt_setting \
-                "Modelo de extraccion" \
+                "ID de modelo de extraccion en models[] del core" \
                 "${extraction_model}" \
                 extraction_model
         fi

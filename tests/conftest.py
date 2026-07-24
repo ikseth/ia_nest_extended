@@ -3,7 +3,6 @@ import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
-from urllib.parse import urlparse
 
 import pytest
 
@@ -101,16 +100,47 @@ def postgres_store():
         "psycopg",
         reason="psycopg no instalado; tests postgres omitidos",
     )
-    dsn = os.environ.get("IANEST_EXTENDED_TEST_DSN")
-    if not dsn:
+    source_dsn = os.environ.get("IANEST_EXTENDED_TEST_DSN")
+    if not source_dsn:
         pytest.skip(
             "IANEST_EXTENDED_TEST_DSN no definido; tests postgres omitidos"
         )
-    hostname = urlparse(dsn).hostname
+    from psycopg import sql
+    from psycopg.conninfo import conninfo_to_dict, make_conninfo
+
+    source_parameters = conninfo_to_dict(source_dsn)
+    hostname = source_parameters.get("host")
     if hostname not in {"127.0.0.1", "localhost", "::1"}:
         pytest.skip(
             "el DSN no apunta a localhost; no se conectan hosts remotos"
         )
+    source_dbname = source_parameters.get("dbname")
+    if not source_dbname:
+        pytest.fail("IANEST_EXTENDED_TEST_DSN debe declarar dbname")
+    test_dbname = f"{source_dbname}_test"
+    if len(test_dbname.encode("utf-8")) > 63:
+        pytest.fail("el nombre derivado de la DB de pruebas supera 63 bytes")
+
+    admin_parameters = {**source_parameters, "dbname": "postgres"}
+    test_parameters = {**source_parameters, "dbname": test_dbname}
+    admin_dsn = make_conninfo(**admin_parameters)
+    test_dsn = make_conninfo(**test_parameters)
+    try:
+        with psycopg.connect(admin_dsn, autocommit=True) as connection:
+            exists = connection.execute(
+                "SELECT 1 FROM pg_database WHERE datname = %s",
+                (test_dbname,),
+            ).fetchone()
+            if exists is None:
+                connection.execute(
+                    sql.SQL("CREATE DATABASE {}").format(
+                        sql.Identifier(test_dbname)
+                    )
+                )
+        with psycopg.connect(test_dsn) as connection:
+            connection.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    except psycopg.OperationalError as exc:
+        pytest.skip(f"postgres local no disponible: {exc}")
 
     from ianest_extended import FakeEmbedder
     from ianest_extended.adapters import PostgresMemoryStore
@@ -118,7 +148,7 @@ def postgres_store():
     dimension = int(
         os.environ.get("IANEST_EXTENDED_EMBEDDING_DIMENSION", "1024")
     )
-    store = PostgresMemoryStore(dsn, FakeEmbedder(dimension))
+    store = PostgresMemoryStore(test_dsn, FakeEmbedder(dimension))
     try:
         store.migrate()
     except psycopg.OperationalError as exc:

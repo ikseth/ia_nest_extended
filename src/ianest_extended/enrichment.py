@@ -411,17 +411,42 @@ def _extraction_prompt(user_prompt: str, assistant_response: str) -> str:
     return (
         "Extract only literal, durable information stated in the conversation. "
         "Do not infer motives, identity, personality, or unstated facts. "
-        "Smalltalk must produce zero items. Return only one JSON object with "
-        'shape {"items":[{"namespace":"facts|preferences|tasks",'
-        '"content":"literal concise item","confidence":0.0,'
-        '"mentions":["literal name"]}]}. Use an empty items array when nothing '
-        "qualifies.\n\n"
+        "For each item, namespace must be exactly one of facts, preferences, "
+        "or tasks. Confidence must express the actual certainty from 0 to 1. "
+        "Smalltalk must produce zero items. Return only one JSON object, with "
+        "no markdown fences or text outside the JSON. Example for durable "
+        'information: {"items":[{"namespace":"preferences","content":'
+        '"mi color favorito es el verde","confidence":0.9,'
+        '"mentions":[]}]}. Example for smalltalk: {"items":[]}.\n\n'
         f"USER:\n{user_prompt}\n\nASSISTANT:\n{assistant_response}"
     )
 
 
 def _parse_extraction(response: str) -> list[dict[str, Any]]:
-    data = json.loads(response)
+    cleaned = response.replace("```json", "").replace("```JSON", "")
+    cleaned = cleaned.replace("```", "")
+    decoder = json.JSONDecoder()
+    data = None
+    offset = 0
+    while True:
+        start = cleaned.find("{", offset)
+        if start < 0:
+            break
+        try:
+            candidate, _ = decoder.raw_decode(cleaned, start)
+        except json.JSONDecodeError:
+            offset = start + 1
+            continue
+        if isinstance(candidate, dict):
+            data = candidate
+            break
+        offset = start + 1
+    if data is None:
+        raise json.JSONDecodeError(
+            "no se encontro un objeto JSON valido",
+            cleaned,
+            0,
+        )
     if not isinstance(data, dict) or not isinstance(data.get("items"), list):
         raise ValueError("la extraccion no contiene items")
     return data["items"]

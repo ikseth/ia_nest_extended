@@ -6,6 +6,11 @@ from ianest_extended import (
     MemoryEnricher,
     TelemetryWriter,
 )
+from ianest_extended.enrichment import (
+    _extraction_prompt,
+    _parse_extraction,
+    _validate_item,
+)
 
 from .fakes import InMemoryStore, identity
 
@@ -86,3 +91,42 @@ def test_invalid_extraction_is_discarded_and_traced(
     event = _events(tmp_path)[-1]
     assert event["status"] == "invalid_extraction_json"
     assert event["counters"]["invalid_json"] == 1
+
+
+def test_extraction_prompt_uses_concrete_values_and_json_only():
+    prompt = _extraction_prompt("hola", "hola")
+
+    assert '"namespace":"preferences"' in prompt
+    assert '"confidence":0.9' in prompt
+    assert '{"items":[]}' in prompt
+    assert "facts|preferences|tasks" not in prompt
+    assert "no markdown fences or text outside the JSON" in prompt
+
+
+def test_parse_extraction_tolerates_real_qwen_output_defects():
+    copied_confidence = (
+        '{"items":[{"namespace":"preferences","content":'
+        '"mi color favorito es el verde","confidence":0.0,"mentions":[]}]}'
+    )
+    copied_namespace = (
+        '{"items":[{"namespace":"facts|preferences","content":'
+        '"trabajo con openSUSE","confidence":0.9,"mentions":["openSUSE"]}]}'
+    )
+    fenced_with_trailing_text = (
+        '```json\n{"items":[{"namespace":"facts","content":'
+        '"trabajo con openSUSE","confidence":0.9,"mentions":["openSUSE"]}]}\n'
+        "```\nTexto colgante."
+    )
+
+    low_confidence_item = _parse_extraction(copied_confidence)[0]
+    invalid_namespace_item = _parse_extraction(copied_namespace)[0]
+    fenced_item = _parse_extraction(fenced_with_trailing_text)[0]
+
+    assert _validate_item(low_confidence_item)["confidence"] == 0.0
+    assert _validate_item(invalid_namespace_item) is None
+    assert _validate_item(fenced_item) == {
+        "namespace": "facts",
+        "content": "trabajo con openSUSE",
+        "confidence": 0.9,
+        "mentions": ("openSUSE",),
+    }
