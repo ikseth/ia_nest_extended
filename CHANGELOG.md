@@ -43,6 +43,10 @@ Sin acentos por convencion.
   archivo es direccionable por no-borrado); relato formativo por relevancia
   diferido. Regla de aliasing precisada: coincidir en TODOS los ejes. Impacto de
   version: ninguno.
+- `docs/handoff/fase_2_brief.md`: brief de implementacion de la fase 2 para el
+  agente codificador (esquema postgres+pgvector, ports, registro y validacion
+  V1-V4, autoridad de escritura, recall multi-espacio, semillas del roster,
+  blanco de aceptacion A1-A5). Impacto de version: ninguno.
 
 ### Cambiado
 - PLAN reconciliado en sus fases de memoria: Fase 1 pasa a FORMA no congelada
