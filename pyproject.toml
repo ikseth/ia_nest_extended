@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ianest-extended"
+version = "0.0.0"
+description = "Capa de enriquecimiento de IA_NEST"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "psycopg[binary]>=3.2,<4",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=9,<10",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]

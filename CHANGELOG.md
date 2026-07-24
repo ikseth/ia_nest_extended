@@ -6,6 +6,22 @@ Sin acentos por convencion.
 ## [No publicado]
 
 ### Anadido
+- Validacion de laboratorio de la fase 2 (openSUSE Tumbleweed, docker real):
+  `install.sh` ejecutado dos veces (idempotente), pytest 16/16 sin skips contra
+  postgres+pgvector (criterios A1-A5 del brief); DB solo en loopback. El
+  postgres de la cantera deprecada (`ia_nest_postgres`) queda al margen: esta
+  capa usa su propio contenedor.
+- Instalador de desarrollo `install.sh`, idempotente y orientado primero a
+  openSUSE: seleccion Docker/Podman, PostgreSQL+pgvector con espera de salud,
+  `.venv` Python 3.13, instalacion editable y pytest; incluye modos
+  `--assume-yes`, `--skip-db` y `--skip-tests`, documentacion de uso y handoff
+  de Fase 2b. Sin cambios en el contrato publico; impacto de version: ninguno.
+- Sustrato de memoria de la Fase 2: paquete Python con ports `MemoryStore` y
+  `Embedder`, registro y validacion V1-V4 con errores tipados, autoridad de
+  escritura por principal, `FakeEmbedder`, adaptador postgres+pgvector,
+  migracion parametrizada, semillas del roster, recuperacion multi-espacio,
+  archivo sin borrado, entorno postgres local y pruebas A1-A5. Sin contrato
+  publico cortado; impacto de version: ninguno.
 - Semilla del repo: contexto, alcance, dependencias, genesis (ADR 0001) y plan
   inicial de fases en borrador (memoria primero).
 - Clases de memoria y autoridad de escritura (ADR 0002): la memoria es un registro
