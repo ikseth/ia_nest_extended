@@ -6,6 +6,12 @@ Sin acentos por convencion.
 ## [No publicado]
 
 ### Anadido
+- Sustrato de memoria de la Fase 2: paquete Python con ports `MemoryStore` y
+  `Embedder`, registro y validacion V1-V4 con errores tipados, autoridad de
+  escritura por principal, `FakeEmbedder`, adaptador postgres+pgvector,
+  migracion parametrizada, semillas del roster, recuperacion multi-espacio,
+  archivo sin borrado, entorno postgres local y pruebas A1-A5. Sin contrato
+  publico cortado; impacto de version: ninguno.
 - Semilla del repo: contexto, alcance, dependencias, genesis (ADR 0001) y plan
   inicial de fases en borrador (memoria primero).
 - Clases de memoria y autoridad de escritura (ADR 0002): la memoria es un registro
