@@ -47,7 +47,8 @@ ADR 0008). Principios:
    `linux.ops`). Se apoya en `domain_tag` como faceta.
 3. Precedencia y reparto del presupuesto entre fuentes: principio fijado, cifras
    y orden concretos se reconcilian al existir cada fuente (Fase 3 memoria,
-   Fase 5 RAG, Fase 6 web).
+   Fase 5 RAG, Fase 6 web). Los numeros de arranque de la memoria estan en
+   `docs/POLITICA_WRITEBACK.md` (composicion del recall).
 
 ## Que NO se fija aqui (endurecimiento posterior)
 

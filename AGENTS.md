@@ -8,8 +8,9 @@ Antes de proponer o valorar cualquier cambio de diseno, lee en este orden:
 4. `docs/VISION_MEMORIA.md` (el fin de la memoria y su frontera con conscience)
 5. `docs/FORMA_ENRIQUECIMIENTO.md` (la forma en que la capa envuelve al core)
 6. `docs/ROSTER_MEMORIA.md` (los tipos de memoria declarados)
-7. `docs/PLAN.md`
-8. ADRs en `docs/decision_records/`
+7. `docs/POLITICA_WRITEBACK.md` (que se persiste y la composicion del recall)
+8. `docs/PLAN.md`
+9. ADRs en `docs/decision_records/`
 
 Contexto del core (repo `ia_nest_core`): esta capa DEPENDE de sus contratos
 publicos (`CORE_CONTRACT.md`) y de la doctrina del ente (`docs/FRONTERAS.md`,

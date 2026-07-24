@@ -6,6 +6,12 @@ Sin acentos por convencion.
 ## [No publicado]
 
 ### Anadido
+- Diseno de la fase 3 reconciliado: `docs/POLITICA_WRITEBACK.md` (dialog crudo
+  por diseno, episodic destilado con confianza y dedup-refuerzo, menciones sin
+  resolver, composicion del recall con numeros de arranque) y ADR 0006 (modelos
+  de apoyo: embeddings `bge-m3` 1024d y extraccion `qwen2.5:7b`, ambos
+  configurables por instalacion via instalador; mitigaciones de sesgo).
+  `docs/handoff/fase_3_brief.md` para el codificador. Impacto: ninguno.
 - Validacion de laboratorio de la fase 2 (openSUSE Tumbleweed, docker real):
   `install.sh` ejecutado dos veces (idempotente), pytest 16/16 sin skips contra
   postgres+pgvector (criterios A1-A5 del brief); DB solo en loopback. El
