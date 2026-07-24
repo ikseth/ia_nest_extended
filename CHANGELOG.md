@@ -5,7 +5,22 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+### Corregido
+- Hallazgos H1/H2/H3 del e2e de Fase 3: prompt y parser de extraccion
+  resistentes a valores copiados, fences y texto colgante; PostgreSQL de pytest
+  aislado en `<dbname>_test`; e ID del modelo de extraccion documentado y
+  mostrado desde `model.list` cuando el core local responde. Sin cambios en el
+  contrato publico; impacto de version: ninguno.
+
 ### Anadido
+- Vertical minimo de memoria de la Fase 3: configuracion
+  `IANEST_EXTENDED_*`, clientes tipados para `prompt.run` y embeddings de
+  Ollama, recall compuesto con presupuesto, write-back destilado con
+  dedup-refuerzo, telemetria JSONL, CLI `ianest_extended.chat`, extension
+  idempotente del instalador, reconciliacion sin borrado de la dimension
+  vectorial configurada y pruebas con stub HTTP local/FakeEmbedder. Los casos
+  de aceptacion PostgreSQL quedan automatizados con skip explicito cuando no
+  hay DB. Sin contrato publico cortado; impacto de version: ninguno.
 - Diseno de la fase 3 reconciliado: `docs/POLITICA_WRITEBACK.md` (dialog crudo
   por diseno, episodic destilado con confianza y dedup-refuerzo, menciones sin
   resolver, composicion del recall con numeros de arranque) y ADR 0006 (modelos

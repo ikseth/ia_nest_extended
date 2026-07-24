@@ -60,3 +60,20 @@ class MemoryStore(Protocol):
 
     def get_engram(self, engram_id: UUID) -> Engram:
         """Obtiene un engrama por identificador."""
+
+    def find_similar(
+        self,
+        *,
+        user_id: str,
+        namespace: str,
+        text: str,
+        threshold: float,
+    ) -> Engram | None:
+        """Busca el episodico activo mas similar en el mismo scope."""
+
+    def reinforce(
+        self,
+        principal: Principal,
+        engram_id: UUID,
+    ) -> Engram:
+        """Refuerza un engrama sin crear un duplicado."""

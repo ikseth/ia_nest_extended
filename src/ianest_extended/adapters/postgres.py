@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -67,8 +68,62 @@ class PostgresMemoryStore:
             )
         with self._connect() as connection:
             connection.execute(sql)
+            self._ensure_embedding_dimension(connection)
         for memory_type in seed_memory_types():
             self.register_type(memory_type)
+
+    def _ensure_embedding_dimension(self, connection) -> None:
+        row = connection.execute(
+            """
+            SELECT format_type(attribute.atttypid, attribute.atttypmod)
+                   AS data_type
+            FROM pg_attribute attribute
+            WHERE attribute.attrelid = 'engrams'::regclass
+              AND attribute.attname = 'embedding'
+              AND NOT attribute.attisdropped
+            """
+        ).fetchone()
+        if row is None:
+            raise InvalidEmbeddingDimensionError(
+                "no se encontro la columna engrams.embedding"
+            )
+        match = re.fullmatch(r"vector\((\d+)\)", row["data_type"])
+        if match is None:
+            raise InvalidEmbeddingDimensionError(
+                "engrams.embedding no declara una dimension vectorial"
+            )
+        current_dimension = int(match.group(1))
+        if current_dimension == self._embedder.dimension:
+            return
+
+        rows = connection.execute(
+            "SELECT id, content FROM engrams ORDER BY created_at, id"
+        ).fetchall()
+        connection.execute(
+            """
+            ALTER TABLE engrams
+            ALTER COLUMN embedding TYPE vector
+            USING embedding::vector
+            """
+        )
+        for engram in rows:
+            embedding = self._embedder.embed(engram["content"])
+            connection.execute(
+                """
+                UPDATE engrams
+                SET embedding = %s::vector
+                WHERE id = %s
+                """,
+                (_vector_literal(embedding), engram["id"]),
+            )
+        dimension = self._embedder.dimension
+        connection.execute(
+            f"""
+            ALTER TABLE engrams
+            ALTER COLUMN embedding TYPE vector({dimension})
+            USING embedding::vector({dimension})
+            """
+        )
 
     def register_type(self, memory_type: MemoryType) -> None:
         existing_types = tuple(self.list_types())
@@ -296,6 +351,75 @@ class PostgresMemoryStore:
             ).fetchone()
         if row is None:
             raise EngramNotFoundError(f"engrama no encontrado: {engram_id}")
+        return _engram_from_row(row)
+
+    def find_similar(
+        self,
+        *,
+        user_id: str,
+        namespace: str,
+        text: str,
+        threshold: float,
+    ) -> Engram | None:
+        if not 0.0 <= threshold <= 1.0:
+            raise InvalidEngramError("threshold debe estar entre 0 y 1")
+        if not user_id:
+            raise ScopeViolationError("dedup exige user_id")
+        episodic = self._get_type("episodic")
+        derive_memory_key(
+            episodic,
+            MemoryIdentity(user_id=user_id),
+            namespace,
+        )
+        embedding = self._embedder.embed(text)
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT *
+                FROM engrams
+                WHERE type_name = 'episodic'
+                  AND user_id = %s
+                  AND session_id IS NULL
+                  AND namespace = %s
+                  AND status = 'active'
+                  AND 1 - (embedding <=> %s::vector) >= %s
+                ORDER BY embedding <=> %s::vector, created_at DESC
+                LIMIT 1
+                """,
+                (
+                    user_id,
+                    namespace,
+                    _vector_literal(embedding),
+                    threshold,
+                    _vector_literal(embedding),
+                ),
+            ).fetchone()
+        return None if row is None else _engram_from_row(row)
+
+    def reinforce(
+        self,
+        principal: Principal,
+        engram_id: UUID,
+    ) -> Engram:
+        current = self.get_engram(engram_id)
+        memory_type = self._get_type(current.type_name)
+        _require_authority(memory_type, principal)
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                UPDATE engrams
+                SET stability = stability + 1,
+                    last_reinforced_at = now(),
+                    version = version + 1
+                WHERE id = %s AND status = 'active'
+                RETURNING *
+                """,
+                (engram_id,),
+            ).fetchone()
+        if row is None:
+            raise EngramNotFoundError(
+                f"engrama activo no encontrado: {engram_id}"
+            )
         return _engram_from_row(row)
 
     def _recall_ranked(

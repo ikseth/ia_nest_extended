@@ -7,6 +7,7 @@
 #   --assume-yes  autoriza sin pregunta la instalacion de paquetes con zypper.
 #   --skip-db     omite runtime, postgres y pruebas de DB.
 #   --skip-tests  prepara el entorno pero no ejecuta pytest.
+#   --pull-models descarga los modelos configurados tras comprobar Ollama.
 #
 # Salidas:
 #   .venv con el paquete editable y sus dependencias de prueba instaladas.
@@ -32,10 +33,26 @@ readonly script_dir
 readonly compose_file="${script_dir}/docker-compose.dev.yml"
 readonly test_dsn="postgresql://ianest:ianest_local@127.0.0.1:55432/ianest_extended"
 readonly db_wait_seconds=90
+readonly default_core_url="http://127.0.0.1:8000"
+readonly default_ollama_url="http://127.0.0.1:11434"
+readonly default_embedding_model="bge-m3"
+readonly default_embedding_dimension=1024
+readonly default_extraction_model="qwen2.5:7b"
 
 assume_yes=false
 skip_db=false
 skip_tests=false
+pull_models=false
+core_url="${default_core_url}"
+ollama_url="${default_ollama_url}"
+embedding_model="${default_embedding_model}"
+embedding_dimension="${default_embedding_dimension}"
+extraction_model="${default_extraction_model}"
+core_url_set=false
+ollama_url_set=false
+embedding_model_set=false
+embedding_dimension_set=false
+extraction_model_set=false
 os_id=""
 os_id_like=""
 runtime=""
@@ -52,6 +69,18 @@ Opciones:
   --assume-yes  No preguntar antes de instalar paquetes con zypper.
   --skip-db     Omitir runtime, postgres y pruebas que necesitan DB.
   --skip-tests  Preparar recursos sin ejecutar pytest.
+  --core-url URL
+                URL REST del core (default: http://127.0.0.1:8000).
+  --ollama-url URL
+                URL de Ollama (default: http://127.0.0.1:11434).
+  --embedding-model MODELO
+                Modelo de embeddings (default: bge-m3).
+  --embedding-dimension N
+                Dimension del embedding (default: 1024).
+  --extraction-model ID
+                ID en models[] de la config del core
+                (sugerencia: qwen2.5:7b).
+  --pull-models Descargar los modelos solo si Ollama es alcanzable.
   --help        Mostrar esta ayuda.
 EOF
 }
@@ -63,6 +92,150 @@ log() {
 fail() {
     printf '[install] ERROR: %s\n' "$*" >&2
     exit 1
+}
+
+require_option_value() {
+    local option="$1"
+    local value="${2:-}"
+    [[ -n "${value}" && "${value}" != --* ]] ||
+        fail "${option} exige un valor"
+}
+
+prompt_setting() {
+    local label="$1"
+    local current="$2"
+    local result_name="$3"
+    local answer=""
+
+    [[ -t 0 ]] ||
+        fail "la configuracion interactiva exige terminal; usa --assume-yes"
+    printf '[install] %s [%s]: ' "${label}" "${current}"
+    read -r answer
+    if [[ -n "${answer}" ]]; then
+        printf -v "${result_name}" '%s' "${answer}"
+    fi
+}
+
+list_core_model_ids() {
+    command -v curl >/dev/null 2>&1 || return
+
+    local response=""
+    local model_ids=""
+    response="$(curl --fail --silent --show-error --max-time 3 \
+        "${core_url%/}/model/list" 2>/dev/null)" || return
+    model_ids="$(
+        printf '%s\n' "${response}" |
+            grep -Eo '"id"[[:space:]]*:[[:space:]]*"[^"]*"' |
+            sed -E 's/^"id"[[:space:]]*:[[:space:]]*"([^"]*)"$/\1/' ||
+            true
+    )"
+    if [[ -z "${model_ids}" ]]; then
+        log "El core responde, pero model.list no declara ids."
+        return
+    fi
+
+    log "IDs disponibles segun model.list:"
+    while IFS= read -r model_id; do
+        log "  ${model_id}"
+    done <<<"${model_ids}"
+}
+
+configure_extended() {
+    if [[ "${assume_yes}" == false ]]; then
+        if [[ "${core_url_set}" == false ]]; then
+            prompt_setting "URL del core" "${core_url}" core_url
+        fi
+        if [[ "${ollama_url_set}" == false ]]; then
+            prompt_setting "URL de Ollama" "${ollama_url}" ollama_url
+        fi
+        if [[ "${embedding_model_set}" == false ]]; then
+            prompt_setting \
+                "Modelo de embeddings" "${embedding_model}" embedding_model
+        fi
+        if [[ "${embedding_dimension_set}" == false ]]; then
+            prompt_setting \
+                "Dimension del embedding" \
+                "${embedding_dimension}" \
+                embedding_dimension
+        fi
+        list_core_model_ids
+        if [[ "${extraction_model_set}" == false ]]; then
+            prompt_setting \
+                "ID de modelo de extraccion en models[] del core" \
+                "${extraction_model}" \
+                extraction_model
+        fi
+    fi
+
+    [[ "${embedding_dimension}" =~ ^[1-9][0-9]*$ ]] ||
+        fail "embedding-dimension debe ser un entero positivo"
+    [[ -n "${core_url}" && -n "${ollama_url}" ]] ||
+        fail "las URL configuradas no pueden estar vacias"
+    [[ -n "${embedding_model}" && -n "${extraction_model}" ]] ||
+        fail "los modelos configurados no pueden estar vacios"
+}
+
+update_env_value() {
+    local key="$1"
+    local value="$2"
+    local env_file="${script_dir}/.env"
+    local temp_file=""
+    temp_file="$(mktemp "${TMPDIR:-/tmp}/ianest-extended-env.XXXXXX")"
+
+    if [[ -f "${env_file}" ]]; then
+        awk -v key="${key}" -v value="${value}" '
+            BEGIN { found = 0 }
+            index($0, key "=") == 1 {
+                if (!found) {
+                    print key "=" value
+                    found = 1
+                }
+                next
+            }
+            { print }
+            END {
+                if (!found) {
+                    print key "=" value
+                }
+            }
+        ' "${env_file}" >"${temp_file}"
+    else
+        printf '%s=%s\n' "${key}" "${value}" >"${temp_file}"
+    fi
+    mv -- "${temp_file}" "${env_file}"
+}
+
+write_extended_env() {
+    log "Escribiendo configuracion local en .env."
+    update_env_value IANEST_EXTENDED_CORE_URL "${core_url}"
+    update_env_value IANEST_EXTENDED_OLLAMA_URL "${ollama_url}"
+    update_env_value IANEST_EXTENDED_DATABASE_DSN "${test_dsn}"
+    update_env_value IANEST_EXTENDED_EMBEDDING_MODEL "${embedding_model}"
+    update_env_value \
+        IANEST_EXTENDED_EMBEDDING_DIMENSION "${embedding_dimension}"
+    update_env_value IANEST_EXTENDED_EXTRACTION_MODEL "${extraction_model}"
+    update_env_value IANEST_EXTENDED_TELEMETRY_DIR "telemetry/"
+}
+
+pull_configured_models() {
+    if [[ "${pull_models}" == false ]]; then
+        return 0
+    fi
+    command -v curl >/dev/null 2>&1 ||
+        fail "--pull-models exige curl para comprobar Ollama"
+    if ! curl --fail --silent --show-error --max-time 3 \
+        "${ollama_url%/}/api/tags" >/dev/null; then
+        fail "Ollama no es alcanzable en ${ollama_url}; no se descargaron modelos"
+    fi
+    command -v ollama >/dev/null 2>&1 ||
+        fail "Ollama responde, pero el comando ollama no esta disponible"
+
+    log "Descargando modelo de embeddings: ${embedding_model}"
+    OLLAMA_HOST="${ollama_url}" ollama pull "${embedding_model}"
+    if [[ "${extraction_model}" != "${embedding_model}" ]]; then
+        log "Descargando modelo de extraccion: ${extraction_model}"
+        OLLAMA_HOST="${ollama_url}" ollama pull "${extraction_model}"
+    fi
 }
 
 read_os_release() {
@@ -231,7 +404,7 @@ run_tests() {
         log "IANEST_EXTENDED_TEST_DSN no definido (--skip-db)."
     else
         export IANEST_EXTENDED_TEST_DSN="${test_dsn}"
-        export IANEST_EXTENDED_EMBEDDING_DIMENSION=16
+        export IANEST_EXTENDED_EMBEDDING_DIMENSION="${embedding_dimension}"
         log "IANEST_EXTENDED_TEST_DSN=${IANEST_EXTENDED_TEST_DSN}"
     fi
 
@@ -270,6 +443,39 @@ main() {
             --skip-tests)
                 skip_tests=true
                 ;;
+            --core-url)
+                require_option_value "$1" "${2:-}"
+                core_url="$2"
+                core_url_set=true
+                shift
+                ;;
+            --ollama-url)
+                require_option_value "$1" "${2:-}"
+                ollama_url="$2"
+                ollama_url_set=true
+                shift
+                ;;
+            --embedding-model)
+                require_option_value "$1" "${2:-}"
+                embedding_model="$2"
+                embedding_model_set=true
+                shift
+                ;;
+            --embedding-dimension)
+                require_option_value "$1" "${2:-}"
+                embedding_dimension="$2"
+                embedding_dimension_set=true
+                shift
+                ;;
+            --extraction-model)
+                require_option_value "$1" "${2:-}"
+                extraction_model="$2"
+                extraction_model_set=true
+                shift
+                ;;
+            --pull-models)
+                pull_models=true
+                ;;
             --help)
                 usage
                 exit 0
@@ -283,6 +489,9 @@ main() {
     done
 
     cd -- "${script_dir}"
+    configure_extended
+    write_extended_env
+    pull_configured_models
     read_os_release
 
     if [[ "${skip_db}" == false ]]; then
