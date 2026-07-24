@@ -6,6 +6,11 @@ Sin acentos por convencion.
 ## [No publicado]
 
 ### Anadido
+- Instalador de desarrollo `install.sh`, idempotente y orientado primero a
+  openSUSE: seleccion Docker/Podman, PostgreSQL+pgvector con espera de salud,
+  `.venv` Python 3.13, instalacion editable y pytest; incluye modos
+  `--assume-yes`, `--skip-db` y `--skip-tests`, documentacion de uso y handoff
+  de Fase 2b. Sin cambios en el contrato publico; impacto de version: ninguno.
 - Sustrato de memoria de la Fase 2: paquete Python con ports `MemoryStore` y
   `Embedder`, registro y validacion V1-V4 con errores tipados, autoridad de
   escritura por principal, `FakeEmbedder`, adaptador postgres+pgvector,
