@@ -6,6 +6,13 @@ Sin acentos por convencion.
 ## [No publicado]
 
 ### Anadido
+- Implementacion de la Fase 4: evento tipado `ConsolidationEvent`, ejecutor
+  transaccional con autoridad, lineage y archivo sin borrado, y CLI
+  `python -m ianest_extended.maintain` con promocion literal
+  `episodic` -> `semantic`, archivado de `dialog`, telemetria y `--dry-run`.
+  Umbrales configurables documentados en `.env.example` y cinco criterios de
+  aceptacion PostgreSQL con skip explicito sin DB local. Sin contrato publico
+  cortado; impacto de version: ninguno.
 - Diseno de la fase 4 (ADR 0007): consolidacion mecanica del gradiente estricto.
   `maintain` archiva `dialog` fuera de ventana y promociona `episodic` ->
   `semantic` de forma literal (umbrales de recencia y merito), con lineage y sin
