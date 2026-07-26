@@ -14,6 +14,7 @@ from psycopg.rows import dict_row
 
 from ..errors import (
     EngramNotFoundError,
+    InvalidConsolidationEventError,
     InvalidEmbeddingDimensionError,
     InvalidEngramError,
     InvalidMemoryTypeError,
@@ -22,6 +23,8 @@ from ..errors import (
     WriteAuthorityError,
 )
 from ..models import (
+    ConsolidationEvent,
+    ConsolidationResult,
     Engram,
     EngramStatus,
     EngramWrite,
@@ -45,10 +48,10 @@ class PostgresMemoryStore:
     def __init__(
         self,
         dsn: str,
-        embedder: Embedder,
+        embedder: Embedder | None,
         migration_path: Path | None = None,
     ) -> None:
-        if embedder.dimension <= 0:
+        if embedder is not None and embedder.dimension <= 0:
             raise InvalidEmbeddingDimensionError(
                 "embedding_dimension debe ser mayor que cero"
             )
@@ -57,10 +60,11 @@ class PostgresMemoryStore:
         self._migration_path = migration_path or _default_migration_path()
 
     def migrate(self) -> None:
+        embedder = self._require_embedder()
         template = self._migration_path.read_text(encoding="ascii")
         sql = template.replace(
             "{{embedding_dimension}}",
-            str(self._embedder.dimension),
+            str(embedder.dimension),
         )
         if "{{" in sql or "}}" in sql:
             raise InvalidEmbeddingDimensionError(
@@ -93,7 +97,8 @@ class PostgresMemoryStore:
                 "engrams.embedding no declara una dimension vectorial"
             )
         current_dimension = int(match.group(1))
-        if current_dimension == self._embedder.dimension:
+        embedder = self._require_embedder()
+        if current_dimension == embedder.dimension:
             return
 
         rows = connection.execute(
@@ -107,7 +112,7 @@ class PostgresMemoryStore:
             """
         )
         for engram in rows:
-            embedding = self._embedder.embed(engram["content"])
+            embedding = embedder.embed(engram["content"])
             connection.execute(
                 """
                 UPDATE engrams
@@ -116,7 +121,7 @@ class PostgresMemoryStore:
                 """,
                 (_vector_literal(embedding), engram["id"]),
             )
-        dimension = self._embedder.dimension
+        dimension = embedder.dimension
         connection.execute(
             f"""
             ALTER TABLE engrams
@@ -201,7 +206,7 @@ class PostgresMemoryStore:
             raise InvalidEngramError("stability no puede ser negativo")
 
         engram_id = uuid4()
-        embedding = self._embedder.embed(request.content)
+        embedding = self._require_embedder().embed(request.content)
         with self._connect() as connection:
             row = connection.execute(
                 """
@@ -371,7 +376,7 @@ class PostgresMemoryStore:
             MemoryIdentity(user_id=user_id),
             namespace,
         )
-        embedding = self._embedder.embed(text)
+        embedding = self._require_embedder().embed(text)
         with self._connect() as connection:
             row = connection.execute(
                 """
@@ -422,6 +427,261 @@ class PostgresMemoryStore:
             )
         return _engram_from_row(row)
 
+    def find_dialogs_to_archive(
+        self,
+        *,
+        now: datetime,
+        hot_window_seconds: int,
+    ) -> tuple[Engram, ...]:
+        if hot_window_seconds <= 0:
+            raise InvalidConsolidationEventError(
+                "hot_window_seconds debe ser mayor que cero"
+            )
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT *
+                FROM engrams
+                WHERE type_name = 'dialog'
+                  AND status = 'active'
+                  AND created_at < (
+                      %s::timestamptz
+                      - (%s * interval '1 second')
+                  )
+                ORDER BY created_at, id
+                """,
+                (now, hot_window_seconds),
+            ).fetchall()
+        return tuple(_engram_from_row(row) for row in rows)
+
+    def find_episodic_to_promote(
+        self,
+        *,
+        now: datetime,
+        recency_max: float,
+        min_stability: int,
+        min_score: float,
+    ) -> tuple[Engram, ...]:
+        if not 0.0 <= recency_max <= 1.0:
+            raise InvalidConsolidationEventError(
+                "recency_max debe estar entre 0 y 1"
+            )
+        if min_stability < 0:
+            raise InvalidConsolidationEventError(
+                "min_stability no puede ser negativo"
+            )
+        if not 0.0 <= min_score <= 1.0:
+            raise InvalidConsolidationEventError(
+                "min_score debe estar entre 0 y 1"
+            )
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT e.*
+                FROM engrams e
+                JOIN memory_types mt ON mt.name = e.type_name
+                WHERE e.type_name = 'episodic'
+                  AND e.status = 'active'
+                  AND e.namespace <> 'tasks'
+                  AND mt.half_life_seconds IS NOT NULL
+                  AND power(
+                      0.5,
+                      GREATEST(
+                          EXTRACT(
+                              EPOCH FROM (
+                                  %s::timestamptz
+                                  - COALESCE(
+                                      e.last_reinforced_at,
+                                      e.created_at
+                                  )
+                              )
+                          ),
+                          0
+                      ) / mt.half_life_seconds
+                  ) < %s
+                  AND (e.stability >= %s OR e.score >= %s)
+                ORDER BY e.created_at, e.id
+                """,
+                (now, recency_max, min_stability, min_score),
+            ).fetchall()
+        return tuple(_engram_from_row(row) for row in rows)
+
+    def execute_consolidation(
+        self,
+        event: ConsolidationEvent,
+    ) -> ConsolidationResult:
+        _validate_consolidation_event(event)
+        target_type = None
+        if event.target_type is not None:
+            target_type = self._get_type(event.target_type)
+            _require_authority(target_type, event.principal)
+            if target_type.retrieval_mode is RetrievalMode.PROFILE_LOOKUP:
+                raise UnsupportedWriteError(
+                    "profile_lookup se escribe mediante write_entity"
+                )
+
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT *
+                FROM engrams
+                WHERE id = ANY(%s::uuid[])
+                FOR UPDATE
+                """,
+                (list(event.source_ids),),
+            ).fetchall()
+            by_id = {row["id"]: row for row in rows}
+            missing = [
+                source_id
+                for source_id in event.source_ids
+                if source_id not in by_id
+            ]
+            if missing:
+                raise EngramNotFoundError(
+                    f"engramas fuente no encontrados: {missing!r}"
+                )
+            ordered_rows = [by_id[source_id] for source_id in event.source_ids]
+            if any(
+                row["status"] != EngramStatus.ACTIVE.value
+                for row in ordered_rows
+            ):
+                raise InvalidConsolidationEventError(
+                    "todos los engramas fuente deben estar activos"
+                )
+
+            target_row = None
+            if target_type is not None:
+                target_row = self._insert_consolidation_target(
+                    connection,
+                    event,
+                    target_type,
+                    ordered_rows,
+                )
+                for source_id in event.source_ids:
+                    connection.execute(
+                        """
+                        INSERT INTO memory_links (
+                            source_kind, source_id, target_engram_id, link_kind
+                        )
+                        VALUES ('engram', %s, %s, 'consolidated_from')
+                        """,
+                        (source_id, target_row["id"]),
+                    )
+
+            archived_rows = connection.execute(
+                """
+                UPDATE engrams
+                SET status = 'archived',
+                    archived_at = now(),
+                    archived_reason = %s,
+                    version = version + 1
+                WHERE id = ANY(%s::uuid[])
+                RETURNING *
+                """,
+                (event.reason, list(event.source_ids)),
+            ).fetchall()
+
+        archived_by_id = {row["id"]: row for row in archived_rows}
+        first = ordered_rows[0]
+        return ConsolidationResult(
+            target=None if target_row is None else _engram_from_row(target_row),
+            archived_sources=tuple(
+                _engram_from_row(archived_by_id[source_id])
+                for source_id in event.source_ids
+            ),
+            links_created=(
+                len(event.source_ids) if target_row is not None else 0
+            ),
+            identity=MemoryIdentity(
+                user_id=first["user_id"],
+                session_id=first["session_id"],
+                service=first["service"],
+                domain_tag=first["domain_tag"],
+                namespace=first["namespace"],
+            ),
+        )
+
+    def _insert_consolidation_target(
+        self,
+        connection,
+        event: ConsolidationEvent,
+        target_type: MemoryType,
+        source_rows: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        first = source_rows[0]
+        namespace = event.target_namespace
+        if namespace is None:
+            namespace = first["namespace"]
+        keys = []
+        for row in source_rows:
+            keys.append(
+                derive_memory_key(
+                    target_type,
+                    MemoryIdentity(
+                        user_id=row["user_id"],
+                        session_id=row["session_id"],
+                    ),
+                    namespace,
+                )
+            )
+        if any(key != keys[0] for key in keys[1:]):
+            raise InvalidConsolidationEventError(
+                "las fuentes no comparten la clave del destino"
+            )
+
+        content = event.content
+        assert content is not None
+        if len(source_rows) == 1 and content == first["content"]:
+            embedding = _parse_vector(first["embedding"])
+        else:
+            embedding = self._require_embedder().embed(content)
+        entity_refs = tuple(
+            dict.fromkeys(
+                entity_id
+                for row in source_rows
+                for entity_id in row["entity_refs"]
+            )
+        )
+        unresolved_mentions = tuple(
+            dict.fromkeys(
+                mention
+                for row in source_rows
+                for mention in row["unresolved_mentions"]
+            )
+        )
+        row = connection.execute(
+            """
+            INSERT INTO engrams (
+                id, type_name, user_id, session_id, namespace, content,
+                embedding, score, stability, service, domain_tag,
+                entity_refs, unresolved_mentions, source_trace_id
+            )
+            VALUES (
+                %s, %s, %s, %s, %s, %s, %s::vector, %s, %s, %s, %s,
+                %s, %s, %s
+            )
+            RETURNING *
+            """,
+            (
+                uuid4(),
+                target_type.name,
+                keys[0].user_id,
+                keys[0].session_id,
+                keys[0].namespace,
+                content,
+                _vector_literal(embedding),
+                max(float(row["score"]) for row in source_rows),
+                max(row["stability"] for row in source_rows),
+                first["service"],
+                first["domain_tag"],
+                list(entity_refs),
+                list(unresolved_mentions),
+                first["source_trace_id"],
+            ),
+        ).fetchone()
+        assert row is not None
+        return row
+
     def _recall_ranked(
         self,
         memory_types: tuple[MemoryType, ...],
@@ -446,7 +706,7 @@ class PostgresMemoryStore:
             parameters.append(memory_type.name)
             parameters.extend(values)
 
-        query_embedding = self._embedder.embed(query.text)
+        query_embedding = self._require_embedder().embed(query.text)
         now = query.now or datetime.now(UTC)
         sql = f"""
             SELECT e.*,
@@ -587,6 +847,13 @@ class PostgresMemoryStore:
     def _connect(self):
         return psycopg.connect(self._dsn, row_factory=dict_row)
 
+    def _require_embedder(self) -> Embedder:
+        if self._embedder is None:
+            raise InvalidConsolidationEventError(
+                "esta operacion exige un embedder configurado"
+            )
+        return self._embedder
+
 
 def _default_migration_path() -> Path:
     return (
@@ -604,6 +871,31 @@ def _require_authority(
     if principal is not memory_type.writer_principal:
         raise WriteAuthorityError(
             f"{principal.value!r} no puede escribir {memory_type.name!r}"
+        )
+
+
+def _validate_consolidation_event(event: ConsolidationEvent) -> None:
+    if not event.source_ids:
+        raise InvalidConsolidationEventError(
+            "source_ids no puede estar vacio"
+        )
+    if len(set(event.source_ids)) != len(event.source_ids):
+        raise InvalidConsolidationEventError(
+            "source_ids no admite duplicados"
+        )
+    if not str(event.trigger).strip():
+        raise InvalidConsolidationEventError("trigger no puede estar vacio")
+    if not event.reason.strip():
+        raise InvalidConsolidationEventError("reason no puede estar vacio")
+    has_target = event.target_type is not None
+    has_content = event.content is not None
+    if has_target != has_content:
+        raise InvalidConsolidationEventError(
+            "target_type y content deben aparecer juntos"
+        )
+    if event.target_namespace is not None and not has_target:
+        raise InvalidConsolidationEventError(
+            "target_namespace exige target_type"
         )
 
 

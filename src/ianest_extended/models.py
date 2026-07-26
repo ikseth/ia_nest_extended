@@ -38,6 +38,11 @@ class EngramStatus(StrEnum):
     SUPERSEDED = "superseded"
 
 
+class ConsolidationTrigger(StrEnum):
+    DECAY = "decay"
+    MANUAL = "manual"
+
+
 @dataclass(frozen=True, slots=True)
 class MemoryType:
     name: str
@@ -175,3 +180,22 @@ class RecallItem:
     relevance: float
     engram: Engram | None = None
     entity: EntityProfile | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ConsolidationEvent:
+    trigger: ConsolidationTrigger | str
+    principal: Principal
+    source_ids: tuple[UUID, ...]
+    target_type: str | None
+    content: str | None
+    target_namespace: str | None
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class ConsolidationResult:
+    target: Engram | None
+    archived_sources: tuple[Engram, ...]
+    links_created: int
+    identity: MemoryIdentity

@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
 from .models import (
+    ConsolidationEvent,
+    ConsolidationResult,
     Engram,
     EngramWrite,
     EntityProfile,
@@ -77,3 +80,27 @@ class MemoryStore(Protocol):
         engram_id: UUID,
     ) -> Engram:
         """Refuerza un engrama sin crear un duplicado."""
+
+    def find_dialogs_to_archive(
+        self,
+        *,
+        now: datetime,
+        hot_window_seconds: int,
+    ) -> Sequence[Engram]:
+        """Lista dialogos activos fuera de la ventana caliente."""
+
+    def find_episodic_to_promote(
+        self,
+        *,
+        now: datetime,
+        recency_max: float,
+        min_stability: int,
+        min_score: float,
+    ) -> Sequence[Engram]:
+        """Lista episodicos activos que cumplen recencia y merito."""
+
+    def execute_consolidation(
+        self,
+        event: ConsolidationEvent,
+    ) -> ConsolidationResult:
+        """Aplica destino, lineage y archivo en una sola transaccion."""

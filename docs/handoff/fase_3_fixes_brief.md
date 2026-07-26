@@ -6,7 +6,7 @@ Base: rama `fase-3-vertical-minimo` (commit c1099a5). El vertical funciona
 (27/27 en lab con DB) pero el e2e real contra core+qwen fallo la continuidad.
 Evidencia de cada hallazgo abajo; corrige exactamente esto, nada mas.
 
-## H1: prompt de extraccion — sesgo de ejemplo (CRITICO)
+## H1: prompt de extraccion - sesgo de ejemplo (CRITICO)
 
 Salida real de qwen_tech ante "Mi color favorito es el verde y trabajo con
 openSUSE":

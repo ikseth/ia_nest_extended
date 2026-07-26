@@ -29,6 +29,10 @@ class ExtendedConfig:
     dedup_threshold: float = 0.92
     confidence_threshold: float = 0.7
     request_timeout_seconds: float = 30.0
+    dialog_hot_window_seconds: int = 4 * 60 * 60
+    promote_min_stability: int = 3
+    promote_min_score: float = 0.8
+    promote_recency_max: float = 0.1
 
     @classmethod
     def from_env(
@@ -86,6 +90,22 @@ class ExtendedConfig:
                 "REQUEST_TIMEOUT_SECONDS",
                 defaults.request_timeout_seconds,
             ),
+            "dialog_hot_window_seconds": _env_int(
+                "DIALOG_HOT_WINDOW",
+                defaults.dialog_hot_window_seconds,
+            ),
+            "promote_min_stability": _env_int(
+                "PROMOTE_MIN_STABILITY",
+                defaults.promote_min_stability,
+            ),
+            "promote_min_score": _env_float(
+                "PROMOTE_MIN_SCORE",
+                defaults.promote_min_score,
+            ),
+            "promote_recency_max": _env_float(
+                "PROMOTE_RECENCY_MAX",
+                defaults.promote_recency_max,
+            ),
         }
         config = cls(**values)
         config.validate()
@@ -98,6 +118,7 @@ class ExtendedConfig:
             "dialog_top_k",
             "episodic_top_k",
             "semantic_top_k",
+            "dialog_hot_window_seconds",
         ):
             if getattr(self, name) <= 0:
                 raise ExtendedConfigError(f"{name} debe ser mayor que cero")
@@ -109,6 +130,14 @@ class ExtendedConfig:
             raise ExtendedConfigError(
                 "request_timeout_seconds debe ser mayor que cero"
             )
+        if self.promote_min_stability < 0:
+            raise ExtendedConfigError(
+                "promote_min_stability no puede ser negativo"
+            )
+        for name in ("promote_min_score", "promote_recency_max"):
+            value = getattr(self, name)
+            if not 0.0 <= value <= 1.0:
+                raise ExtendedConfigError(f"{name} debe estar entre 0 y 1")
         for name in (
             "core_url",
             "ollama_url",

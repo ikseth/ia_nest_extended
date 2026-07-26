@@ -53,6 +53,10 @@ class EngramNotFoundError(MemoryError):
     """El engrama solicitado no existe."""
 
 
+class InvalidConsolidationEventError(MemoryError):
+    """El evento de consolidacion no satisface sus invariantes."""
+
+
 class ExtendedConfigError(Exception):
     """La configuracion de la capa no es valida."""
 

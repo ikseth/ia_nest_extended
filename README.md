@@ -80,6 +80,25 @@ Para inspeccionar el bloque inyectado antes del prompt:
 Cada interaccion emite eventos JSONL `enrich.recall` y
 `enrich.write_back` en el directorio de telemetria configurado.
 
+## Mantenimiento de memoria
+
+Con PostgreSQL local disponible:
+
+    python -m ianest_extended.maintain --dry-run
+    python -m ianest_extended.maintain
+
+`--dry-run` calcula el resumen sin cambiar engramas ni lineage. La ejecucion
+real archiva `dialog` fuera de la ventana caliente y promociona literalmente
+los `episodic` elegibles a `semantic`; reutiliza su embedding y no conecta al
+core ni a Ollama. Emite `memory.maintain` y, por cada transicion aplicada,
+`memory.consolidation`.
+
+`IANEST_EXTENDED_DIALOG_HOT_WINDOW` se expresa en segundos y vale 14400 por
+defecto, igual a la vida media inicial de `dialog`. Los umbrales de promocion
+son `IANEST_EXTENDED_PROMOTE_MIN_STABILITY=3`,
+`IANEST_EXTENDED_PROMOTE_MIN_SCORE=0.8` y
+`IANEST_EXTENDED_PROMOTE_RECENCY_MAX=0.1`.
+
 Para parar la DB sin borrar sus datos:
 
     docker compose -f docker-compose.dev.yml down

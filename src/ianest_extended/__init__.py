@@ -2,6 +2,7 @@
 
 from .clients import CoreClient, CoreResult, OllamaEmbedder
 from .config import ExtendedConfig
+from .consolidation import ConsolidationExecutor
 from .embedders import FakeEmbedder
 from .enrichment import EnrichResult, MemoryEnricher, RecallBundle
 from .errors import (
@@ -12,6 +13,7 @@ from .errors import (
     CoreResponseError,
     EngramNotFoundError,
     ExtendedConfigError,
+    InvalidConsolidationEventError,
     InvalidEmbeddingDimensionError,
     InvalidEngramError,
     InvalidMemoryTypeError,
@@ -25,6 +27,9 @@ from .errors import (
     WriteAuthorityError,
 )
 from .models import (
+    ConsolidationEvent,
+    ConsolidationResult,
+    ConsolidationTrigger,
     Engram,
     EngramStatus,
     EngramWrite,
@@ -51,6 +56,10 @@ __all__ = [
     "CoreConnectionError",
     "CoreResponseError",
     "CoreResult",
+    "ConsolidationEvent",
+    "ConsolidationExecutor",
+    "ConsolidationResult",
+    "ConsolidationTrigger",
     "EnrichResult",
     "Engram",
     "EngramNotFoundError",
@@ -61,6 +70,7 @@ __all__ = [
     "ExtendedConfigError",
     "FakeEmbedder",
     "InvalidEmbeddingDimensionError",
+    "InvalidConsolidationEventError",
     "InvalidEngramError",
     "InvalidMemoryTypeError",
     "InvalidNamespaceError",
