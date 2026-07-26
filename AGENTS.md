@@ -22,10 +22,15 @@ Versionado: SemVer; toda propuesta que toque contrato publico declara su impacto
 (patch/minor/major) y actualiza `CHANGELOG.md`. No cortes tags por tu cuenta; el
 tag se decide en la reconciliacion del usuario.
 
-Multi-IA en modo ciego: si detectas una inconsistencia, senalala, no la corrijas
-por inferencia (puede ser trabajo de otra IA); solo el resultado reconciliado
-por el usuario se registra. Repo publico sin datos internos.
+Doctrina transversal del ente (repo de gobernanza `ia_nest_meta`), que aplica
+aqui y no se duplica en este repo:
 
-Convencion de texto: los docs se escriben en ASCII puro, sin acentos y sin `n`
-con virgulilla (`diseno`, `pequeno`, `dueno`). Los identificadores de codigo y
-claves van en ingles snake_case (core ADR 0016).
+- `docs/DOCTRINA_MULTI_IA.md`: roles, modo ciego, regla de la inconsistencia,
+  regla del registro, handoff.
+- `docs/CONVENCIONES_TRANSVERSALES.md`: docs en ASCII puro (sin acentos ni
+  enye), identificadores en ingles snake_case, citas `<repo> ADR NNNN`, repo
+  publico sin datos internos.
+
+Lo esencial, para no leer dos ficheros: modo ciego; una inconsistencia se
+senala, no se corrige por inferencia; solo el resultado reconciliado por el
+usuario se registra; docs sin acentos.

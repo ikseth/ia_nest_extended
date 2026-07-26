@@ -9,5 +9,7 @@ Puntos clave de esta capa:
   core (`docs/FRONTERAS.md`, ADR 0031-0037).
 - SemVer y `CHANGELOG.md` para todo lo que toque contrato publico; no cortes
   tags por tu cuenta.
-- Sin acentos/tildes en docs (convencion deliberada). Repo publico: nunca
-  commitees IPs/hosts/secretos internos.
+- Sin acentos/tildes en docs (convencion deliberada, no un error a corregir).
+  Repo publico: nunca commitees IPs/hosts/secretos internos.
+- Doctrina transversal del ente en el repo de gobernanza `ia_nest_meta`:
+  `docs/CONVENCIONES_TRANSVERSALES.md` y `docs/DOCTRINA_MULTI_IA.md`.
