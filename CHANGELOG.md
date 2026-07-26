@@ -5,6 +5,14 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+### Anadido
+- Diseno de la fase 4 (ADR 0007): consolidacion mecanica del gradiente estricto.
+  `maintain` archiva `dialog` fuera de ventana y promociona `episodic` ->
+  `semantic` de forma literal (umbrales de recencia y merito), con lineage y sin
+  borrado, via un ejecutor de `memory.consolidation` que la capa ejerce hoy
+  (dogfooding) y que conscience reusara. Sintesis multi-item con modelo diferida
+  con nombre. `docs/handoff/fase_4_brief.md` para el codificador. Impacto: ninguno.
+
 ### Corregido
 - Hallazgos H1/H2/H3 del e2e de Fase 3: prompt y parser de extraccion
   resistentes a valores copiados, fences y texto colgante; PostgreSQL de pytest
