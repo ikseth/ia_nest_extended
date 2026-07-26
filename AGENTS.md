@@ -15,8 +15,9 @@ Antes de proponer o valorar cualquier cambio de diseno, lee en este orden:
     (`docs/change_requests/from-ia_nest_extended/`; el proceso, en su README)
 
 Contexto del core (repo `ia_nest_core`): esta capa DEPENDE de sus contratos
-publicos (`CORE_CONTRACT.md`) y de la doctrina del ente (`docs/FRONTERAS.md`,
-core ADR 0031-0037). No dupliques ni modifiques el core desde aqui.
+publicos (`CORE_CONTRACT.md`) y de la costura que el core expone a cada capa
+(`docs/FRONTERAS.md`, core ADR 0031-0037). No dupliques ni modifiques el core
+desde aqui.
 
 Versionado: SemVer; toda propuesta que toque contrato publico declara su impacto
 (patch/minor/major) y actualiza `CHANGELOG.md`. No cortes tags por tu cuenta; el
@@ -30,6 +31,9 @@ aqui y no se duplica en este repo:
 - `docs/CONVENCIONES_TRANSVERSALES.md`: docs en ASCII puro (sin acentos ni
   enye), identificadores en ingles snake_case, citas `<repo> ADR NNNN`, repo
   publico sin datos internos.
+- `docs/REGISTRO_CAPAS.md`: quien existe en el ente, quien depende de quien y la
+  regla de vinculo por SemVer. El manifiesto de esta capa
+  (`docs/DEPENDENCIAS.md`) es la fuente de verdad; el registro lo refleja.
 
 Lo esencial, para no leer dos ficheros: modo ciego; una inconsistencia se
 senala, no se corrige por inferencia; solo el resultado reconciliado por el

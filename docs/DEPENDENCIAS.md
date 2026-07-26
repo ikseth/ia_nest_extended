@@ -1,7 +1,11 @@
 # Dependencias de ia_nest_extended
 
-Politica: core ADR 0032 (dependencias entre capas por SemVer). Cada capa fija la
-version de la que depende y versiona su propio contrato.
+Politica: `ia_nest_meta/docs/REGISTRO_CAPAS.md` (regla de vinculo entre capas por
+SemVer; origen historico: core ADR 0032). Cada capa fija la version de la que
+depende y versiona su propio contrato.
+
+Este fichero es el manifiesto de esta capa y es FUENTE DE VERDAD de sus
+dependencias; el registro de capas del ente es un indice que lo refleja.
 
 ## Depende de
 
@@ -19,4 +23,6 @@ version de la que depende y versiona su propio contrato.
 ## Contrato propio
 
 Esta capa versiona su propio contrato publico (SemVer). Su version inicial se
-corta al cerrar el primer vertical de memoria (ver `docs/PLAN.md`).
+corta al cerrar el primer vertical de memoria (ver `docs/PLAN.md`). Al cortar
+tag, actualizar la fila de esta capa en el registro de capas del ente
+(meta ADR 0003).
