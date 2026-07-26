@@ -81,16 +81,18 @@ Entregables:
 Criterio: una conversacion mantiene continuidad end-to-end con la identidad como
 clave; el write-back aplica su politica (no vuelca en bruto); la capa emite traza.
 
-## Fase 4: Memoria - consolidacion (mecanismo)
+## Fase 4: Memoria - consolidacion (mecanismo) (ADR 0007)
 
-Promocion generica entre tiers ESTRICTOS, probada en el camino sesion -> durable,
-que es el que tiene consumidor hoy. Incluye la compresion: el detalle decrece con
-la edad y la relevancia.
+Consolidacion MECANICA del gradiente estricto: `maintain` archiva `dialog` fuera
+de ventana y promociona `episodic` -> `semantic` de forma LITERAL (umbrales de
+recencia y merito), con lineage y sin borrado fisico. Todo pasa por el ejecutor
+del evento `memory.consolidation`, que la propia capa ejerce hoy (dogfooding) y
+que conscience reusara como otro emisor.
 
-Frontera (ADR 0002): el JUICIO de que merece consolidarse es de conscience. Aqui
-se construye el mecanismo y el ejecutor del evento `memory.consolidation`
-(conscience pide, extended ejecuta la transicion de estado y el lineage sobre las
-estrictas). Las delegadas siguen declaradas y vacias hasta que conscience exista.
+Frontera (ADR 0002/0007): el JUICIO de que merece consolidarse, y las memorias
+complejas (identidad, principios, entidades), son de conscience, que las definira
+SOBRE esta arquitectura; las delegadas siguen declaradas y vacias. La sintesis
+con compresion multi-item queda diferida con nombre (ADR 0007).
 
 Criterio: una promocion verificable extremo a extremo, con lineage y sin borrado
 fisico; un evento de consolidacion aplicado por extended sin que su emisor escriba
