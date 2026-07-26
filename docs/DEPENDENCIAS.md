@@ -22,7 +22,11 @@ dependencias; el registro de capas del ente es un indice que lo refleja.
 
 ## Contrato propio
 
-Esta capa versiona su propio contrato publico (SemVer). Su version inicial se
-corta al cerrar el primer vertical de memoria (ver `docs/PLAN.md`). Al cortar
-tag, actualizar la fila de esta capa en el registro de capas del ente
-(meta ADR 0003).
+Esta capa versiona su propio contrato publico (SemVer,
+`ia_nest_meta/docs/POLITICA_SEMVER.md`). Su version inicial se corta al cerrar
+el primer vertical de memoria (ver `docs/PLAN.md`). Al cortar tag, actualizar la
+fila de esta capa en el registro de capas del ente (meta ADR 0003).
+
+PENDIENTE: declarar QUE cuenta como contrato publico de esta capa (que expone y
+que puede romperse). La politica lo exige para poder versionarse y deja la lista
+a cada capa. Sin ella no se puede cortar el primer tag.

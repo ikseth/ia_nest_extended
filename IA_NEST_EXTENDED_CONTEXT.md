@@ -31,9 +31,10 @@ es la CLAVE con la que esta capa indexa su memoria (core ADR 0031/0035;
 - No absorbe logica del core; no actua sobre sistemas externos (eso es
   `tool_contracts`/`external_*`, no enriquecimiento).
 
-## Disciplina (heredada del core)
+## Disciplina (comun al ente)
 
-Contratos pequenos y versionados (SemVer, core ADR 0030/0032); documentos
-pequenos y normativos; ADRs para decisiones estructurales; modo ciego multi-IA
-con reconciliacion del usuario; sin acentos en docs; repo publico sin datos
-internos.
+Contratos pequenos y versionados (SemVer, `ia_nest_meta/docs/POLITICA_SEMVER.md`;
+origen: core ADR 0030/0032); documentos pequenos y normativos; ADRs para
+decisiones estructurales; modo ciego multi-IA con reconciliacion del usuario;
+sin acentos en docs; repo publico sin datos internos. Las tres ultimas viven en
+`ia_nest_meta` (`DOCTRINA_MULTI_IA.md`, `CONVENCIONES_TRANSVERSALES.md`).

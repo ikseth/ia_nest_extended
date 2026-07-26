@@ -19,9 +19,14 @@ publicos (`CORE_CONTRACT.md`) y de la costura que el core expone a cada capa
 (`docs/FRONTERAS.md`, core ADR 0031-0037). No dupliques ni modifiques el core
 desde aqui.
 
-Versionado: SemVer; toda propuesta que toque contrato publico declara su impacto
-(patch/minor/major) y actualiza `CHANGELOG.md`. No cortes tags por tu cuenta; el
-tag se decide en la reconciliacion del usuario.
+Versionado: politica comun del ente en
+`ia_nest_meta/docs/POLITICA_SEMVER.md`. Toda propuesta que toque contrato
+publico declara su impacto (patch/minor/major) y actualiza `CHANGELOG.md`. No
+cortes tags por tu cuenta; el tag se decide en la reconciliacion del usuario.
+
+Pendiente de esta capa: declarar QUE cuenta como su contrato publico, requisito
+de la politica para poder versionarse (`docs/DEPENDENCIAS.md`, seccion "Contrato
+propio").
 
 Doctrina transversal del ente (repo de gobernanza `ia_nest_meta`), que aplica
 aqui y no se duplica en este repo:
