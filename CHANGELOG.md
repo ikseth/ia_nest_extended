@@ -6,6 +6,20 @@ Sin acentos por convencion.
 ## [No publicado]
 
 ### Anadido
+- Proceso de Change Request entre capas (`docs/change_requests/README.md`,
+  PROPUESTA a elevar como doctrina del ente en el core): canal formal
+  propone/dispone para pedir cambios de contrato a una capa superior, sobre el
+  grafo de dependencias SemVer (core ADR 0032).
+- CR-0001 (propuesto, destino core): checkpoint de enriquecimiento por subtarea
+  en `task.run`, para RAG per-subtarea token-eficiente sin reabrir la frontera
+  enriquecimiento/herramienta (core ADR 0031). Impacto previsto en el core: minor.
+
+### Cambiado
+- Fase 5 (RAG) en PARADA hasta resolver CR-0001: no se construye sobre una
+  decision de core no resuelta. `AGENTS.md` incluye `docs/change_requests/` en el
+  orden de lectura.
+
+### Anadido
 - Implementacion de la Fase 4: evento tipado `ConsolidationEvent`, ejecutor
   transaccional con autoridad, lineage y archivo sin borrado, y CLI
   `python -m ianest_extended.maintain` con promocion literal

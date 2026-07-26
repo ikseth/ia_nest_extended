@@ -100,6 +100,12 @@ memorias estrictas.
 
 ## Fase 5: RAG
 
+PARADA (2026-07-26): pendiente de resolver `docs/change_requests/CR-0001`
+(checkpoint de enriquecimiento por subtarea en el core). El RAG upfront no lo
+necesita, pero el RAG per-subtarea en `task.run` si; se decide la forma del RAG
+cuando el core disponga el CR, para no construir sobre una decision de core no
+resuelta.
+
 Ingesta de conocimiento acotado + recuperacion para enriquecer. RAG no es un tier
 de memoria: es un subsistema hermano que comparte el mecanismo de inyeccion y su
 presupuesto, no el modelo (`docs/VISION_MEMORIA.md`). Criterio: recuperacion
