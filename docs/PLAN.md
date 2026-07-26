@@ -100,8 +100,9 @@ memorias estrictas.
 
 ## Fase 5: RAG
 
-PARADA (2026-07-26): pendiente de resolver `docs/change_requests/CR-0001`
-(checkpoint de enriquecimiento por subtarea en el core). El RAG upfront no lo
+PARADA (2026-07-26): pendiente de resolver `extended CR-0001`
+(`ia_nest_meta/docs/change_requests/from-ia_nest_extended/solicitado/`;
+checkpoint de enriquecimiento por subtarea en el core). El RAG upfront no lo
 necesita, pero el RAG per-subtarea en `task.run` si; se decide la forma del RAG
 cuando el core disponga el CR, para no construir sobre una decision de core no
 resuelta.
