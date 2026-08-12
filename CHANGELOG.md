@@ -5,6 +5,13 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+### Anadido
+- Forma del RAG operativo (ADR 0008) y brief de la Fase 5 camino upfront: RAG
+  como subsistema hermano (no tier), tablas `rag_corpora`/`rag_chunks` en el mismo
+  motor, ingesta curada, recuperacion con gate de dominio (D1) y dominio explicito
+  o via `domain.route` (D2), presupuesto duro (D3), integracion upfront en
+  `prompt.run`. Per-subtarea diferido a `task.plan` (core v0.4). Impacto: ninguno.
+
 ### Cambiado
 - Compatibilidad con core v0.3.0 VERIFICADA EN VIVO en lab: redespliegue del
   core por pull (v0.2.0 -> v0.3.0), config valida, `prompt.run` con forma intacta,
