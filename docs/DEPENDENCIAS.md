@@ -9,14 +9,14 @@ dependencias; el registro de capas del ente es un indice que lo refleja.
 
 ## Depende de
 
-- `ia_nest_core >=0.2 <0.3` (v0.2.0, verificada en vivo en lab). v0.3.0 ya esta
-  liberada (tag) y es compatible a nivel de contrato: su unico cambio que toca lo
-  que extended consume es `core ADR 0043` (router semantico), que NO altera la
-  peticion/respuesta de `prompt.run` (la rama "sin modelo ni dominio" resuelve al
-  dominio por defecto `general`, como ya ocurria); ADR 0044/0045 tocan `task.run`,
-  que extended no consume aun. El pin se sube a `>=0.2 <0.4` TRAS el e2e contra un
-  v0.3 desplegado en lab (pendiente de redespliegue). Contratos consumidos (core
-  `CORE_CONTRACT.md`):
+- `ia_nest_core >=0.2 <0.4`. Verificada EN VIVO en lab contra v0.2.0 y v0.3.0
+  (redespliegue por pull + e2e de continuidad de memoria: sesion A escribe,
+  sesion B recupera). El unico cambio de v0.3 que toca lo que extended consume es
+  `core ADR 0043` (router semantico), que NO altera la peticion/respuesta de
+  `prompt.run` (la rama "sin modelo ni dominio" resuelve al dominio por defecto
+  `general`, como ya ocurria); ADR 0044/0045 tocan `task.run`, que extended no
+  consume aun. El techo `<0.4` se reevalua al entregarse `task.plan` (core v0.4).
+  Contratos consumidos (core `CORE_CONTRACT.md`):
   - `prompt.run` (inferencia enriquecida); `task.run` cuando se consuma,
   - `domain.route` (semantico desde v0.3, `core ADR 0043`) para el gate de dominio
     del RAG (Fase 5),

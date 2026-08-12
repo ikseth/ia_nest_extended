@@ -6,6 +6,11 @@ Sin acentos por convencion.
 ## [No publicado]
 
 ### Cambiado
+- Compatibilidad con core v0.3.0 VERIFICADA EN VIVO en lab: redespliegue del
+  core por pull (v0.2.0 -> v0.3.0), config valida, `prompt.run` con forma intacta,
+  y e2e de continuidad de memoria (sesion A escribe, sesion B recupera via
+  bge-m3). Pin de `DEPENDENCIAS.md` subido a `ia_nest_core >=0.2 <0.4`. Impacto de
+  version: ninguno.
 - Core v0.3.0 liberada: PLAN Fase 5 sale de PARADA (CR-0001 resuelto, core
   ADR 0040, REFORMULADO a `task.plan`+`task.run` con plan; objetivo core v0.4, no
   entregado). RAG upfront desbloqueado; per-subtarea espera a `task.plan`.
