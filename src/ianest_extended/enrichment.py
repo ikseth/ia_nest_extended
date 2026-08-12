@@ -3,21 +3,24 @@
 from __future__ import annotations
 
 import json
+import math
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 from uuid import uuid4
 
 from .clients import CoreClient, CoreResult
 from .config import ExtendedConfig
+from .errors import InvalidCoreDomainError
 from .models import (
     EngramWrite,
     MemoryIdentity,
     Principal,
+    RagChunk,
     RecallItem,
     RecallQuery,
 )
-from .ports import MemoryStore
+from .ports import MemoryStore, RagStore
 from .telemetry import TelemetryWriter
 
 DELEGATED_TYPES = (
@@ -27,11 +30,13 @@ DELEGATED_TYPES = (
 )
 SEMANTIC_NAMESPACES = ("facts", "preferences")
 EPISODIC_NAMESPACES = ("facts", "tasks", "preferences")
+CONTEXT_WRAPPER_CHARS = len("<enrichment_context>\n\n</enrichment_context>\n\n")
 
 
 @dataclass(frozen=True, slots=True)
 class RecallBundle:
     delegated: tuple[RecallItem, ...]
+    rag: tuple[RagChunk, ...]
     semantic: tuple[RecallItem, ...]
     episodic: tuple[RecallItem, ...]
     dialog: tuple[RecallItem, ...]
@@ -47,7 +52,7 @@ class EnrichResult:
 
 
 @dataclass(frozen=True, slots=True)
-class _MemoryLine:
+class _ContextLine:
     tier: str
     text: str
     relevance: float
@@ -62,11 +67,13 @@ class MemoryEnricher:
         core: CoreClient,
         telemetry: TelemetryWriter,
         config: ExtendedConfig,
+        rag_store: RagStore | None = None,
     ) -> None:
         self._store = store
         self._core = core
         self._telemetry = telemetry
         self._config = config
+        self._rag_store = rag_store
 
     def enrich(
         self,
@@ -74,15 +81,26 @@ class MemoryEnricher:
         prompt: str,
     ) -> EnrichResult:
         request_id = str(uuid4())
+        resolved_identity, auto_route, route_confidence = self._resolve_domain(
+            identity,
+            prompt,
+        )
         recall_started = time.monotonic()
         try:
-            bundle = self.recall(identity, prompt)
+            rag = self._retrieve_rag(
+                request_id=request_id,
+                identity=resolved_identity,
+                prompt=prompt,
+                auto_route=auto_route,
+                route_confidence=route_confidence,
+            )
+            bundle = self.recall(resolved_identity, prompt, rag=rag)
         except Exception:
             self._telemetry.record(
                 event="enrich.recall",
                 request_id=request_id,
                 core_request_id=None,
-                identity=identity,
+                identity=resolved_identity,
                 counters=self._empty_recall_counters(),
                 latency_ms=_latency_ms(recall_started),
                 status="error",
@@ -92,13 +110,17 @@ class MemoryEnricher:
         enriched_prompt = compose_prompt(bundle.context, prompt)
 
         try:
-            core_result = self._core.prompt_run(enriched_prompt, identity)
+            core_result = self._core.prompt_run(
+                enriched_prompt,
+                resolved_identity,
+                domain=resolved_identity.domain_tag,
+            )
         except Exception:
             self._telemetry.record(
                 event="enrich.recall",
                 request_id=request_id,
                 core_request_id=None,
-                identity=identity,
+                identity=resolved_identity,
                 counters=self._recall_counters(bundle),
                 latency_ms=recall_latency,
                 status="error",
@@ -109,7 +131,7 @@ class MemoryEnricher:
             event="enrich.recall",
             request_id=request_id,
             core_request_id=core_result.request_id,
-            identity=identity,
+            identity=resolved_identity,
             counters=self._recall_counters(bundle),
             latency_ms=recall_latency,
             status="ok",
@@ -118,7 +140,7 @@ class MemoryEnricher:
         write_started = time.monotonic()
         try:
             counters, status = self._write_back(
-                identity=identity,
+                identity=resolved_identity,
                 prompt=prompt,
                 core_result=core_result,
             )
@@ -127,7 +149,7 @@ class MemoryEnricher:
                 event="enrich.write_back",
                 request_id=request_id,
                 core_request_id=core_result.request_id,
-                identity=identity,
+                identity=resolved_identity,
                 counters={
                     "dialog_written": 0,
                     "items_extracted": 0,
@@ -144,7 +166,7 @@ class MemoryEnricher:
             event="enrich.write_back",
             request_id=request_id,
             core_request_id=core_result.request_id,
-            identity=identity,
+            identity=resolved_identity,
             counters=counters,
             latency_ms=_latency_ms(write_started),
             status=status,
@@ -156,7 +178,13 @@ class MemoryEnricher:
             request_id=request_id,
         )
 
-    def recall(self, identity: MemoryIdentity, prompt: str) -> RecallBundle:
+    def recall(
+        self,
+        identity: MemoryIdentity,
+        prompt: str,
+        *,
+        rag: tuple[RagChunk, ...] = (),
+    ) -> RecallBundle:
         delegated: list[RecallItem] = []
         for type_name, namespace in DELEGATED_TYPES:
             delegated.extend(
@@ -197,20 +225,125 @@ class MemoryEnricher:
         )
         lines = (
             _lines("delegated", delegated, permanent=True)
+            + _rag_lines(rag)
             + _lines("semantic", semantic)
             + _lines("episodic", episodic)
             + _lines("dialog", dialog)
         )
         context = _compose_context(
             lines,
-            self._config.memory_budget_tokens * 4,
+            token_budget=self._config.memory_budget_tokens,
+            rag_token_budget=self._config.rag_max_tokens,
         )
         return RecallBundle(
             delegated=tuple(delegated),
+            rag=rag,
             semantic=semantic,
             episodic=episodic,
             dialog=dialog,
             context=context,
+        )
+
+    def _resolve_domain(
+        self,
+        identity: MemoryIdentity,
+        prompt: str,
+    ) -> tuple[MemoryIdentity, bool, float | None]:
+        if identity.domain_tag is not None:
+            domain = identity.domain_tag
+            valid_domains = self._core.list_domains()
+            if domain not in valid_domains:
+                valid = ", ".join(valid_domains) or "(ninguno)"
+                raise InvalidCoreDomainError(
+                    f"dominio del core no valido '{domain}'; "
+                    f"dominios validos: {valid}"
+                )
+            if domain == "general":
+                return replace(identity, domain_tag=None), False, None
+            return identity, False, None
+        if not (
+            self._config.rag_enabled
+            and self._rag_store is not None
+            and self._config.rag_auto_domain
+        ):
+            return identity, False, None
+        route = self._core.domain_route(prompt, identity)
+        if route.confidence < self._config.rag_auto_domain_min_confidence:
+            return identity, True, route.confidence
+        if route.domain == "general":
+            return identity, True, route.confidence
+        return replace(identity, domain_tag=route.domain), True, route.confidence
+
+    def _retrieve_rag(
+        self,
+        *,
+        request_id: str,
+        identity: MemoryIdentity,
+        prompt: str,
+        auto_route: bool,
+        route_confidence: float | None,
+    ) -> tuple[RagChunk, ...]:
+        if not self._config.rag_enabled or self._rag_store is None:
+            return ()
+        started = time.monotonic()
+        try:
+            chunks = tuple(
+                self._rag_store.retrieve(
+                    prompt,
+                    domain=identity.domain_tag,
+                    top_k=self._config.rag_top_k,
+                )
+            )
+        except Exception:
+            self._record_rag_retrieve(
+                request_id=request_id,
+                identity=identity,
+                chunks=(),
+                auto_route=auto_route,
+                route_confidence=route_confidence,
+                latency_ms=_latency_ms(started),
+                status="error",
+            )
+            raise
+        self._record_rag_retrieve(
+            request_id=request_id,
+            identity=identity,
+            chunks=chunks,
+            auto_route=auto_route,
+            route_confidence=route_confidence,
+            latency_ms=_latency_ms(started),
+            status="ok",
+        )
+        return chunks
+
+    def _record_rag_retrieve(
+        self,
+        *,
+        request_id: str,
+        identity: MemoryIdentity,
+        chunks: tuple[RagChunk, ...],
+        auto_route: bool,
+        route_confidence: float | None,
+        latency_ms: int,
+        status: str,
+    ) -> None:
+        self._telemetry.record(
+            event="rag.retrieve",
+            request_id=request_id,
+            core_request_id=None,
+            identity=identity,
+            counters={
+                "k_requested": self._config.rag_top_k,
+                "k_returned": len(chunks),
+            },
+            latency_ms=latency_ms,
+            status=status,
+            details={
+                "domain": identity.domain_tag,
+                "corpora": sorted({chunk.corpus_name for chunk in chunks}),
+                "auto_route": auto_route,
+                "auto_route_confidence": route_confidence,
+            },
         )
 
     def _recall_ranked_namespaces(
@@ -319,6 +452,8 @@ class MemoryEnricher:
         return {
             "delegated_k_requested": 0,
             "delegated_returned": len(bundle.delegated),
+            "rag_k_requested": self._config.rag_top_k,
+            "rag_returned": len(bundle.rag),
             "semantic_k_requested": self._config.semantic_top_k,
             "semantic_returned": len(bundle.semantic),
             "episodic_k_requested": self._config.episodic_top_k,
@@ -331,6 +466,8 @@ class MemoryEnricher:
         return {
             "delegated_k_requested": 0,
             "delegated_returned": 0,
+            "rag_k_requested": self._config.rag_top_k,
+            "rag_returned": 0,
             "semantic_k_requested": self._config.semantic_top_k,
             "semantic_returned": 0,
             "episodic_k_requested": self._config.episodic_top_k,
@@ -344,9 +481,9 @@ def compose_prompt(context: str, prompt: str) -> str:
     if not context:
         return prompt
     return (
-        "<memory_context>\n"
+        "<enrichment_context>\n"
         f"{context}\n"
-        "</memory_context>\n\n"
+        "</enrichment_context>\n\n"
         f"{prompt}"
     )
 
@@ -356,7 +493,7 @@ def _lines(
     items,
     *,
     permanent: bool = False,
-) -> list[_MemoryLine]:
+) -> list[_ContextLine]:
     result = []
     for item in items:
         if item.engram is not None:
@@ -370,7 +507,7 @@ def _lines(
         else:
             continue
         result.append(
-            _MemoryLine(
+            _ContextLine(
                 tier=tier,
                 text=text,
                 relevance=item.relevance,
@@ -380,14 +517,33 @@ def _lines(
     return result
 
 
-def _compose_context(lines: list[_MemoryLine], budget_chars: int) -> str:
+def _rag_lines(chunks: tuple[RagChunk, ...]) -> list[_ContextLine]:
+    return [
+        _ContextLine(
+            tier="rag",
+            text=(
+                f"[{chunk.corpus_name}/{chunk.domain}/{chunk.source_ref}"
+                f"#{chunk.ordinal}] {chunk.content}"
+            ),
+            relevance=chunk.score,
+        )
+        for chunk in chunks
+    ]
+
+
+def _compose_context(
+    lines: list[_ContextLine],
+    *,
+    token_budget: int,
+    rag_token_budget: int,
+) -> str:
     selected = list(lines)
-    while _rendered_length(selected) > budget_chars:
-        removable = [
-            (index, line)
-            for index, line in enumerate(selected)
-            if not line.permanent
-        ]
+    _trim_tier_to_budget(selected, "rag", rag_token_budget)
+    while (
+        estimate_tokens(_render_context(selected), extra_chars=CONTEXT_WRAPPER_CHARS)
+        > token_budget
+    ):
+        removable = _next_removable_tier(selected)
         if not removable:
             break
         worst_index, _ = min(
@@ -395,16 +551,59 @@ def _compose_context(lines: list[_MemoryLine], budget_chars: int) -> str:
             key=lambda pair: (pair[1].relevance, pair[0]),
         )
         selected.pop(worst_index)
+    return _render_context(selected)
+
+
+def _trim_tier_to_budget(
+    lines: list[_ContextLine],
+    tier: str,
+    token_budget: int,
+) -> None:
+    while estimate_tokens(_render_tier(lines, tier)) > token_budget:
+        candidates = [
+            (index, line)
+            for index, line in enumerate(lines)
+            if line.tier == tier
+        ]
+        if not candidates:
+            return
+        worst_index, _ = min(
+            candidates,
+            key=lambda pair: (pair[1].relevance, pair[0]),
+        )
+        lines.pop(worst_index)
+
+
+def _next_removable_tier(
+    lines: list[_ContextLine],
+) -> list[tuple[int, _ContextLine]]:
+    for tier in ("rag", "episodic", "semantic", "dialog"):
+        candidates = [
+            (index, line)
+            for index, line in enumerate(lines)
+            if line.tier == tier and not line.permanent
+        ]
+        if candidates:
+            return candidates
+    return []
+
+
+def _render_context(lines: list[_ContextLine]) -> str:
     sections: list[str] = []
-    for tier in ("delegated", "semantic", "episodic", "dialog"):
-        tier_lines = [line.text for line in selected if line.tier == tier]
+    for tier in ("delegated", "rag", "semantic", "episodic", "dialog"):
+        tier_lines = [line.text for line in lines if line.tier == tier]
         if tier_lines:
             sections.append(f"## {tier}\n" + "\n".join(tier_lines))
     return "\n\n".join(sections)
 
 
-def _rendered_length(lines: list[_MemoryLine]) -> int:
-    return sum(len(line.text) + len(line.tier) + 8 for line in lines)
+def _render_tier(lines: list[_ContextLine], tier: str) -> str:
+    tier_lines = [line.text for line in lines if line.tier == tier]
+    return "" if not tier_lines else f"## {tier}\n" + "\n".join(tier_lines)
+
+
+def estimate_tokens(text: str, *, extra_chars: int = 0) -> int:
+    return math.ceil((len(text) + extra_chars) / 3.5)
 
 
 def _extraction_prompt(user_prompt: str, assistant_response: str) -> str:

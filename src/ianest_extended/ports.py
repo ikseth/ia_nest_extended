@@ -17,6 +17,9 @@ from .models import (
     Principal,
     RecallItem,
     RecallQuery,
+    RagChunk,
+    RagChunkWrite,
+    RagIngestResult,
 )
 
 
@@ -104,3 +107,27 @@ class MemoryStore(Protocol):
         event: ConsolidationEvent,
     ) -> ConsolidationResult:
         """Aplica destino, lineage y archivo en una sola transaccion."""
+
+
+class RagStore(Protocol):
+    def migrate(self) -> None:
+        """Crea el esquema RAG sin modificar las tablas de memoria."""
+
+    def ingest(
+        self,
+        *,
+        corpus_name: str,
+        domain: str,
+        chunks: Sequence[RagChunkWrite],
+        description: str = "",
+    ) -> RagIngestResult:
+        """Crea el corpus si falta y hace upsert idempotente de chunks."""
+
+    def retrieve(
+        self,
+        query_text: str,
+        *,
+        domain: str | None = None,
+        top_k: int = 3,
+    ) -> Sequence[RagChunk]:
+        """Recupera chunks activos por similitud y gate opcional de dominio."""

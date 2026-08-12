@@ -7,7 +7,7 @@
 #   --assume-yes  autoriza sin pregunta la instalacion de paquetes con zypper.
 #   --skip-db     omite runtime, postgres y pruebas de DB.
 #   --skip-tests  prepara el entorno pero no ejecuta pytest.
-#   --pull-models descarga los modelos configurados tras comprobar Ollama.
+#   --pull-models descarga el modelo de embeddings tras comprobar Ollama.
 #
 # Salidas:
 #   .venv con el paquete editable y sus dependencias de prueba instaladas.
@@ -16,7 +16,7 @@
 #
 # Efectos:
 #   Puede instalar paquetes openSUSE, crear o actualizar .venv, descargar la
-#   imagen pgvector, crear el volumen local y ejecutar la suite de pruebas.
+#   imagen pgvector o el embedding, crear el volumen y ejecutar las pruebas.
 #
 # Requisitos:
 #   openSUSE con zypper para instalar recursos ausentes; acceso root o sudo para
@@ -37,7 +37,14 @@ readonly default_core_url="http://127.0.0.1:8000"
 readonly default_ollama_url="http://127.0.0.1:11434"
 readonly default_embedding_model="bge-m3"
 readonly default_embedding_dimension=1024
-readonly default_extraction_model="qwen2.5:7b"
+readonly default_extraction_model="qwen_tech"
+readonly default_rag_enabled=true
+readonly default_rag_top_k=3
+readonly default_rag_max_tokens=500
+readonly default_rag_chunk_tokens=300
+readonly default_rag_chunk_overlap=0.15
+readonly default_rag_auto_domain=false
+readonly default_rag_auto_domain_min_confidence=0.7
 
 assume_yes=false
 skip_db=false
@@ -48,11 +55,25 @@ ollama_url="${default_ollama_url}"
 embedding_model="${default_embedding_model}"
 embedding_dimension="${default_embedding_dimension}"
 extraction_model="${default_extraction_model}"
+rag_enabled="${default_rag_enabled}"
+rag_top_k="${default_rag_top_k}"
+rag_max_tokens="${default_rag_max_tokens}"
+rag_chunk_tokens="${default_rag_chunk_tokens}"
+rag_chunk_overlap="${default_rag_chunk_overlap}"
+rag_auto_domain="${default_rag_auto_domain}"
+rag_auto_domain_min_confidence="${default_rag_auto_domain_min_confidence}"
 core_url_set=false
 ollama_url_set=false
 embedding_model_set=false
 embedding_dimension_set=false
 extraction_model_set=false
+rag_enabled_set=false
+rag_top_k_set=false
+rag_max_tokens_set=false
+rag_chunk_tokens_set=false
+rag_chunk_overlap_set=false
+rag_auto_domain_set=false
+rag_auto_domain_min_confidence_set=false
 os_id=""
 os_id_like=""
 runtime=""
@@ -79,8 +100,21 @@ Opciones:
                 Dimension del embedding (default: 1024).
   --extraction-model ID
                 ID en models[] de la config del core
-                (sugerencia: qwen2.5:7b).
-  --pull-models Descargar los modelos solo si Ollama es alcanzable.
+                (ejemplo configurable: qwen_tech; no es tag de Ollama).
+  --rag-enabled / --no-rag
+                Activar o desactivar RAG upfront (default: activado).
+  --rag-top-k N Chunks RAG pedidos (default: 3).
+  --rag-max-tokens N
+                Presupuesto propio de RAG (default: 500).
+  --rag-chunk-tokens N
+                Tamano aproximado de chunk (default: 300).
+  --rag-chunk-overlap FRACCION
+                Solape entre chunks [0,1) (default: 0.15).
+  --rag-auto-domain / --no-rag-auto-domain
+                Activar o desactivar domain.route (default: desactivado).
+  --rag-auto-domain-min-confidence N
+                Umbral de auto-route [0,1] (default: 0.7).
+  --pull-models Descargar el modelo de embeddings si Ollama es alcanzable.
   --help        Mostrar esta ayuda.
 EOF
 }
@@ -165,6 +199,40 @@ configure_extended() {
                 "${extraction_model}" \
                 extraction_model
         fi
+        if [[ "${rag_enabled_set}" == false ]]; then
+            prompt_setting "RAG activado (true/false)" "${rag_enabled}" rag_enabled
+        fi
+        if [[ "${rag_top_k_set}" == false ]]; then
+            prompt_setting "RAG top-k" "${rag_top_k}" rag_top_k
+        fi
+        if [[ "${rag_max_tokens_set}" == false ]]; then
+            prompt_setting \
+                "Presupuesto de tokens RAG" "${rag_max_tokens}" rag_max_tokens
+        fi
+        if [[ "${rag_chunk_tokens_set}" == false ]]; then
+            prompt_setting \
+                "Tamano de chunk RAG en tokens" \
+                "${rag_chunk_tokens}" \
+                rag_chunk_tokens
+        fi
+        if [[ "${rag_chunk_overlap_set}" == false ]]; then
+            prompt_setting \
+                "Solape de chunk RAG [0,1)" \
+                "${rag_chunk_overlap}" \
+                rag_chunk_overlap
+        fi
+        if [[ "${rag_auto_domain_set}" == false ]]; then
+            prompt_setting \
+                "Auto-route de dominio RAG (true/false)" \
+                "${rag_auto_domain}" \
+                rag_auto_domain
+        fi
+        if [[ "${rag_auto_domain_min_confidence_set}" == false ]]; then
+            prompt_setting \
+                "Confianza minima de auto-route RAG [0,1]" \
+                "${rag_auto_domain_min_confidence}" \
+                rag_auto_domain_min_confidence
+        fi
     fi
 
     [[ "${embedding_dimension}" =~ ^[1-9][0-9]*$ ]] ||
@@ -173,6 +241,23 @@ configure_extended() {
         fail "las URL configuradas no pueden estar vacias"
     [[ -n "${embedding_model}" && -n "${extraction_model}" ]] ||
         fail "los modelos configurados no pueden estar vacios"
+    [[ "${rag_enabled}" == true || "${rag_enabled}" == false ]] ||
+        fail "rag-enabled debe ser true o false"
+    [[ "${rag_auto_domain}" == true || "${rag_auto_domain}" == false ]] ||
+        fail "rag-auto-domain debe ser true o false"
+    for integer_value in \
+        "${rag_top_k}" "${rag_max_tokens}" "${rag_chunk_tokens}"; do
+        [[ "${integer_value}" =~ ^[1-9][0-9]*$ ]] ||
+            fail "los valores enteros RAG deben ser positivos"
+    done
+    [[ "${rag_chunk_overlap}" =~ ^([0-9]+)([.][0-9]+)?$ ]] &&
+        awk -v value="${rag_chunk_overlap}" \
+            'BEGIN { exit !(value >= 0 && value < 1) }' ||
+        fail "rag-chunk-overlap debe estar en [0,1)"
+    [[ "${rag_auto_domain_min_confidence}" =~ ^([0-9]+)([.][0-9]+)?$ ]] &&
+        awk -v value="${rag_auto_domain_min_confidence}" \
+            'BEGIN { exit !(value >= 0 && value <= 1) }' ||
+        fail "rag-auto-domain-min-confidence debe estar en [0,1]"
 }
 
 update_env_value() {
@@ -215,6 +300,15 @@ write_extended_env() {
         IANEST_EXTENDED_EMBEDDING_DIMENSION "${embedding_dimension}"
     update_env_value IANEST_EXTENDED_EXTRACTION_MODEL "${extraction_model}"
     update_env_value IANEST_EXTENDED_TELEMETRY_DIR "telemetry/"
+    update_env_value IANEST_EXTENDED_RAG_ENABLED "${rag_enabled}"
+    update_env_value IANEST_EXTENDED_RAG_TOP_K "${rag_top_k}"
+    update_env_value IANEST_EXTENDED_RAG_MAX_TOKENS "${rag_max_tokens}"
+    update_env_value IANEST_EXTENDED_RAG_CHUNK_TOKENS "${rag_chunk_tokens}"
+    update_env_value IANEST_EXTENDED_RAG_CHUNK_OVERLAP "${rag_chunk_overlap}"
+    update_env_value IANEST_EXTENDED_RAG_AUTO_DOMAIN "${rag_auto_domain}"
+    update_env_value \
+        IANEST_EXTENDED_RAG_AUTO_DOMAIN_MIN_CONFIDENCE \
+        "${rag_auto_domain_min_confidence}"
 }
 
 pull_configured_models() {
@@ -232,10 +326,6 @@ pull_configured_models() {
 
     log "Descargando modelo de embeddings: ${embedding_model}"
     OLLAMA_HOST="${ollama_url}" ollama pull "${embedding_model}"
-    if [[ "${extraction_model}" != "${embedding_model}" ]]; then
-        log "Descargando modelo de extraccion: ${extraction_model}"
-        OLLAMA_HOST="${ollama_url}" ollama pull "${extraction_model}"
-    fi
 }
 
 read_os_release() {
@@ -471,6 +561,52 @@ main() {
                 require_option_value "$1" "${2:-}"
                 extraction_model="$2"
                 extraction_model_set=true
+                shift
+                ;;
+            --rag-enabled)
+                rag_enabled=true
+                rag_enabled_set=true
+                ;;
+            --no-rag)
+                rag_enabled=false
+                rag_enabled_set=true
+                ;;
+            --rag-top-k)
+                require_option_value "$1" "${2:-}"
+                rag_top_k="$2"
+                rag_top_k_set=true
+                shift
+                ;;
+            --rag-max-tokens)
+                require_option_value "$1" "${2:-}"
+                rag_max_tokens="$2"
+                rag_max_tokens_set=true
+                shift
+                ;;
+            --rag-chunk-tokens)
+                require_option_value "$1" "${2:-}"
+                rag_chunk_tokens="$2"
+                rag_chunk_tokens_set=true
+                shift
+                ;;
+            --rag-chunk-overlap)
+                require_option_value "$1" "${2:-}"
+                rag_chunk_overlap="$2"
+                rag_chunk_overlap_set=true
+                shift
+                ;;
+            --rag-auto-domain)
+                rag_auto_domain=true
+                rag_auto_domain_set=true
+                ;;
+            --no-rag-auto-domain)
+                rag_auto_domain=false
+                rag_auto_domain_set=true
+                ;;
+            --rag-auto-domain-min-confidence)
+                require_option_value "$1" "${2:-}"
+                rag_auto_domain_min_confidence="$2"
+                rag_auto_domain_min_confidence_set=true
                 shift
                 ;;
             --pull-models)

@@ -16,7 +16,7 @@ def _identity(user, session):
         user_id=user,
         session_id=session,
         service="acceptance_stub",
-        domain_tag="phase3.test",
+        domain_tag="linux",
         namespace="preferences",
     )
 
@@ -99,7 +99,7 @@ def test_phase3_c_duplicate_reinforces_without_inserting(
             identity=_identity(user, "C"),
             text="the project uses PostgreSQL",
             namespace="facts",
-            domain_tag="phase3.test",
+            domain_tag="linux",
             top_k=10,
         )
     )

@@ -9,6 +9,9 @@ def test_config_reads_prefixed_environment(monkeypatch):
     monkeypatch.setenv("IANEST_EXTENDED_DEDUP_THRESHOLD", "0.88")
     monkeypatch.setenv("IANEST_EXTENDED_DIALOG_HOT_WINDOW", "7200")
     monkeypatch.setenv("IANEST_EXTENDED_PROMOTE_MIN_STABILITY", "4")
+    monkeypatch.setenv("IANEST_EXTENDED_RAG_ENABLED", "false")
+    monkeypatch.setenv("IANEST_EXTENDED_RAG_CHUNK_OVERLAP", "0.2")
+    monkeypatch.setenv("IANEST_EXTENDED_RAG_AUTO_DOMAIN", "yes")
 
     config = ExtendedConfig.from_env(env_file=None)
 
@@ -17,6 +20,9 @@ def test_config_reads_prefixed_environment(monkeypatch):
     assert config.dedup_threshold == 0.88
     assert config.dialog_hot_window_seconds == 7200
     assert config.promote_min_stability == 4
+    assert config.rag_enabled is False
+    assert config.rag_chunk_overlap == 0.2
+    assert config.rag_auto_domain is True
 
 
 def test_config_rejects_invalid_values(monkeypatch):
@@ -28,6 +34,13 @@ def test_config_rejects_invalid_values(monkeypatch):
 
 def test_config_rejects_invalid_maintenance_values(monkeypatch):
     monkeypatch.setenv("IANEST_EXTENDED_PROMOTE_RECENCY_MAX", "1.1")
+
+    with pytest.raises(ExtendedConfigError):
+        ExtendedConfig.from_env(env_file=None)
+
+
+def test_config_rejects_invalid_rag_values(monkeypatch):
+    monkeypatch.setenv("IANEST_EXTENDED_RAG_CHUNK_OVERLAP", "1.0")
 
     with pytest.raises(ExtendedConfigError):
         ExtendedConfig.from_env(env_file=None)

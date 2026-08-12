@@ -120,6 +120,6 @@ def identity(user="u", session="A"):
         user_id=user,
         session_id=session,
         service="test",
-        domain_tag="test.domain",
+        domain_tag="linux",
         namespace="preferences",
     )

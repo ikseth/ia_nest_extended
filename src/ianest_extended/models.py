@@ -199,3 +199,32 @@ class ConsolidationResult:
     archived_sources: tuple[Engram, ...]
     links_created: int
     identity: MemoryIdentity
+
+
+@dataclass(frozen=True, slots=True)
+class RagChunkWrite:
+    content: str
+    source_ref: str
+    ordinal: int
+
+
+@dataclass(frozen=True, slots=True)
+class RagChunk:
+    id: UUID
+    corpus_id: UUID
+    corpus_name: str
+    domain: str
+    content: str
+    source_ref: str
+    ordinal: int
+    score: float
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class RagIngestResult:
+    corpus_id: UUID
+    corpus_name: str
+    domain: str
+    inserted: int
+    updated: int

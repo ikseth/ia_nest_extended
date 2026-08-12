@@ -36,18 +36,29 @@ class CoreResult:
         return str(self.trace["finish_reason"])
 
 
+@dataclass(frozen=True, slots=True)
+class DomainRouteResult:
+    domain: str
+    confidence: float
+    reason: str
+    alternatives: tuple[dict[str, Any], ...]
+    trace: dict[str, Any]
+
+
 class CoreClient:
     """Cliente del contrato REST publico prompt.run del core."""
 
     def __init__(self, base_url: str, timeout_seconds: float = 30.0) -> None:
         self._base_url = base_url.rstrip("/")
         self._timeout_seconds = timeout_seconds
+        self._domain_ids: tuple[str, ...] | None = None
 
     def prompt_run(
         self,
         prompt: str,
         identity: MemoryIdentity,
         model: str | None = None,
+        domain: str | None = None,
     ) -> CoreResult:
         payload: dict[str, Any] = {
             "prompt": prompt,
@@ -55,6 +66,8 @@ class CoreClient:
         }
         if model is not None:
             payload["model"] = model
+        if domain is not None:
+            payload["domain"] = domain
         data = _post_json(
             f"{self._base_url}/prompt/run",
             payload,
@@ -83,6 +96,70 @@ class CoreClient:
             domain=_optional_text(data.get("domain")),
             params=params,
         )
+
+    def domain_route(
+        self,
+        prompt: str,
+        identity: MemoryIdentity,
+    ) -> DomainRouteResult:
+        data = _post_json(
+            f"{self._base_url}/domain/route",
+            {"prompt": prompt, "identity": identity.to_core_dict()},
+            self._timeout_seconds,
+            connection_error=CoreConnectionError,
+            response_error=CoreResponseError,
+        )
+        domain = data.get("domain")
+        confidence = data.get("confidence")
+        reason = data.get("reason")
+        alternatives = data.get("alternatives", [])
+        trace = data.get("trace", {})
+        if not isinstance(domain, str) or not domain.strip():
+            raise CoreResponseError("domain.route no devolvio un dominio")
+        if (
+            isinstance(confidence, bool)
+            or not isinstance(confidence, (int, float))
+            or not 0.0 <= float(confidence) <= 1.0
+        ):
+            raise CoreResponseError("domain.route devolvio confianza invalida")
+        if not isinstance(reason, str):
+            raise CoreResponseError("domain.route no devolvio un motivo")
+        if not isinstance(alternatives, list) or not all(
+            isinstance(item, dict) for item in alternatives
+        ):
+            raise CoreResponseError("domain.route devolvio alternativas invalidas")
+        if not isinstance(trace, dict):
+            raise CoreResponseError("domain.route devolvio una traza invalida")
+        return DomainRouteResult(
+            domain=domain.strip(),
+            confidence=float(confidence),
+            reason=reason,
+            alternatives=tuple(alternatives),
+            trace=trace,
+        )
+
+    def list_domains(self) -> tuple[str, ...]:
+        if self._domain_ids is not None:
+            return self._domain_ids
+        data = _get_json(
+            f"{self._base_url}/domain/list",
+            self._timeout_seconds,
+            connection_error=CoreConnectionError,
+            response_error=CoreResponseError,
+        )
+        domains = data.get("domains")
+        if not isinstance(domains, list):
+            raise CoreResponseError("domain.list no devolvio una lista de dominios")
+        domain_ids: list[str] = []
+        for domain in domains:
+            if not isinstance(domain, dict):
+                raise CoreResponseError("domain.list devolvio un dominio invalido")
+            domain_id = domain.get("id")
+            if not isinstance(domain_id, str) or not domain_id.strip():
+                raise CoreResponseError("domain.list devolvio un dominio sin id")
+            domain_ids.append(domain_id.strip())
+        self._domain_ids = tuple(domain_ids)
+        return self._domain_ids
 
 
 class OllamaEmbedder:
@@ -156,6 +233,33 @@ def _post_json(
         headers={"Content-Type": "application/json"},
         method="POST",
     )
+    try:
+        with urlopen(request, timeout=timeout_seconds) as response:
+            raw = response.read()
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise response_error(
+            f"HTTP {exc.code} desde {url}: {detail[:500]}"
+        ) from exc
+    except (URLError, TimeoutError, OSError) as exc:
+        raise connection_error(f"no se pudo conectar con {url}: {exc}") from exc
+    try:
+        data = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise response_error(f"{url} no devolvio JSON valido") from exc
+    if not isinstance(data, dict):
+        raise response_error(f"{url} no devolvio un objeto JSON")
+    return data
+
+
+def _get_json(
+    url: str,
+    timeout_seconds: float,
+    *,
+    connection_error,
+    response_error,
+) -> dict[str, Any]:
+    request = Request(url, method="GET")
     try:
         with urlopen(request, timeout=timeout_seconds) as response:
             raw = response.read()
