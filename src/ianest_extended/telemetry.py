@@ -26,6 +26,7 @@ class TelemetryWriter:
         counters: dict[str, int],
         latency_ms: int,
         status: str,
+        details: dict[str, Any] | None = None,
     ) -> None:
         now = datetime.now(UTC)
         payload = {
@@ -44,6 +45,8 @@ class TelemetryWriter:
             "latency_ms": latency_ms,
             "status": status,
         }
+        if details:
+            payload.update(details)
         path = self._directory / f"extended-{now.date().isoformat()}.jsonl"
         line = json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
         with self._lock:

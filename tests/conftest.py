@@ -19,6 +19,23 @@ def local_service_stub():
             if self.path == "/api/embed":
                 self._send({"embeddings": [[3.0, 4.0]]})
                 return
+            if self.path == "/domain/route":
+                if "low-route" in payload["prompt"]:
+                    confidence = 0.2
+                    domain = "cocina"
+                else:
+                    confidence = 0.9
+                    domain = "linux"
+                self._send(
+                    {
+                        "domain": domain,
+                        "confidence": confidence,
+                        "reason": "stub route",
+                        "alternatives": [],
+                        "trace": {"request_id": "route-stub"},
+                    }
+                )
+                return
             if self.path != "/prompt/run":
                 self.send_error(404)
                 return
@@ -153,4 +170,13 @@ def postgres_store():
         store.migrate()
     except psycopg.OperationalError as exc:
         pytest.skip(f"postgres local no disponible: {exc}")
+    return store
+
+
+@pytest.fixture(scope="session")
+def postgres_rag_store(postgres_store):
+    from ianest_extended.adapters import PostgresRagStore
+
+    store = PostgresRagStore(postgres_store._dsn, postgres_store._embedder)
+    store.migrate()
     return store

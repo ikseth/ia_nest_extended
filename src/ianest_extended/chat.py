@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Sequence
 
-from .adapters import PostgresMemoryStore
+from .adapters import PostgresMemoryStore, PostgresRagStore
 from .clients import CoreClient, OllamaEmbedder
 from .config import ExtendedConfig
 from .enrichment import MemoryEnricher
@@ -34,6 +34,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     store = PostgresMemoryStore(config.database_dsn, embedder)
     store.migrate()
+    rag_store = None
+    if config.rag_enabled:
+        rag_store = PostgresRagStore(config.database_dsn, embedder)
+        rag_store.migrate()
     enricher = MemoryEnricher(
         store=store,
         core=CoreClient(
@@ -42,6 +46,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
         telemetry=TelemetryWriter(config.telemetry_dir),
         config=config,
+        rag_store=rag_store,
     )
     result = enricher.enrich(
         MemoryIdentity(
@@ -53,7 +58,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.prompt,
     )
     if args.show_context:
-        print(result.context or "(sin memoria recuperada)")
+        print(result.context or "(sin contexto recuperado)")
         print()
     print(result.response)
     return 0

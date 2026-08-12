@@ -20,7 +20,7 @@ class ExtendedConfig:
     )
     embedding_model: str = "bge-m3"
     embedding_dimension: int = 1024
-    extraction_model: str = "qwen2.5:7b"
+    extraction_model: str = "qwen_tech"
     telemetry_dir: Path = Path("telemetry")
     memory_budget_tokens: int = 1500
     dialog_top_k: int = 6
@@ -33,6 +33,13 @@ class ExtendedConfig:
     promote_min_stability: int = 3
     promote_min_score: float = 0.8
     promote_recency_max: float = 0.1
+    rag_enabled: bool = True
+    rag_top_k: int = 3
+    rag_max_tokens: int = 500
+    rag_chunk_tokens: int = 300
+    rag_chunk_overlap: float = 0.15
+    rag_auto_domain: bool = False
+    rag_auto_domain_min_confidence: float = 0.7
 
     @classmethod
     def from_env(
@@ -106,6 +113,28 @@ class ExtendedConfig:
                 "PROMOTE_RECENCY_MAX",
                 defaults.promote_recency_max,
             ),
+            "rag_enabled": _env_bool("RAG_ENABLED", defaults.rag_enabled),
+            "rag_top_k": _env_int("RAG_TOP_K", defaults.rag_top_k),
+            "rag_max_tokens": _env_int(
+                "RAG_MAX_TOKENS",
+                defaults.rag_max_tokens,
+            ),
+            "rag_chunk_tokens": _env_int(
+                "RAG_CHUNK_TOKENS",
+                defaults.rag_chunk_tokens,
+            ),
+            "rag_chunk_overlap": _env_float(
+                "RAG_CHUNK_OVERLAP",
+                defaults.rag_chunk_overlap,
+            ),
+            "rag_auto_domain": _env_bool(
+                "RAG_AUTO_DOMAIN",
+                defaults.rag_auto_domain,
+            ),
+            "rag_auto_domain_min_confidence": _env_float(
+                "RAG_AUTO_DOMAIN_MIN_CONFIDENCE",
+                defaults.rag_auto_domain_min_confidence,
+            ),
         }
         config = cls(**values)
         config.validate()
@@ -119,10 +148,17 @@ class ExtendedConfig:
             "episodic_top_k",
             "semantic_top_k",
             "dialog_hot_window_seconds",
+            "rag_top_k",
+            "rag_max_tokens",
+            "rag_chunk_tokens",
         ):
             if getattr(self, name) <= 0:
                 raise ExtendedConfigError(f"{name} debe ser mayor que cero")
-        for name in ("dedup_threshold", "confidence_threshold"):
+        for name in (
+            "dedup_threshold",
+            "confidence_threshold",
+            "rag_auto_domain_min_confidence",
+        ):
             value = getattr(self, name)
             if not 0.0 <= value <= 1.0:
                 raise ExtendedConfigError(f"{name} debe estar entre 0 y 1")
@@ -138,6 +174,10 @@ class ExtendedConfig:
             value = getattr(self, name)
             if not 0.0 <= value <= 1.0:
                 raise ExtendedConfigError(f"{name} debe estar entre 0 y 1")
+        if not 0.0 <= self.rag_chunk_overlap < 1.0:
+            raise ExtendedConfigError(
+                "rag_chunk_overlap debe estar entre 0 (incluido) y 1 (excluido)"
+            )
         for name in (
             "core_url",
             "ollama_url",
@@ -184,3 +224,14 @@ def _env_float(name: str, default: float) -> float:
         raise ExtendedConfigError(
             f"{PREFIX}{name} debe ser numerico"
         ) from exc
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = str(_env(name, str(default))).strip().lower()
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    raise ExtendedConfigError(
+        f"{PREFIX}{name} debe ser booleano (true/false)"
+    )

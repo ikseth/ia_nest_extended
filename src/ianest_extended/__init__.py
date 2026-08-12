@@ -1,6 +1,6 @@
 """Capa de enriquecimiento de ia_nest_extended."""
 
-from .clients import CoreClient, CoreResult, OllamaEmbedder
+from .clients import CoreClient, CoreResult, DomainRouteResult, OllamaEmbedder
 from .config import ExtendedConfig
 from .consolidation import ConsolidationExecutor
 from .embedders import FakeEmbedder
@@ -18,9 +18,12 @@ from .errors import (
     InvalidEngramError,
     InvalidMemoryTypeError,
     InvalidNamespaceError,
+    InvalidRagInputError,
     OllamaConnectionError,
     OllamaEmbedderError,
     OllamaResponseError,
+    RagError,
+    RagSchemaError,
     ScopeViolationError,
     UnknownMemoryTypeError,
     UnsupportedWriteError,
@@ -39,6 +42,9 @@ from .models import (
     MemoryKey,
     MemoryType,
     Principal,
+    RagChunk,
+    RagChunkWrite,
+    RagIngestResult,
     RecallItem,
     RecallQuery,
     RetrievalMode,
@@ -56,6 +62,7 @@ __all__ = [
     "CoreConnectionError",
     "CoreResponseError",
     "CoreResult",
+    "DomainRouteResult",
     "ConsolidationEvent",
     "ConsolidationExecutor",
     "ConsolidationResult",
@@ -74,6 +81,7 @@ __all__ = [
     "InvalidEngramError",
     "InvalidMemoryTypeError",
     "InvalidNamespaceError",
+    "InvalidRagInputError",
     "MemoryClass",
     "MemoryEnricher",
     "MemoryIdentity",
@@ -85,6 +93,11 @@ __all__ = [
     "OllamaEmbedderError",
     "OllamaResponseError",
     "Principal",
+    "RagChunk",
+    "RagChunkWrite",
+    "RagError",
+    "RagIngestResult",
+    "RagSchemaError",
     "RecallBundle",
     "RecallItem",
     "RecallQuery",

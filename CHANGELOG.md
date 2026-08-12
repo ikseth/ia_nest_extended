@@ -6,6 +6,13 @@ Sin acentos por convencion.
 ## [No publicado]
 
 ### Anadido
+- Implementacion de la Fase 5, camino RAG upfront: migracion separada para
+  `rag_corpora`/`rag_chunks`, ingesta idempotente de `.txt`/`.md`, recuperacion
+  vectorial con gate opcional de dominio, `domain.route` configurable,
+  composicion conservadora dentro del presupuesto, telemetria `rag.retrieve`,
+  configuracion/instalador y pruebas con stub del core y `FakeEmbedder`.
+  `task.run`/`task.plan`, el core y las tablas de memoria quedan intactos. Sin
+  contrato publico cortado; impacto de version: ninguno.
 - Forma del RAG operativo (ADR 0008) y brief de la Fase 5 camino upfront: RAG
   como subsistema hermano (no tier), tablas `rag_corpora`/`rag_chunks` en el mismo
   motor, ingesta curada, recuperacion con gate de dominio (D1) y dominio explicito

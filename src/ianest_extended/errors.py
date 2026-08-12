@@ -98,3 +98,15 @@ class OllamaConnectionError(
 
 class OllamaResponseError(OllamaEmbedderError, ExternalServiceResponseError):
     """Ollama devolvio una respuesta no valida."""
+
+
+class RagError(Exception):
+    """Base de los errores del sustrato RAG."""
+
+
+class InvalidRagInputError(RagError):
+    """La ingesta o consulta RAG no satisface sus invariantes."""
+
+
+class RagSchemaError(RagError):
+    """El esquema RAG no coincide con la configuracion activa."""

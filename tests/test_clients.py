@@ -63,3 +63,15 @@ def test_ollama_embedder_normalizes_and_validates_dimension(
     )
     with pytest.raises(InvalidEmbeddingDimensionError):
         wrong.embed("hola")
+
+
+def test_core_client_routes_domain(local_service_stub):
+    client = CoreClient(local_service_stub.base_url, timeout_seconds=2)
+
+    result = client.domain_route("administra linux", MemoryIdentity(user_id="u"))
+
+    assert result.domain == "linux"
+    assert result.confidence == 0.9
+    path, payload = local_service_stub.requests[-1]
+    assert path == "/domain/route"
+    assert payload == {"prompt": "administra linux", "identity": {"user_id": "u"}}

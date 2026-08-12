@@ -33,8 +33,11 @@ Opciones disponibles:
 - `--core-url`, `--ollama-url`, `--embedding-model`,
   `--embedding-dimension` y `--extraction-model`: fijan la configuracion local
   sin preguntas.
-- `--pull-models`: descarga los modelos configurados despues de comprobar que
-  Ollama es alcanzable.
+- `--rag-*`: configuran ingesta, presupuesto y auto-route del RAG; consulta
+  `--help` para la lista completa.
+- `--pull-models`: descarga el modelo de embeddings despues de comprobar que
+  Ollama es alcanzable. El ID de extraccion pertenece al core y no se trata
+  como tag de Ollama.
 - `--help`: muestra la ayuda completa.
 
 El script es idempotente: se puede ejecutar de nuevo para reutilizar la DB y
@@ -51,7 +54,7 @@ top-k y umbrales.
 de la configuracion del core de la instalacion, no necesariamente el tag de
 Ollama. El ID se consulta con `model.list` (`GET /model/list`); por ejemplo, una
 instalacion puede exponer `qwen_tech` aunque el tag servido sea `qwen2.5:7b`.
-El instalador mantiene `qwen2.5:7b` como sugerencia y, si el core esta
+El instalador usa `qwen_tech` como ejemplo configurable y, si el core esta
 alcanzable durante la configuracion interactiva, muestra los IDs disponibles.
 
 Pytest toma `IANEST_EXTENDED_TEST_DSN` solo como DSN semilla. Su fixture deriva
@@ -79,6 +82,21 @@ Para inspeccionar el bloque inyectado antes del prompt:
 
 Cada interaccion emite eventos JSONL `enrich.recall` y
 `enrich.write_back` en el directorio de telemetria configurado.
+
+## RAG upfront
+
+Para ingerir un fichero o directorio curado de `.txt`/`.md`:
+
+    python -m ianest_extended.ingest \
+        --corpus manual-linux \
+        --domain linux \
+        docs/manuales/
+
+La ingesta es idempotente por corpus, `source_ref` y ordinal. El chat recupera
+por el dominio explicito de `--domain`; con `RAG_AUTO_DOMAIN=true`, puede pedir
+antes `domain.route` al core cuando el caller no declara dominio. Cada consulta
+RAG emite `rag.retrieve` y su bloque compite por el presupuesto de contexto sin
+recortar las memorias delegadas ni el prompt del usuario.
 
 ## Mantenimiento de memoria
 

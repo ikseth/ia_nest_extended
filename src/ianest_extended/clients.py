@@ -36,6 +36,15 @@ class CoreResult:
         return str(self.trace["finish_reason"])
 
 
+@dataclass(frozen=True, slots=True)
+class DomainRouteResult:
+    domain: str
+    confidence: float
+    reason: str
+    alternatives: tuple[dict[str, Any], ...]
+    trace: dict[str, Any]
+
+
 class CoreClient:
     """Cliente del contrato REST publico prompt.run del core."""
 
@@ -48,6 +57,7 @@ class CoreClient:
         prompt: str,
         identity: MemoryIdentity,
         model: str | None = None,
+        domain: str | None = None,
     ) -> CoreResult:
         payload: dict[str, Any] = {
             "prompt": prompt,
@@ -55,6 +65,8 @@ class CoreClient:
         }
         if model is not None:
             payload["model"] = model
+        if domain is not None:
+            payload["domain"] = domain
         data = _post_json(
             f"{self._base_url}/prompt/run",
             payload,
@@ -82,6 +94,47 @@ class CoreClient:
             model=_optional_text(data.get("model")),
             domain=_optional_text(data.get("domain")),
             params=params,
+        )
+
+    def domain_route(
+        self,
+        prompt: str,
+        identity: MemoryIdentity,
+    ) -> DomainRouteResult:
+        data = _post_json(
+            f"{self._base_url}/domain/route",
+            {"prompt": prompt, "identity": identity.to_core_dict()},
+            self._timeout_seconds,
+            connection_error=CoreConnectionError,
+            response_error=CoreResponseError,
+        )
+        domain = data.get("domain")
+        confidence = data.get("confidence")
+        reason = data.get("reason")
+        alternatives = data.get("alternatives", [])
+        trace = data.get("trace", {})
+        if not isinstance(domain, str) or not domain.strip():
+            raise CoreResponseError("domain.route no devolvio un dominio")
+        if (
+            isinstance(confidence, bool)
+            or not isinstance(confidence, (int, float))
+            or not 0.0 <= float(confidence) <= 1.0
+        ):
+            raise CoreResponseError("domain.route devolvio confianza invalida")
+        if not isinstance(reason, str):
+            raise CoreResponseError("domain.route no devolvio un motivo")
+        if not isinstance(alternatives, list) or not all(
+            isinstance(item, dict) for item in alternatives
+        ):
+            raise CoreResponseError("domain.route devolvio alternativas invalidas")
+        if not isinstance(trace, dict):
+            raise CoreResponseError("domain.route devolvio una traza invalida")
+        return DomainRouteResult(
+            domain=domain.strip(),
+            confidence=float(confidence),
+            reason=reason,
+            alternatives=tuple(alternatives),
+            trace=trace,
         )
 
 
