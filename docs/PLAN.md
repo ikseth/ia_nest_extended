@@ -123,6 +123,23 @@ duro y minimo (D3). El camino upfront (`prompt.run`) se implementa ya
 (core v0.4). Criterio: recuperacion relevante por dominio inyectada en el prompt,
 dentro del presupuesto; sin tocar el core.
 
+## Fase 5b: Conocimiento por dominio
+
+Relacion dominio<->conocimiento: cada dominio del core (salvo `general`) puede
+tener conocimiento asociado; el mismo dominio que rutea el modelo inyecta su
+conocimiento; el catalogo de conocimiento se mantiene en sincronia con el del
+core. Premisa: el conocimiento es externo (ops/operador), NO el yo del ente; no
+lo toca conscience.
+
+Modelo de datos reconciliado (ADR 0009): N:M dominio<->corpus a nivel de corpus,
+con `source`/`confirmed` (auto-etiquetado como propuesta; confirmacion del
+operador; la recuperacion gatea solo por vinculos confirmados). Pendiente de
+reconciliar: el workflow (ingesta auto-asistida con `domain.route`,
+`knowledge maintain` para ciclo de vida de dominios, chequeo de completitud) y la
+ampliacion del corpus del lab con conocimiento real por dominio (habilita probar
+el presupuesto D3 bajo carga). Criterio: recuperacion por dominio con vinculos
+confirmados, y sincronia con el catalogo del core; sin tocar el core.
+
 ## Fase 6: Datos web
 
 Recuperacion de informacion actual para enriquecer. Criterio: enriquecimiento

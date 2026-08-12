@@ -5,6 +5,14 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+### Anadido
+- Modelo de datos de conocimiento por dominio (ADR 0009, Fase 5b): relacion N:M
+  dominio<->corpus a nivel de corpus via tabla `rag_corpus_domains` con
+  `source`/`confirmed` (auto-etiquetado como propuesta, confirmacion del operador;
+  la recuperacion gatea por vinculos confirmados). Premisa: el conocimiento es
+  externo (ops), no el yo del ente. Con diagramas (mermaid). Workflow y ampliacion
+  del lab pendientes de reconciliar. Impacto: ninguno.
+
 ### Corregido
 - H1 del e2e de Fase 5: el dominio explicito se valida una vez por ejecucion
   contra `domain.list` antes de recuperar o invocar `prompt.run`; un dominio
