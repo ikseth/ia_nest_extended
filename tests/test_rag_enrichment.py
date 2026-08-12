@@ -2,10 +2,13 @@ import json
 from datetime import UTC, datetime
 from uuid import uuid4
 
+import pytest
+
 from ianest_extended import (
     CoreClient,
     EngramWrite,
     ExtendedConfig,
+    InvalidCoreDomainError,
     MemoryEnricher,
     Principal,
     RagChunk,
@@ -80,7 +83,7 @@ def test_budget_drops_rag_before_episodic_and_preserves_required_text():
     assert prompt.endswith("USER PROMPT MUST STAY")
 
 
-def test_upfront_rag_is_injected_only_for_matching_domain(
+def test_explicit_valid_domain_gates_rag_and_routes_prompt(
     tmp_path,
     local_service_stub,
 ):
@@ -100,26 +103,45 @@ def test_upfront_rag_is_injected_only_for_matching_domain(
         domain_tag="linux",
     )
     found = enricher.enrich(linux_identity, "smalltalk")
-    missing = enricher.enrich(
-        identity().__class__(
-            user_id="u",
-            session_id="B",
-            service="test",
-            domain_tag="cocina",
-        ),
-        "smalltalk",
-    )
-
     assert "## rag" in found.context
     assert "use systemctl restart" in found.context
-    assert "## rag" not in missing.context
+    assert rag_store.domains == ["linux"]
     prompt_requests = [
         payload
         for path, payload in local_service_stub.requests
         if path == "/prompt/run" and "model" not in payload
     ]
     assert prompt_requests[0]["domain"] == "linux"
-    assert "## rag" not in missing.context
+
+
+def test_explicit_invalid_domain_fails_before_rag_or_prompt_run(
+    tmp_path,
+    local_service_stub,
+):
+    rag_store = InMemoryRagStore([_chunk("use systemctl restart")])
+    enricher = _enricher(
+        tmp_path,
+        local_service_stub,
+        InMemoryStore(),
+        rag_store,
+    )
+    invalid_identity = identity().__class__(
+        user_id="u",
+        session_id="A",
+        service="test",
+        domain_tag="cocina",
+    )
+
+    with pytest.raises(InvalidCoreDomainError) as exc_info:
+        enricher.enrich(invalid_identity, "smalltalk")
+
+    assert "general, linux" in str(exc_info.value)
+    assert rag_store.domains == []
+    assert not [
+        payload
+        for path, payload in local_service_stub.requests
+        if path == "/prompt/run"
+    ]
 
 
 def test_auto_route_uses_confident_domain_and_falls_back_to_global(
@@ -162,3 +184,72 @@ def test_auto_route_uses_confident_domain_and_falls_back_to_global(
     assert rag_events[0]["auto_route_confidence"] == 0.9
     assert rag_events[1]["domain"] is None
     assert rag_events[1]["auto_route_confidence"] == 0.2
+
+    prompt_requests = [
+        payload
+        for path, payload in local_service_stub.requests
+        if path == "/prompt/run" and "model" not in payload
+    ]
+    assert prompt_requests[0]["domain"] == "linux"
+    assert "domain" not in prompt_requests[1]
+
+
+def test_without_domain_uses_global_rag_and_does_not_route_prompt(
+    tmp_path,
+    local_service_stub,
+):
+    rag_store = InMemoryRagStore(
+        [_chunk("linux reference"), _chunk("other reference", domain="cocina")]
+    )
+    enricher = _enricher(
+        tmp_path,
+        local_service_stub,
+        InMemoryStore(),
+        rag_store,
+    )
+    no_domain = identity().__class__(user_id="u", session_id="A", service="test")
+
+    result = enricher.enrich(no_domain, "smalltalk")
+
+    assert rag_store.domains == [None]
+    assert "linux reference" in result.context
+    assert "other reference" in result.context
+    prompt_requests = [
+        payload
+        for path, payload in local_service_stub.requests
+        if path == "/prompt/run" and "model" not in payload
+    ]
+    assert "domain" not in prompt_requests[0]
+
+
+def test_general_domain_uses_global_rag_and_does_not_route_prompt(
+    tmp_path,
+    local_service_stub,
+):
+    rag_store = InMemoryRagStore(
+        [_chunk("linux reference"), _chunk("other reference", domain="cocina")]
+    )
+    enricher = _enricher(
+        tmp_path,
+        local_service_stub,
+        InMemoryStore(),
+        rag_store,
+    )
+    general_identity = identity().__class__(
+        user_id="u",
+        session_id="A",
+        service="test",
+        domain_tag="general",
+    )
+
+    result = enricher.enrich(general_identity, "smalltalk")
+
+    assert rag_store.domains == [None]
+    assert "linux reference" in result.context
+    assert "other reference" in result.context
+    prompt_requests = [
+        payload
+        for path, payload in local_service_stub.requests
+        if path == "/prompt/run" and "model" not in payload
+    ]
+    assert "domain" not in prompt_requests[0]

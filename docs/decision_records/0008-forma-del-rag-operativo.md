@@ -50,6 +50,20 @@ una segunda dimension. El gate de dominio implementa la anti-colision de la
 cantera (`chat.salud` no enriquece `linux.ops`). El presupuesto duro responde al
 truncado real observado en laboratorio.
 
+## Enmienda (2026-08-12): dominio del RAG = dominio del core
+
+El dominio que gatea el RAG y el que rutea el modelo son el MISMO y deben ser un
+dominio VALIDO del core (salvo `general`, agnostico). El e2e de lab mostro que
+reenviar a `prompt.run` un dominio que el core no conoce (p.ej. `cocina`) da
+HTTP 400. Se valida el dominio explicito contra `domain.list`; `domain.route`
+devuelve dominios ya validos. El pipeline coherente es: prompt -> dominio (core)
+-> rutea el modelo de ese dominio + inyecta su conocimiento.
+
+La relacion completa dominio<->conocimiento (etiquetas N:M, auto-etiquetado en
+ingesta, re-etiquetado por ciclo de vida de dominios, chequeo de completitud,
+corpus reales del lab) es una FASE propia, con su diseno y ADR, aun sin
+reconciliar.
+
 ## Consecuencia
 
 - La Fase 5 implementa el sustrato RAG (tablas, ingesta, recuperacion) + la

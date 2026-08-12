@@ -51,6 +51,7 @@ class CoreClient:
     def __init__(self, base_url: str, timeout_seconds: float = 30.0) -> None:
         self._base_url = base_url.rstrip("/")
         self._timeout_seconds = timeout_seconds
+        self._domain_ids: tuple[str, ...] | None = None
 
     def prompt_run(
         self,
@@ -137,6 +138,29 @@ class CoreClient:
             trace=trace,
         )
 
+    def list_domains(self) -> tuple[str, ...]:
+        if self._domain_ids is not None:
+            return self._domain_ids
+        data = _get_json(
+            f"{self._base_url}/domain/list",
+            self._timeout_seconds,
+            connection_error=CoreConnectionError,
+            response_error=CoreResponseError,
+        )
+        domains = data.get("domains")
+        if not isinstance(domains, list):
+            raise CoreResponseError("domain.list no devolvio una lista de dominios")
+        domain_ids: list[str] = []
+        for domain in domains:
+            if not isinstance(domain, dict):
+                raise CoreResponseError("domain.list devolvio un dominio invalido")
+            domain_id = domain.get("id")
+            if not isinstance(domain_id, str) or not domain_id.strip():
+                raise CoreResponseError("domain.list devolvio un dominio sin id")
+            domain_ids.append(domain_id.strip())
+        self._domain_ids = tuple(domain_ids)
+        return self._domain_ids
+
 
 class OllamaEmbedder:
     """Adaptador del endpoint /api/embed de Ollama."""
@@ -209,6 +233,33 @@ def _post_json(
         headers={"Content-Type": "application/json"},
         method="POST",
     )
+    try:
+        with urlopen(request, timeout=timeout_seconds) as response:
+            raw = response.read()
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise response_error(
+            f"HTTP {exc.code} desde {url}: {detail[:500]}"
+        ) from exc
+    except (URLError, TimeoutError, OSError) as exc:
+        raise connection_error(f"no se pudo conectar con {url}: {exc}") from exc
+    try:
+        data = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise response_error(f"{url} no devolvio JSON valido") from exc
+    if not isinstance(data, dict):
+        raise response_error(f"{url} no devolvio un objeto JSON")
+    return data
+
+
+def _get_json(
+    url: str,
+    timeout_seconds: float,
+    *,
+    connection_error,
+    response_error,
+) -> dict[str, Any]:
+    request = Request(url, method="GET")
     try:
         with urlopen(request, timeout=timeout_seconds) as response:
             raw = response.read()

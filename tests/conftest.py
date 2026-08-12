@@ -12,6 +12,20 @@ def local_service_stub():
     state = SimpleNamespace(requests=[], counter=0)
 
     class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            state.requests.append((self.path, None))
+            if self.path == "/domain/list":
+                self._send(
+                    {
+                        "domains": [
+                            {"id": "general"},
+                            {"id": "linux"},
+                        ]
+                    }
+                )
+                return
+            self.send_error(404)
+
         def do_POST(self):
             length = int(self.headers.get("Content-Length", "0"))
             payload = json.loads(self.rfile.read(length))

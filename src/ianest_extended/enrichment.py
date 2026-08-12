@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from .clients import CoreClient, CoreResult
 from .config import ExtendedConfig
+from .errors import InvalidCoreDomainError
 from .models import (
     EngramWrite,
     MemoryIdentity,
@@ -249,6 +250,16 @@ class MemoryEnricher:
         prompt: str,
     ) -> tuple[MemoryIdentity, bool, float | None]:
         if identity.domain_tag is not None:
+            domain = identity.domain_tag
+            valid_domains = self._core.list_domains()
+            if domain not in valid_domains:
+                valid = ", ".join(valid_domains) or "(ninguno)"
+                raise InvalidCoreDomainError(
+                    f"dominio del core no valido '{domain}'; "
+                    f"dominios validos: {valid}"
+                )
+            if domain == "general":
+                return replace(identity, domain_tag=None), False, None
             return identity, False, None
         if not (
             self._config.rag_enabled
@@ -258,6 +269,8 @@ class MemoryEnricher:
             return identity, False, None
         route = self._core.domain_route(prompt, identity)
         if route.confidence < self._config.rag_auto_domain_min_confidence:
+            return identity, True, route.confidence
+        if route.domain == "general":
             return identity, True, route.confidence
         return replace(identity, domain_tag=route.domain), True, route.confidence
 

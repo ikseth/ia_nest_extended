@@ -93,3 +93,30 @@ coherente en `.env.example`, `ExtendedConfig` e instalador: es un ID de
 
 Se anadio bajo `No publicado / Anadido` la implementacion de fase 5 y se declaro
 impacto de version ninguno.
+
+## Correccion e2e
+
+Se corrigio exactamente H1 detectado en el laboratorio:
+
+- `CoreClient.list_domains()` consume `GET /domain/list`, valida su respuesta y
+  cachea los ids durante la ejecucion del cliente.
+- Un dominio explicito valido gatea el RAG y se reenvia a `prompt.run`. Un
+  dominio desconocido levanta `InvalidCoreDomainError`, incluye los dominios
+  validos en el mensaje y corta el flujo antes de recuperar RAG o llamar a
+  `prompt.run`.
+- El dominio devuelto por `domain.route` se usa para gate y ruteo cuando supera
+  el umbral. Sin dominio, por debajo del umbral, o con `general`, la recuperacion
+  es global y `prompt.run` se invoca sin dominio.
+- El stub local declara `domain.list = [general, linux]`. Las regresiones cubren
+  `linux`, `cocina`, auto-route a `linux`, ausencia de dominio y `general`.
+
+No se tocaron ingesta, etiquetas N:M, auto-etiquetado, re-etiquetado, chequeo
+de completitud, corpus reales, memoria ni core. Impacto de version: ninguno;
+no hay contrato publico cortado hasta la fase 7.
+
+Validacion posterior al fix:
+
+- `.venv/bin/python -m pytest`: `31 passed, 17 skipped`.
+- Los diecisiete skips son los esperados sin
+  `IANEST_EXTENDED_TEST_DSN`: seis pruebas PostgreSQL de fase 2, cuatro de fase
+  3, cinco de fase 4 y dos de fase 5.

@@ -5,6 +5,14 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+### Corregido
+- H1 del e2e de Fase 5: el dominio explicito se valida una vez por ejecucion
+  contra `domain.list` antes de recuperar o invocar `prompt.run`; un dominio
+  desconocido produce `InvalidCoreDomainError` con el catalogo valido. El
+  dominio auto-ruteado se usa para gate y ruteo, mientras ausencia o `general`
+  mantienen recuperacion global y omiten el dominio de `prompt.run`. Sin
+  cambios en el contrato publico; impacto de version: ninguno.
+
 ### Anadido
 - Implementacion de la Fase 5, camino RAG upfront: migracion separada para
   `rag_corpora`/`rag_chunks`, ingesta idempotente de `.txt`/`.md`, recuperacion

@@ -85,6 +85,10 @@ class CoreResponseError(CoreClientError, ExternalServiceResponseError):
     """El core devolvio una respuesta no valida."""
 
 
+class InvalidCoreDomainError(CoreClientError):
+    """El dominio explicito no pertenece al catalogo del core."""
+
+
 class OllamaEmbedderError(ExternalServiceError):
     """Base de los errores del adaptador de embeddings."""
 
