@@ -115,7 +115,7 @@ Estado de los dos caminos:
   y al trabajo de cliente correspondiente (hoy extended solo habla `prompt.run`).
 
 RAG no es un tier de memoria: es un subsistema hermano que comparte el mecanismo
-de inyeccion y su presupuesto, no el modelo (`docs/VISION_MEMORIA.md`). Diseño
+de inyeccion y su presupuesto, no el modelo (`docs/VISION_MEMORIA.md`). Diseno
 reconciliado: gate por dominio con similitud-en-todo sin dominio (D1); dominio
 explicito o via `domain.route` semantico (D2, core ADR 0043); presupuesto duro y
 minimo con conteo real de tokens (D3). Criterio: recuperacion relevante por
