@@ -100,17 +100,26 @@ memorias estrictas.
 
 ## Fase 5: RAG
 
-PARADA (2026-07-26): pendiente de resolver `extended CR-0001`
-(`ia_nest_meta/docs/change_requests/from-ia_nest_extended/solicitado/`;
-checkpoint de enriquecimiento por subtarea en el core). El RAG upfront no lo
-necesita, pero el RAG per-subtarea en `task.run` si; se decide la forma del RAG
-cuando el core disponga el CR, para no construir sobre una decision de core no
-resuelta.
+CR-0001 RESUELTO (core ADR 0040, REFORMULADO): en vez de un checkpoint, la forma
+adoptada es `task.plan` (devuelve el plan con el dominio de cada subtarea) +
+`task.run` que acepta un `plan` enriquecido entre las dos llamadas. Impacto en el
+core: minor, objetivo v0.4. NO entregado aun (no esta en el contrato ni en el
+codigo del core; el lab corre v0.2.0).
 
-Ingesta de conocimiento acotado + recuperacion para enriquecer. RAG no es un tier
-de memoria: es un subsistema hermano que comparte el mecanismo de inyeccion y su
-presupuesto, no el modelo (`docs/VISION_MEMORIA.md`). Criterio: recuperacion
-relevante inyectada en el prompt; sin tocar el core.
+Estado de los dos caminos:
+
+- RAG upfront (`prompt.run`): DESBLOQUEADO. No depende de `task.plan`. El sustrato
+  (ingesta, troceo, embedding, almacen, recuperacion por dominio) es agnostico de
+  la version del core; la integracion usa el `prompt.run` estable. Se construye ya.
+- RAG per-subtarea (`task.run`): espera a que el core entregue `task.plan` (v0.4)
+  y al trabajo de cliente correspondiente (hoy extended solo habla `prompt.run`).
+
+RAG no es un tier de memoria: es un subsistema hermano que comparte el mecanismo
+de inyeccion y su presupuesto, no el modelo (`docs/VISION_MEMORIA.md`). Diseño
+reconciliado: gate por dominio con similitud-en-todo sin dominio (D1); dominio
+explicito o via `domain.route` semantico (D2, core ADR 0043); presupuesto duro y
+minimo con conteo real de tokens (D3). Criterio: recuperacion relevante por
+dominio inyectada en el prompt, dentro del presupuesto; sin tocar el core.
 
 ## Fase 6: Datos web
 

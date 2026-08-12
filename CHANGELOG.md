@@ -5,6 +5,14 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+### Cambiado
+- Core v0.3.0 liberada: PLAN Fase 5 sale de PARADA (CR-0001 resuelto, core
+  ADR 0040, REFORMULADO a `task.plan`+`task.run` con plan; objetivo core v0.4, no
+  entregado). RAG upfront desbloqueado; per-subtarea espera a `task.plan`.
+  `DEPENDENCIAS.md`: v0.3.0 compatible a nivel de contrato (solo la toca ADR 0043,
+  que no altera `prompt.run`); el pin sube a `<0.4` tras el e2e contra un v0.3
+  desplegado en lab. Impacto de version: ninguno.
+
 ### Anadido
 - Proceso de Change Request entre capas (`docs/change_requests/README.md`,
   PROPUESTA a elevar como doctrina del ente en el core): canal formal

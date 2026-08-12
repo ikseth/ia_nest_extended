@@ -9,8 +9,18 @@ dependencias; el registro de capas del ente es un indice que lo refleja.
 
 ## Depende de
 
-- `ia_nest_core >=0.2 <0.3`. Contratos consumidos (core `CORE_CONTRACT.md`):
-  - `prompt.run` y `task.run` (inferencia enriquecida),
+- `ia_nest_core >=0.2 <0.3` (v0.2.0, verificada en vivo en lab). v0.3.0 ya esta
+  liberada (tag) y es compatible a nivel de contrato: su unico cambio que toca lo
+  que extended consume es `core ADR 0043` (router semantico), que NO altera la
+  peticion/respuesta de `prompt.run` (la rama "sin modelo ni dominio" resuelve al
+  dominio por defecto `general`, como ya ocurria); ADR 0044/0045 tocan `task.run`,
+  que extended no consume aun. El pin se sube a `>=0.2 <0.4` TRAS el e2e contra un
+  v0.3 desplegado en lab (pendiente de redespliegue). Contratos consumidos (core
+  `CORE_CONTRACT.md`):
+  - `prompt.run` (inferencia enriquecida); `task.run` cuando se consuma,
+  - `domain.route` (semantico desde v0.3, `core ADR 0043`) para el gate de dominio
+    del RAG (Fase 5),
+  - `task.plan` (futuro, core v0.4, `core ADR 0040`) para el RAG per-subtarea,
   - contexto de identidad del request (clave de indexacion de memoria),
   - telemetria CSV/JSONL (incluye `finish_reason`, core ficha v0.2/0002),
   - `config.validate`, `runtime.health` segun necesidad.
