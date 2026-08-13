@@ -39,6 +39,10 @@ aqui y no se duplica en este repo:
 - `docs/REGISTRO_CAPAS.md`: quien existe en el ente, quien depende de quien y la
   regla de vinculo por SemVer. El manifiesto de esta capa
   (`docs/DEPENDENCIAS.md`) es la fuente de verdad; el registro lo refleja.
+- `docs/ARQUITECTURA_DE_CAPAS.md`: la FORMA en que las capas se componen
+  (contrato uniforme, reenvio por defecto y sobreescritura por excepcion,
+  extension aditiva, clientes contra el contrato; meta ADR 0007). Gobierna la
+  interfaz de consumo de esta capa (Fase 7).
 
 Lo esencial, para no leer dos ficheros: modo ciego; una inconsistencia se
 senala, no se corrige por inferencia; solo el resultado reconciliado por el

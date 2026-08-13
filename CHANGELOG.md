@@ -5,6 +5,14 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+### Cambiado
+- `AGENTS.md` incorpora al orden de lectura la arquitectura de capas del ente
+  (`ia_nest_meta/docs/ARQUITECTURA_DE_CAPAS.md`, meta ADR 0007): contrato
+  uniforme entre capas, reenvio por defecto y sobreescritura por excepcion,
+  extension aditiva y clientes escritos contra el contrato. Gobierna la interfaz
+  de consumo de esta capa; el reencuadre de la Fase 7 se registra al reconciliar
+  la Fase 7a. Sin cambios en el contrato publico; impacto de version: ninguno.
+
 ### Anadido
 - Implementacion de la Fase 5c: CLI de operador `knowledge status`, `suggest`,
   `confirm` y `reject`; completitud contra `domain.list`; propuestas de corpus
