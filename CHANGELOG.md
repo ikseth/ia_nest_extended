@@ -6,6 +6,14 @@ Sin acentos por convencion.
 ## [No publicado]
 
 ### Anadido
+- Implementacion de la Fase 5c: CLI de operador `knowledge status`, `suggest`,
+  `confirm` y `reject`; completitud contra `domain.list`; propuestas de corpus
+  agregado via `domain.route` con umbral configurable; confirmacion que habilita
+  el gate existente; y rechazo protegido de vinculos manuales o confirmados.
+  Incluye configuracion, errores tipados y cuatro grupos de aceptacion PostgreSQL
+  con skip explicito sin DB local. No implementa `knowledge maintain`,
+  clasificacion por chunk, roles/grants ni cambios en memoria/core. Sin cambios
+  en el contrato publico; impacto de version: ninguno.
 - Implementacion de la Fase 5b: migracion N:M `rag_corpus_domains` con
   procedencia y confirmacion, migracion sin perdida del dominio unico anterior,
   ingesta manual opcional y mult dominio validada contra `domain.list`, y gate

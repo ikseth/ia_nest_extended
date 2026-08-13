@@ -45,6 +45,8 @@ readonly default_rag_chunk_tokens=300
 readonly default_rag_chunk_overlap=0.15
 readonly default_rag_auto_domain=false
 readonly default_rag_auto_domain_min_confidence=0.7
+readonly default_rag_suggest_min_confidence=0.6
+readonly default_rag_suggest_sample_chars=2000
 
 assume_yes=false
 skip_db=false
@@ -62,6 +64,8 @@ rag_chunk_tokens="${default_rag_chunk_tokens}"
 rag_chunk_overlap="${default_rag_chunk_overlap}"
 rag_auto_domain="${default_rag_auto_domain}"
 rag_auto_domain_min_confidence="${default_rag_auto_domain_min_confidence}"
+rag_suggest_min_confidence="${default_rag_suggest_min_confidence}"
+rag_suggest_sample_chars="${default_rag_suggest_sample_chars}"
 core_url_set=false
 ollama_url_set=false
 embedding_model_set=false
@@ -309,6 +313,12 @@ write_extended_env() {
     update_env_value \
         IANEST_EXTENDED_RAG_AUTO_DOMAIN_MIN_CONFIDENCE \
         "${rag_auto_domain_min_confidence}"
+    update_env_value \
+        IANEST_EXTENDED_RAG_SUGGEST_MIN_CONFIDENCE \
+        "${rag_suggest_min_confidence}"
+    update_env_value \
+        IANEST_EXTENDED_RAG_SUGGEST_SAMPLE_CHARS \
+        "${rag_suggest_sample_chars}"
 }
 
 pull_configured_models() {

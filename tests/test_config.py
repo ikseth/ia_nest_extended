@@ -12,6 +12,8 @@ def test_config_reads_prefixed_environment(monkeypatch):
     monkeypatch.setenv("IANEST_EXTENDED_RAG_ENABLED", "false")
     monkeypatch.setenv("IANEST_EXTENDED_RAG_CHUNK_OVERLAP", "0.2")
     monkeypatch.setenv("IANEST_EXTENDED_RAG_AUTO_DOMAIN", "yes")
+    monkeypatch.setenv("IANEST_EXTENDED_RAG_SUGGEST_MIN_CONFIDENCE", "0.65")
+    monkeypatch.setenv("IANEST_EXTENDED_RAG_SUGGEST_SAMPLE_CHARS", "2400")
 
     config = ExtendedConfig.from_env(env_file=None)
 
@@ -23,6 +25,8 @@ def test_config_reads_prefixed_environment(monkeypatch):
     assert config.rag_enabled is False
     assert config.rag_chunk_overlap == 0.2
     assert config.rag_auto_domain is True
+    assert config.rag_suggest_min_confidence == 0.65
+    assert config.rag_suggest_sample_chars == 2400
 
 
 def test_config_rejects_invalid_values(monkeypatch):

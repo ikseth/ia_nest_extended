@@ -40,6 +40,8 @@ class ExtendedConfig:
     rag_chunk_overlap: float = 0.15
     rag_auto_domain: bool = False
     rag_auto_domain_min_confidence: float = 0.7
+    rag_suggest_min_confidence: float = 0.6
+    rag_suggest_sample_chars: int = 2000
 
     @classmethod
     def from_env(
@@ -135,6 +137,14 @@ class ExtendedConfig:
                 "RAG_AUTO_DOMAIN_MIN_CONFIDENCE",
                 defaults.rag_auto_domain_min_confidence,
             ),
+            "rag_suggest_min_confidence": _env_float(
+                "RAG_SUGGEST_MIN_CONFIDENCE",
+                defaults.rag_suggest_min_confidence,
+            ),
+            "rag_suggest_sample_chars": _env_int(
+                "RAG_SUGGEST_SAMPLE_CHARS",
+                defaults.rag_suggest_sample_chars,
+            ),
         }
         config = cls(**values)
         config.validate()
@@ -151,6 +161,7 @@ class ExtendedConfig:
             "rag_top_k",
             "rag_max_tokens",
             "rag_chunk_tokens",
+            "rag_suggest_sample_chars",
         ):
             if getattr(self, name) <= 0:
                 raise ExtendedConfigError(f"{name} debe ser mayor que cero")
@@ -158,6 +169,7 @@ class ExtendedConfig:
             "dedup_threshold",
             "confidence_threshold",
             "rag_auto_domain_min_confidence",
+            "rag_suggest_min_confidence",
         ):
             value = getattr(self, name)
             if not 0.0 <= value <= 1.0:
