@@ -55,3 +55,21 @@ umbrales = mecanismo; merito, significado o etica = juicio.
 - `semantic` deja de estar vacio: se puebla por promocion, con lineage.
 - La sintesis de cluster queda como evolucion registrada del mecanismo.
 - Impacto de version: ninguno (sin contrato publico cortado; Fase 7).
+
+## Enmienda (2026-08-13): conscience ANADE, no sustituye; frontera de confianza
+
+Reconciliado que conscience procesa el hilo para crear experiencias, conceptos y
+valores. Resolucion (opcion A): conscience ANADE una capa reflexiva ENCIMA de la
+mecanica de extended, no la sustituye. Extended conserva su funcion propia
+(`dialog` + `episodic` + consolidacion literal a `semantic`), que le permite
+servir SOLA (el e2e de Granada recupera cross-sesion memoria que escribio el
+propio extended) y evita que F3/F4 sean codigo muerto (dogfooding, ADR 0002). La
+sintesis de cluster diferida encaja como trabajo de conscience (juicio).
+
+Frontera de confianza (cortafuegos de inyeccion): el write-back mecanico de
+extended produce CANDIDATOS (operativa, no confiable); la promocion a memoria
+durable-CONFIABLE que influye entre contextos es escritura supervisada, exclusiva
+del guardian (conscience; operador en dev). Mismo motivo candidato->confiable que
+`unresolved_mentions`->`entity_refs` y `source`/`confirmed` del conocimiento. La
+inyeccion puede llenar el pozo de candidatos, pero no alcanza lo confiable sin el
+guardian. Endurecido a nivel de recurso en ADR 0010 (least-privilege).

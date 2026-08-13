@@ -6,6 +6,19 @@ Sin acentos por convencion.
 ## [No publicado]
 
 ### Anadido
+- Aislamiento de recursos y least-privilege (ADR 0010): autoridad de escritura en
+  dos niveles -principal en codigo (ADR 0002) + GRANT del motor (pared dura que no
+  confia en el codigo)-. Stores segmentados por confianza con roles least-privilege;
+  extended read-only sobre el yo protegido y el conocimiento; solo conscience
+  escribe lo protegido; conocimiento aislado (curacion operador hoy / conscience
+  guardian futuro). Separable desde el dia uno para escalar aislamiento sin
+  reescribir (rol -> schema -> base -> instancia, DMZ). Con diagrama. Impacto: ninguno.
+- Enmienda ADR 0007: conscience ANADE una capa reflexiva, no sustituye la mecanica
+  de extended (opcion A); frontera de confianza candidato->confiable (cortafuegos
+  de inyeccion), endurecida por ADR 0010.
+- Enmienda ADR 0009: la incorporacion de conocimiento esta gobernada por
+  supervision (operador hoy, conscience guardian futuro), sin que el conocimiento
+  sea la identidad del ente; store aislado (ADR 0010).
 - Modelo de datos de conocimiento por dominio (ADR 0009, Fase 5b): relacion N:M
   dominio<->corpus a nivel de corpus via tabla `rag_corpus_domains` con
   `source`/`confirmed` (auto-etiquetado como propuesta, confirmacion del operador;

@@ -9,9 +9,14 @@ reconcilia en una ronda posterior; esta ADR fija SOLO el modelo de datos.
 ## Premisa
 
 El conocimiento es aprendizaje EXTERNO, no el yo del ente. Queda separado del eje
-de simulacion de entidad (conscience, personalidad, memoria del yo). Su curacion
-es del OPERADOR/ops, no de conscience. Conscience no toca el RAG de conocimiento
-(su RAG etico es otra cosa, suya).
+de simulacion de entidad (conscience, personalidad, memoria del yo). Pero su
+PUERTA DE ENTRADA esta gobernada por supervision: el operador cura hoy; conscience
+sera el guardian que valide que conocimiento se incorpora (a futuro), para evitar
+envenenamiento (p.ej. que la instancia se vuelva terraplanista). Es decir,
+conscience gobierna la incorporacion sin que el conocimiento sea su identidad
+-como un bibliotecario decide que libros entran sin que los libros sean el-. El
+RAG etico de conscience es otra cosa, suya. Y el store de conocimiento se AISLA a
+nivel de recurso (ADR 0010): el write-back de conversacion no puede escribirlo.
 
 ## Decision
 
