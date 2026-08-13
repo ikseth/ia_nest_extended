@@ -157,7 +157,7 @@ Debe cubrir tres consumos, no solo el enriquecimiento:
 Aqui se fijan los nombres provisionales de las fases anteriores. Criterio:
 contrato versionado y consumible por los tres.
 
-Nota de diseño (superficie de parametros del servicio): la logica vive en UN
+Nota de diseno (superficie de parametros del servicio): la logica vive en UN
 servicio (`MemoryEnricher`); CLI, REST y MCP son pieles finas que exponen los
 MISMOS parametros, sin logica divergente (misma disciplina que el core,
 `CORE_CONTRACT`). El comportamiento se controla por argumentos del servicio, no

@@ -22,7 +22,7 @@ del core es la clave con la que esta capa indexa (via 2, core ADR 0031/0035).
 
 Extended ENVUELVE al core; el core NO llama a extended ni sabe que existe. El
 "enganche" es al reves: el servicio de extended llama a la REST del core
-(`prompt.run`, `domain.route`) — la unica costura de RED, porque el core es otro
+(`prompt.run`, `domain.route`) - la unica costura de RED, porque el core es otro
 desplegable. Para core puro, el cliente llama al core directamente (o al servicio
 con `enrich=False`, passthrough).
 
