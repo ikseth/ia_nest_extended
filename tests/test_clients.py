@@ -80,8 +80,8 @@ def test_core_client_routes_domain(local_service_stub):
 def test_core_client_lists_domains_once_per_client(local_service_stub):
     client = CoreClient(local_service_stub.base_url, timeout_seconds=2)
 
-    assert client.list_domains() == ("general", "linux")
-    assert client.list_domains() == ("general", "linux")
+    assert client.list_domains() == ("general", "linux", "codigo")
+    assert client.list_domains() == ("general", "linux", "codigo")
 
     requests = [
         request

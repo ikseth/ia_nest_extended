@@ -522,7 +522,8 @@ def _rag_lines(chunks: tuple[RagChunk, ...]) -> list[_ContextLine]:
         _ContextLine(
             tier="rag",
             text=(
-                f"[{chunk.corpus_name}/{chunk.domain}/{chunk.source_ref}"
+                f"[{chunk.corpus_name}/{','.join(chunk.domains) or 'global'}/"
+                f"{chunk.source_ref}"
                 f"#{chunk.ordinal}] {chunk.content}"
             ),
             relevance=chunk.score,

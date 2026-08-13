@@ -8,9 +8,9 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from .adapters import PostgresRagStore
-from .clients import OllamaEmbedder
+from .clients import CoreClient, OllamaEmbedder
 from .config import ExtendedConfig
-from .errors import InvalidRagInputError
+from .errors import InvalidCoreDomainError, InvalidRagInputError
 from .models import RagChunkWrite, RagIngestResult
 from .ports import RagStore
 
@@ -56,13 +56,15 @@ def chunk_text(
 def ingest_path(
     *,
     store: RagStore,
+    core: CoreClient,
     path: Path,
     corpus_name: str,
-    domain: str,
+    domains: Sequence[str],
     source_ref: str | None,
     chunk_tokens: int,
     overlap: float,
 ) -> RagIngestResult:
+    validated_domains = _validate_domains(core, domains)
     files = _source_files(path)
     chunks: list[RagChunkWrite] = []
     for source in files:
@@ -83,7 +85,7 @@ def ingest_path(
             )
     return store.ingest(
         corpus_name=corpus_name,
-        domain=domain,
+        domains=validated_domains,
         chunks=chunks,
     )
 
@@ -94,7 +96,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         description="Ingiere texto curado en un corpus RAG.",
     )
     parser.add_argument("--corpus", required=True)
-    parser.add_argument("--domain", required=True)
+    parser.add_argument(
+        "--domain",
+        action="append",
+        default=[],
+        help="Dominio del core; se puede repetir.",
+    )
     parser.add_argument("--source-ref")
     parser.add_argument("path", type=Path)
     args = parser.parse_args(argv)
@@ -107,18 +114,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         config.request_timeout_seconds,
     )
     store = PostgresRagStore(config.database_dsn, embedder)
+    core = CoreClient(config.core_url, config.request_timeout_seconds)
     store.migrate()
     result = ingest_path(
         store=store,
+        core=core,
         path=args.path,
         corpus_name=args.corpus,
-        domain=args.domain,
+        domains=args.domain,
         source_ref=args.source_ref,
         chunk_tokens=config.rag_chunk_tokens,
         overlap=config.rag_chunk_overlap,
     )
+    domains = ",".join(result.domains) or "(global)"
     print(
-        f"corpus={result.corpus_name} domain={result.domain} "
+        f"corpus={result.corpus_name} domains={domains} "
         f"chunks_new={result.inserted} chunks_updated={result.updated}"
     )
     return 0
@@ -147,6 +157,30 @@ def _source_reference(root: Path, source: Path, requested: str | None) -> str:
         return requested or root.name
     relative = source.relative_to(root).as_posix()
     return f"{requested.rstrip('/')}/{relative}" if requested else relative
+
+
+def _validate_domains(
+    core: CoreClient,
+    requested: Sequence[str],
+) -> tuple[str, ...]:
+    domains: list[str] = []
+    for domain in requested:
+        value = domain.strip()
+        if not value:
+            raise InvalidRagInputError("domain no puede estar vacio")
+        if value not in domains:
+            domains.append(value)
+    if not domains:
+        return ()
+    valid_domains = core.list_domains()
+    for domain in domains:
+        if domain not in valid_domains:
+            valid = ", ".join(valid_domains) or "(ninguno)"
+            raise InvalidCoreDomainError(
+                f"dominio del core no valido '{domain}'; "
+                f"dominios validos: {valid}"
+            )
+    return tuple(domains)
 
 
 if __name__ == "__main__":
