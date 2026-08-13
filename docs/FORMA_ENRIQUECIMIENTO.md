@@ -18,6 +18,20 @@ pudre; se congela cuando un consumidor la haya ejercido.
 El core recibe un prompt ya enriquecido y responde. La identidad de segmentacion
 del core es la clave con la que esta capa indexa (via 2, core ADR 0031/0035).
 
+## Arquitectura de la capa (via 2, servicio + pieles finas)
+
+Extended ENVUELVE al core; el core NO llama a extended ni sabe que existe. El
+"enganche" es al reves: el servicio de extended llama a la REST del core
+(`prompt.run`, `domain.route`) — la unica costura de RED, porque el core es otro
+desplegable. Para core puro, el cliente llama al core directamente (o al servicio
+con `enrich=False`, passthrough).
+
+Dentro de la capa: la logica vive en UN servicio (`MemoryEnricher`); CLI, REST y
+MCP son pieles finas que lo invocan, sin logica divergente (misma disciplina que
+el core, `CORE_CONTRACT`). Ni el CLI llama a la API ni al reves: ambos llaman al
+servicio en proceso. El comportamiento se controla por parametros del servicio
+(ver "superficie de parametros", `docs/PLAN.md` Fase 7).
+
 ## Decision 1: mapeo identidad -> clave de memoria
 
 Campos de identidad del core: `user_id`, `service`, `session_id`, `domain_tag`,

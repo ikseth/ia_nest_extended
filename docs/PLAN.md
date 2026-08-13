@@ -157,6 +157,21 @@ Debe cubrir tres consumos, no solo el enriquecimiento:
 Aqui se fijan los nombres provisionales de las fases anteriores. Criterio:
 contrato versionado y consumible por los tres.
 
+Nota de diseño (superficie de parametros del servicio): la logica vive en UN
+servicio (`MemoryEnricher`); CLI, REST y MCP son pieles finas que exponen los
+MISMOS parametros, sin logica divergente (misma disciplina que el core,
+`CORE_CONTRACT`). El comportamiento se controla por argumentos del servicio, no
+por interfaz. Ejemplo de superficie:
+
+    enrich(identity, prompt, *, enrich=True, use_rag=True, domain=None,
+           use_memory=True, ...)
+
+`enrich=False` es passthrough al core (core puro sin cambiar el core). Hoy
+conviven niveles (p.ej. `--domain` por-peticion vs `RAG_ENABLED` por config/env);
+F7 unifica todos como parametros del servicio con defaults por config, y un
+composition-root comun arma el servicio para CLI y REST (ni el cableado se
+duplica). Lo importante ya disponible: que cada switch exista en el servicio.
+
 ## Fuera de este plan
 
 - Cambios en el core.
