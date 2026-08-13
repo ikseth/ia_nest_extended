@@ -114,3 +114,19 @@ class InvalidRagInputError(RagError):
 
 class RagSchemaError(RagError):
     """El esquema RAG no coincide con la configuracion activa."""
+
+
+class KnowledgeWorkflowError(RagError):
+    """Base de los errores del workflow de conocimiento."""
+
+
+class CorpusNotFoundError(KnowledgeWorkflowError):
+    """El corpus solicitado no existe."""
+
+
+class KnowledgeLinkNotFoundError(KnowledgeWorkflowError):
+    """El vinculo solicitado no existe."""
+
+
+class ProtectedKnowledgeLinkError(KnowledgeWorkflowError):
+    """La operacion intentaria borrar curacion confirmada o manual."""

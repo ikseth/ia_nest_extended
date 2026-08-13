@@ -131,3 +131,23 @@ class RagStore(Protocol):
         top_k: int = 3,
     ) -> Sequence[RagChunk]:
         """Recupera chunks activos por similitud y gate opcional de dominio."""
+
+    def confirmed_corpus_counts(self, domains: Sequence[str]) -> dict[str, int]:
+        """Cuenta corpus activos con vinculo confirmado por dominio."""
+
+    def sample_corpus(self, corpus_name: str, max_chars: int) -> str:
+        """Concatena una muestra estable de chunks del corpus."""
+
+    def propose_domain(
+        self,
+        corpus_name: str,
+        domain: str,
+        confidence: float,
+    ) -> bool:
+        """Crea o refresca una propuesta sin pisar curacion protegida."""
+
+    def confirm_domain(self, corpus_name: str, domain: str) -> bool:
+        """Confirma un vinculo existente; devuelve si cambio de estado."""
+
+    def reject_domain(self, corpus_name: str, domain: str) -> bool:
+        """Elimina solo una propuesta auto no confirmada."""

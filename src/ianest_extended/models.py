@@ -228,3 +228,16 @@ class RagIngestResult:
     domains: tuple[str, ...]
     inserted: int
     updated: int
+
+
+@dataclass(frozen=True, slots=True)
+class KnowledgeDomainStatus:
+    domain: str
+    confirmed_corpora: int
+
+
+@dataclass(frozen=True, slots=True)
+class KnowledgeSuggestion:
+    domain: str
+    confidence: float
+    stored: bool

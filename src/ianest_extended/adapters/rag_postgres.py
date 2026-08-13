@@ -9,7 +9,13 @@ from uuid import uuid4
 import psycopg
 from psycopg.rows import dict_row
 
-from ..errors import InvalidRagInputError, RagSchemaError
+from ..errors import (
+    CorpusNotFoundError,
+    InvalidRagInputError,
+    KnowledgeLinkNotFoundError,
+    ProtectedKnowledgeLinkError,
+    RagSchemaError,
+)
 from ..models import RagChunk, RagChunkWrite, RagIngestResult
 from ..ports import Embedder
 
@@ -247,6 +253,132 @@ class PostgresRagStore:
             for row in rows
         )
 
+    def confirmed_corpus_counts(
+        self,
+        domains: tuple[str, ...] | list[str],
+    ) -> dict[str, int]:
+        normalized = _normalize_domains(domains)
+        if not normalized:
+            return {}
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT link.domain, count(DISTINCT link.corpus_id) AS total
+                FROM rag_corpus_domains link
+                JOIN rag_corpora corpus ON corpus.id = link.corpus_id
+                WHERE link.domain = ANY(%s)
+                  AND link.confirmed
+                  AND corpus.status = 'active'
+                GROUP BY link.domain
+                """,
+                (list(normalized),),
+            ).fetchall()
+        found = {row["domain"]: int(row["total"]) for row in rows}
+        return {domain: found.get(domain, 0) for domain in normalized}
+
+    def sample_corpus(self, corpus_name: str, max_chars: int) -> str:
+        if max_chars <= 0:
+            raise InvalidRagInputError("max_chars debe ser mayor que cero")
+        with self._connect() as connection:
+            corpus_id = _find_corpus_id(connection, corpus_name)
+            rows = connection.execute(
+                """
+                SELECT content
+                FROM rag_chunks
+                WHERE corpus_id = %s
+                ORDER BY source_ref, ordinal, created_at, id
+                """,
+                (corpus_id,),
+            ).fetchall()
+        sample = "\n\n".join(row["content"] for row in rows)[:max_chars]
+        if not sample.strip():
+            raise InvalidRagInputError("el corpus no contiene texto para clasificar")
+        return sample
+
+    def propose_domain(
+        self,
+        corpus_name: str,
+        domain: str,
+        confidence: float,
+    ) -> bool:
+        domain = _validate_domain(domain)
+        if isinstance(confidence, bool) or not 0.0 <= confidence <= 1.0:
+            raise InvalidRagInputError("confidence debe estar entre 0 y 1")
+        with self._connect() as connection:
+            corpus_id = _find_corpus_id(connection, corpus_name)
+            row = connection.execute(
+                """
+                INSERT INTO rag_corpus_domains (
+                    id, corpus_id, domain, source, confidence, confirmed
+                )
+                VALUES (%s, %s, %s, 'auto', %s, false)
+                ON CONFLICT (corpus_id, domain) DO UPDATE SET
+                    confidence = EXCLUDED.confidence
+                WHERE rag_corpus_domains.source = 'auto'
+                  AND NOT rag_corpus_domains.confirmed
+                RETURNING source, confirmed
+                """,
+                (uuid4(), corpus_id, domain, confidence),
+            ).fetchone()
+        return row is not None
+
+    def confirm_domain(self, corpus_name: str, domain: str) -> bool:
+        domain = _validate_domain(domain)
+        with self._connect() as connection:
+            corpus_id = _find_corpus_id(connection, corpus_name)
+            current = connection.execute(
+                """
+                SELECT confirmed
+                FROM rag_corpus_domains
+                WHERE corpus_id = %s AND domain = %s
+                FOR UPDATE
+                """,
+                (corpus_id, domain),
+            ).fetchone()
+            if current is None:
+                raise KnowledgeLinkNotFoundError(
+                    f"no existe vinculo para corpus '{corpus_name}' y dominio '{domain}'"
+                )
+            if current["confirmed"]:
+                return False
+            connection.execute(
+                """
+                UPDATE rag_corpus_domains
+                SET confirmed = true
+                WHERE corpus_id = %s AND domain = %s
+                """,
+                (corpus_id, domain),
+            )
+        return True
+
+    def reject_domain(self, corpus_name: str, domain: str) -> bool:
+        domain = _validate_domain(domain)
+        with self._connect() as connection:
+            corpus_id = _find_corpus_id(connection, corpus_name)
+            current = connection.execute(
+                """
+                SELECT source, confirmed
+                FROM rag_corpus_domains
+                WHERE corpus_id = %s AND domain = %s
+                FOR UPDATE
+                """,
+                (corpus_id, domain),
+            ).fetchone()
+            if current is None:
+                return False
+            if current["source"] != "auto" or current["confirmed"]:
+                raise ProtectedKnowledgeLinkError(
+                    "no se puede rechazar un vinculo manual o confirmado"
+                )
+            connection.execute(
+                """
+                DELETE FROM rag_corpus_domains
+                WHERE corpus_id = %s AND domain = %s
+                """,
+                (corpus_id, domain),
+            )
+        return True
+
     def _connect(self):
         return psycopg.connect(self._dsn, row_factory=dict_row)
 
@@ -277,6 +409,32 @@ def _normalize_domains(domains) -> tuple[str, ...]:
         if value not in normalized:
             normalized.append(value)
     return tuple(normalized)
+
+
+def _validate_domain(domain: str) -> str:
+    value = domain.strip()
+    if not value:
+        raise InvalidRagInputError("domain no puede estar vacio")
+    return value
+
+
+def _find_corpus_id(connection, corpus_name: str):
+    name = corpus_name.strip()
+    if not name:
+        raise InvalidRagInputError("corpus_name no puede estar vacio")
+    row = connection.execute(
+        """
+        SELECT id
+        FROM rag_corpora
+        WHERE name = %s
+        ORDER BY created_at, id
+        LIMIT 1
+        """,
+        (name,),
+    ).fetchone()
+    if row is None:
+        raise CorpusNotFoundError(f"corpus no encontrado: '{name}'")
+    return row["id"]
 
 
 def _vector_literal(vector) -> str:
