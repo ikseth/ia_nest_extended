@@ -213,7 +213,7 @@ class RagChunk:
     id: UUID
     corpus_id: UUID
     corpus_name: str
-    domain: str
+    domains: tuple[str, ...]
     content: str
     source_ref: str
     ordinal: int
@@ -225,6 +225,6 @@ class RagChunk:
 class RagIngestResult:
     corpus_id: UUID
     corpus_name: str
-    domain: str
+    domains: tuple[str, ...]
     inserted: int
     updated: int

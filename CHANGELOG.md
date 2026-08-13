@@ -6,6 +6,13 @@ Sin acentos por convencion.
 ## [No publicado]
 
 ### Anadido
+- Implementacion de la Fase 5b: migracion N:M `rag_corpus_domains` con
+  procedencia y confirmacion, migracion sin perdida del dominio unico anterior,
+  ingesta manual opcional y mult dominio validada contra `domain.list`, y gate
+  de recuperacion solo por vinculos confirmados. Incluye los cinco grupos de
+  aceptacion PostgreSQL con skip explicito sin DB local. Auto-etiquetado,
+  `knowledge maintain`, completitud y roles/grants siguen fuera. Sin cambios en
+  el contrato publico; impacto de version: ninguno.
 - Aislamiento de recursos y least-privilege (ADR 0010): autoridad de escritura en
   dos niveles -principal en codigo (ADR 0002) + GRANT del motor (pared dura que no
   confia en el codigo)-. Stores segmentados por confianza con roles least-privilege;

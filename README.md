@@ -88,15 +88,19 @@ Cada interaccion emite eventos JSONL `enrich.recall` y
 Para ingerir un fichero o directorio curado de `.txt`/`.md`:
 
     python -m ianest_extended.ingest \
-        --corpus manual-linux \
+        --corpus manual-unix \
         --domain linux \
+        --domain codigo \
         docs/manuales/
 
-La ingesta es idempotente por corpus, `source_ref` y ordinal. El chat recupera
-por el dominio explicito de `--domain`; con `RAG_AUTO_DOMAIN=true`, puede pedir
-antes `domain.route` al core cuando el caller no declara dominio. Cada consulta
-RAG emite `rag.retrieve` y su bloque compite por el presupuesto de contexto sin
-recortar las memorias delegadas ni el prompt del usuario.
+`--domain` se puede repetir y cada valor se valida contra `domain.list`; si se
+omite, el corpus queda sin vinculos y solo participa en recuperacion global. La
+ingesta es idempotente por corpus, vinculo de dominio, `source_ref` y ordinal.
+El chat recupera solo corpus con vinculo confirmado al dominio explicito; con
+`RAG_AUTO_DOMAIN=true`, puede pedir antes `domain.route` al core cuando el caller
+no declara dominio. Cada consulta RAG emite `rag.retrieve` y su bloque compite
+por el presupuesto de contexto sin recortar las memorias delegadas ni el prompt
+del usuario.
 
 ## Mantenimiento de memoria
 

@@ -20,6 +20,7 @@ def local_service_stub():
                         "domains": [
                             {"id": "general"},
                             {"id": "linux"},
+                            {"id": "codigo"},
                         ]
                     }
                 )

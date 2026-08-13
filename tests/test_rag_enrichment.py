@@ -33,7 +33,7 @@ class InMemoryRagStore:
         selected = [
             chunk
             for chunk in self.chunks
-            if domain is None or chunk.domain == domain
+            if domain is None or domain in chunk.domains
         ]
         return tuple(selected[:top_k])
 
@@ -43,7 +43,7 @@ def _chunk(content, *, domain="linux", score=0.9):
         id=uuid4(),
         corpus_id=uuid4(),
         corpus_name=f"manual-{domain}",
-        domain=domain,
+        domains=(domain,),
         content=content,
         source_ref="guide.md",
         ordinal=0,

@@ -117,11 +117,11 @@ class RagStore(Protocol):
         self,
         *,
         corpus_name: str,
-        domain: str,
+        domains: Sequence[str],
         chunks: Sequence[RagChunkWrite],
         description: str = "",
     ) -> RagIngestResult:
-        """Crea el corpus si falta y hace upsert idempotente de chunks."""
+        """Crea corpus, vinculos manuales y hace upsert de chunks."""
 
     def retrieve(
         self,
