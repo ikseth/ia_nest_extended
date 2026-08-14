@@ -6,6 +6,22 @@ Sin acentos por convencion.
 ## [No publicado]
 
 ### Anadido
+- Enmienda al ADR 0011 (puntos 9-11): el catalogo de capacidades se DECLARA por
+  capa y se FUSIONA en tiempo de ejecucion, nunca se copia. Ninguna piel puede
+  exigir conocer una capacidad para poder invocarla: conocerla solo sirve para
+  dar mejor ayuda. Motivo: la Fase 7a dejo lo reenviado como lista escrita a
+  mano, lo que obligaba a editar esta capa cada vez que el core anadiera una
+  capacidad -aunque el servicio ya la alcanzase-, incumpliendo el invariante de
+  meta ADR 0007 en la piel. La regla correcta: una feature del core puede
+  REQUERIR trabajo aqui para aprovecharla, nunca obligar a COPIAR su codigo.
+  `extended CR-0002` sube de comodidad a mecanismo. Impacto de version: ninguno.
+- Seccion "Deuda de diseno declarada" en `docs/PLAN.md` con tres hallazgos del
+  laboratorio, cada uno con su disparador: D1, la recuperacion RAG no tiene suelo
+  de relevancia y devuelve top-k por malo que sea el parecido; D2, el filtro de
+  dominio excluye tambien las memorias SIN dominio, que son neutras y no
+  incompatibles, de modo que preguntando con dominio el ente olvida a su
+  interlocutor; y D3, la identidad como fuente conmutable para poder medir su
+  efecto. Impacto de version: ninguno.
 - Regla de uso de `user_id` en `docs/FORMA_ENRIQUECIMIENTO.md`: identifica al
   INTERLOCUTOR, no a la instancia; cada agente que lance prompts contra la
   instancia usa su PROPIO `user_id`, tambien al verificar o probar. Reusar el del
