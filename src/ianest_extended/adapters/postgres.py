@@ -18,6 +18,7 @@ from ..errors import (
     InvalidEmbeddingDimensionError,
     InvalidEngramError,
     InvalidMemoryTypeError,
+    SchemaMigrationRequiredError,
     ScopeViolationError,
     UnsupportedWriteError,
     WriteAuthorityError,
@@ -58,6 +59,22 @@ class PostgresMemoryStore:
         self._dsn = dsn
         self._embedder = embedder
         self._migration_path = migration_path or _default_migration_path()
+
+    def verify_schema(self) -> None:
+        """Comprueba el esquema SIN mutarlo (migracion explicita, ADR 0011)."""
+        with self._connect() as connection:
+            for relation in ("memory_types", "engrams", "memory_links"):
+                exists = connection.execute(
+                    "SELECT to_regclass(%s) AS relation",
+                    (relation,),
+                ).fetchone()["relation"]
+                if exists is None:
+                    raise SchemaMigrationRequiredError(
+                        "el esquema de memoria no esta migrado "
+                        f"(falta '{relation}'); ejecuta "
+                        "'ianest-extended runtime migrate'",
+                        relation,
+                    )
 
     def migrate(self) -> None:
         embedder = self._require_embedder()

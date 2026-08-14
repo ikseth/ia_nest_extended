@@ -1,7 +1,87 @@
-"""Errores tipados del sustrato de memoria."""
+"""Errores tipados de la capa.
+
+La FORMA (campos y propagacion entre saltos) la fija el ente en
+`ia_nest_meta/docs/FORMA_DE_ERRORES_Y_TRAZA.md` (meta ADR 0009). El CATALOGO de
+tipos es de esta capa y vive aqui.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+ORIGIN = "ia_nest_extended"
 
 
-class MemoryError(Exception):
+class ExtendedError(Exception):
+    """Base de todos los errores propios de la capa."""
+
+    def __init__(
+        self,
+        message: str,
+        field: str | None = None,
+        *,
+        origin: str | None = None,
+        request_id: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.message = message
+        self.field = field
+        self.origin = ORIGIN if origin is None else origin
+        self.request_id = request_id
+
+    @property
+    def type(self) -> str:
+        return type(self).__name__
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "type": self.type,
+            "message": self.message,
+            "field": self.field,
+            "origin": self.origin,
+            "request_id": self.request_id,
+        }
+
+
+class DownstreamError(ExtendedError):
+    """Error originado por una capa inferior.
+
+    NO se re-envuelve ni se traduce (meta ADR 0009, punto 2): esta clase es solo
+    el transporte en proceso del error ajeno. `type`, `message` y `field` se
+    dejan intactos y `to_dict()` devuelve el payload recibido.
+
+    Excepcion acotada del mismo punto: si la capa inferior NO emite `origin`, la
+    que reenvia lo COMPLETA con la identidad de a quien llamo, que conoce con
+    certeza. Completar es rellenar un hueco; un `origin` ya presente jamas se
+    sobrescribe, porque eso falsificaria la procedencia.
+    """
+
+    def __init__(
+        self,
+        payload: dict[str, Any],
+        downstream_origin: str | None = None,
+    ) -> None:
+        self._payload = dict(payload)
+        declared = self._payload.get("origin")
+        if not declared and downstream_origin:
+            self._payload["origin"] = downstream_origin
+        super().__init__(
+            str(payload.get("message", "")),
+            payload.get("field"),
+            request_id=payload.get("request_id"),
+        )
+        self.origin = self._payload.get("origin")
+
+    @property
+    def type(self) -> str:
+        declared = self._payload.get("type")
+        return str(declared) if declared else "DownstreamError"
+
+    def to_dict(self) -> dict[str, Any]:
+        return dict(self._payload)
+
+
+class MemoryError(ExtendedError):
     """Base de los errores de memoria."""
 
 
@@ -57,11 +137,19 @@ class InvalidConsolidationEventError(MemoryError):
     """El evento de consolidacion no satisface sus invariantes."""
 
 
-class ExtendedConfigError(Exception):
+class ExtendedConfigError(ExtendedError):
     """La configuracion de la capa no es valida."""
 
 
-class ExternalServiceError(Exception):
+class SchemaMigrationRequiredError(ExtendedError):
+    """El esquema local no esta migrado; el operador debe migrarlo."""
+
+
+class EnrichmentParameterError(ExtendedError):
+    """Los parametros de enriquecimiento son contradictorios o invalidos."""
+
+
+class ExternalServiceError(ExtendedError):
     """Base de los errores al consumir servicios locales."""
 
 
@@ -104,7 +192,7 @@ class OllamaResponseError(OllamaEmbedderError, ExternalServiceResponseError):
     """Ollama devolvio una respuesta no valida."""
 
 
-class RagError(Exception):
+class RagError(ExtendedError):
     """Base de los errores del sustrato RAG."""
 
 
@@ -114,6 +202,10 @@ class InvalidRagInputError(RagError):
 
 class RagSchemaError(RagError):
     """El esquema RAG no coincide con la configuracion activa."""
+
+
+class RagUnavailableError(RagError):
+    """Se pidio RAG y su sustrato no esta disponible."""
 
 
 class KnowledgeWorkflowError(RagError):

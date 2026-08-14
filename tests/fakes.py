@@ -7,12 +7,15 @@ from ianest_extended import (
     EngramStatus,
     MemoryIdentity,
     RecallItem,
+    SchemaMigrationRequiredError,
 )
 
 
 class InMemoryStore:
     def __init__(self):
         self.engrams = []
+        self.migrated = False
+        self.verified = 0
 
     def write(self, principal, request):
         session_scoped = request.type_name == "dialog"
@@ -97,7 +100,26 @@ class InMemoryStore:
         raise AssertionError("engrama no encontrado")
 
     def migrate(self):
-        return None
+        self.migrated = True
+
+    def verify_schema(self):
+        self.verified += 1
+
+    def find_dialogs_to_archive(self, *, now, hot_window_seconds):
+        return ()
+
+    def find_episodic_to_promote(
+        self,
+        *,
+        now,
+        recency_max,
+        min_stability,
+        min_score,
+    ):
+        return ()
+
+    def execute_consolidation(self, event):
+        raise NotImplementedError
 
     def register_type(self, memory_type):
         return None
@@ -113,6 +135,40 @@ class InMemoryStore:
 
     def get_engram(self, engram_id):
         return next(item for item in self.engrams if item.id == engram_id)
+
+
+class UnmigratedStore(InMemoryStore):
+    """Store cuyo esquema no esta migrado: verificar falla, no muta nada."""
+
+    def verify_schema(self):
+        self.verified += 1
+        raise SchemaMigrationRequiredError(
+            "el esquema de memoria no esta migrado (falta 'engrams'); "
+            "ejecuta 'ianest-extended runtime migrate'",
+            "engrams",
+        )
+
+
+class InMemoryRagStore:
+    def __init__(self, chunks=()):
+        self.chunks = tuple(chunks)
+        self.domains = []
+        self.migrated = False
+
+    def migrate(self):
+        self.migrated = True
+
+    def verify_schema(self):
+        return None
+
+    def retrieve(self, query_text, *, domain=None, top_k=3):
+        self.domains.append(domain)
+        selected = [
+            chunk
+            for chunk in self.chunks
+            if domain is None or domain in chunk.domains
+        ]
+        return tuple(selected[:top_k])
 
 
 def identity(user="u", session="A"):

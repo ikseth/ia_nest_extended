@@ -1,6 +1,21 @@
 """Capa de enriquecimiento de ia_nest_extended."""
 
-from .clients import CoreClient, CoreResult, DomainRouteResult, OllamaEmbedder
+from .capabilities import (
+    FORWARDED_CAPABILITIES,
+    OVERRIDDEN_CAPABILITIES,
+    OWN_CAPABILITIES,
+    ForwardedCapability,
+)
+from .clients import (
+    CoreClient,
+    CoreResult,
+    DomainRouteResult,
+    ForwardedJson,
+    ForwardedStream,
+    OllamaEmbedder,
+    SseEvent,
+)
+from .composition import ExtendedComposition
 from .config import ExtendedConfig
 from .consolidation import ConsolidationExecutor
 from .embedders import FakeEmbedder
@@ -11,9 +26,12 @@ from .errors import (
     CoreClientError,
     CoreConnectionError,
     CoreResponseError,
+    DownstreamError,
     EngramNotFoundError,
+    EnrichmentParameterError,
     CorpusNotFoundError,
     ExtendedConfigError,
+    ExtendedError,
     InvalidCoreDomainError,
     InvalidConsolidationEventError,
     InvalidEmbeddingDimensionError,
@@ -28,12 +46,15 @@ from .errors import (
     OllamaResponseError,
     RagError,
     RagSchemaError,
+    RagUnavailableError,
     ProtectedKnowledgeLinkError,
+    SchemaMigrationRequiredError,
     ScopeViolationError,
     UnknownMemoryTypeError,
     UnsupportedWriteError,
     WriteAuthorityError,
 )
+from .identity import remembered_session_id, resolve_identity
 from .models import (
     ConsolidationEvent,
     ConsolidationResult,
@@ -59,11 +80,30 @@ from .models import (
 )
 from .registry import MemoryTypeRegistry, seed_memory_types
 from .ranking import calculate_relevance
+from .service import EnrichmentPlan, ExtendedService, PromptRunResult
 from .telemetry import TelemetryWriter
 
 __all__ = [
     "AliasedDeclarationError",
     "AliasedTierError",
+    "DownstreamError",
+    "EnrichmentParameterError",
+    "EnrichmentPlan",
+    "ExtendedComposition",
+    "ExtendedError",
+    "ExtendedService",
+    "FORWARDED_CAPABILITIES",
+    "ForwardedCapability",
+    "ForwardedJson",
+    "ForwardedStream",
+    "OVERRIDDEN_CAPABILITIES",
+    "OWN_CAPABILITIES",
+    "PromptRunResult",
+    "RagUnavailableError",
+    "SchemaMigrationRequiredError",
+    "SseEvent",
+    "remembered_session_id",
+    "resolve_identity",
     "CorpusNotFoundError",
     "CoreClient",
     "CoreClientError",

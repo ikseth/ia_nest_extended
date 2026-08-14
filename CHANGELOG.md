@@ -21,9 +21,9 @@ Sin acentos por convencion.
   agente codificador (composition-root perezoso, fachada con reenvio generico y
   sobreescritura de `prompt.run`, regla tipado/opaco, timeout de conexion mas
   inactividad, superficie de parametros, errores tipados con los codigos de
-  salida del core, piel CLI instalable y retirada de los cuatro harnesses). Doce
-  criterios de aceptacion falsables, los tres primeros el test de conformidad de
-  meta ADR 0007 desglosado. Impacto de version: ninguno.
+  salida del core, piel CLI instalable y retirada de los cuatro harnesses).
+  Catorce criterios de aceptacion falsables, los tres primeros el test de
+  conformidad de meta ADR 0007 desglosado. Impacto de version: ninguno.
 - Tres decisiones de superficie de la Fase 7a (ADR 0011, puntos 6-8): migracion
   explicita en lugar de migrar en cada arranque; identidad con defaults, con
   `session_id` generado y RECORDADO si no se indica -no uno nuevo por invocacion,

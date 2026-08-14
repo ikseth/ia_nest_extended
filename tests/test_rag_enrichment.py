@@ -61,7 +61,7 @@ def _enricher(tmp_path, local_service_stub, memory_store, rag_store, **changes):
     return MemoryEnricher(
         store=memory_store,
         rag_store=rag_store,
-        core=CoreClient(local_service_stub.base_url, timeout_seconds=2),
+        core=CoreClient(local_service_stub.base_url, connect_timeout_seconds=2),
         telemetry=TelemetryWriter(tmp_path),
         config=config,
     )
@@ -165,8 +165,8 @@ def test_auto_route_uses_confident_domain_and_falls_back_to_global(
         local_service_stub,
         memory_store,
         rag_store,
-        rag_auto_domain=True,
-        rag_auto_domain_min_confidence=0.7,
+        auto_domain=True,
+        auto_domain_min_confidence=0.7,
     )
     no_domain = identity().__class__(user_id="u", session_id="A", service="test")
 

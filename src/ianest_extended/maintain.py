@@ -1,14 +1,12 @@
-"""Mantenimiento mecanico del gradiente estricto."""
+"""Mantenimiento mecanico del gradiente estricto (capacidad memory.maintain)."""
 
 from __future__ import annotations
 
-import argparse
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from .adapters import PostgresMemoryStore
 from .config import ExtendedConfig
 from .consolidation import ConsolidationExecutor
 from .models import (
@@ -120,7 +118,7 @@ def _record_maintain(
     telemetry.record(
         event="memory.maintain",
         request_id=request_id,
-        core_request_id=None,
+        downstream_request_id=None,
         identity=MemoryIdentity(),
         counters={
             "dialog_archived": result.dialog_archived,
@@ -133,35 +131,3 @@ def _record_maintain(
     )
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Archiva y promociona memoria estricta por umbrales.",
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="muestra el resumen sin mutar engramas ni lineage",
-    )
-    args = parser.parse_args(argv)
-    config = ExtendedConfig.from_env()
-    store = PostgresMemoryStore(config.database_dsn, embedder=None)
-    result = run_maintenance(
-        store=store,
-        telemetry=TelemetryWriter(config.telemetry_dir),
-        config=config,
-        dry_run=args.dry_run,
-    )
-    print(
-        "dialog_archived={dialog} episodic_promoted={episodic} "
-        "candidates_seen={seen} dry_run={dry_run}".format(
-            dialog=result.dialog_archived,
-            episodic=result.episodic_promoted,
-            seen=result.candidates_seen,
-            dry_run=str(result.dry_run).lower(),
-        )
-    )
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

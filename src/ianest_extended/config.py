@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .errors import ExtendedConfigError
 
 PREFIX = "IANEST_EXTENDED_"
+
+
+def default_session_state_path() -> Path:
+    """Ruta del estado local de sesion, siguiendo la convencion XDG."""
+    base = os.environ.get("XDG_STATE_HOME") or "~/.local/state"
+    return Path(base).expanduser() / "ianest_extended" / "session_id"
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,13 +28,21 @@ class ExtendedConfig:
     embedding_dimension: int = 1024
     extraction_model: str = "qwen_tech"
     telemetry_dir: Path = Path("telemetry")
+    session_state_path: Path = field(default_factory=default_session_state_path)
+    default_user_id: str = "local_operator"
+    default_service: str = "local_cli"
+    default_namespace: str = ""
+    enrich_enabled: bool = True
+    memory_enabled: bool = True
+    write_back_enabled: bool = True
     memory_budget_tokens: int = 1500
     dialog_top_k: int = 6
     episodic_top_k: int = 4
     semantic_top_k: int = 3
     dedup_threshold: float = 0.92
     confidence_threshold: float = 0.7
-    request_timeout_seconds: float = 30.0
+    connect_timeout_seconds: float = 30.0
+    inactivity_timeout_seconds: float = 30.0
     dialog_hot_window_seconds: int = 4 * 60 * 60
     promote_min_stability: int = 3
     promote_min_score: float = 0.8
@@ -38,8 +52,8 @@ class ExtendedConfig:
     rag_max_tokens: int = 500
     rag_chunk_tokens: int = 300
     rag_chunk_overlap: float = 0.15
-    rag_auto_domain: bool = False
-    rag_auto_domain_min_confidence: float = 0.7
+    auto_domain: bool = False
+    auto_domain_min_confidence: float = 0.7
     rag_suggest_min_confidence: float = 0.6
     rag_suggest_sample_chars: int = 2000
 
@@ -71,6 +85,27 @@ class ExtendedConfig:
             "telemetry_dir": Path(
                 _env("TELEMETRY_DIR", str(defaults.telemetry_dir))
             ),
+            "session_state_path": Path(
+                _env("SESSION_STATE_PATH", str(defaults.session_state_path))
+            ).expanduser(),
+            "default_user_id": _env("DEFAULT_USER_ID", defaults.default_user_id),
+            "default_service": _env("DEFAULT_SERVICE", defaults.default_service),
+            "default_namespace": _env(
+                "DEFAULT_NAMESPACE",
+                defaults.default_namespace,
+            ),
+            "enrich_enabled": _env_bool(
+                "ENRICH_ENABLED",
+                defaults.enrich_enabled,
+            ),
+            "memory_enabled": _env_bool(
+                "MEMORY_ENABLED",
+                defaults.memory_enabled,
+            ),
+            "write_back_enabled": _env_bool(
+                "WRITE_BACK_ENABLED",
+                defaults.write_back_enabled,
+            ),
             "memory_budget_tokens": _env_int(
                 "MEMORY_BUDGET_TOKENS",
                 defaults.memory_budget_tokens,
@@ -95,9 +130,13 @@ class ExtendedConfig:
                 "CONFIDENCE_THRESHOLD",
                 defaults.confidence_threshold,
             ),
-            "request_timeout_seconds": _env_float(
-                "REQUEST_TIMEOUT_SECONDS",
-                defaults.request_timeout_seconds,
+            "connect_timeout_seconds": _env_float(
+                "CONNECT_TIMEOUT_SECONDS",
+                defaults.connect_timeout_seconds,
+            ),
+            "inactivity_timeout_seconds": _env_float(
+                "INACTIVITY_TIMEOUT_SECONDS",
+                defaults.inactivity_timeout_seconds,
             ),
             "dialog_hot_window_seconds": _env_int(
                 "DIALOG_HOT_WINDOW",
@@ -129,13 +168,13 @@ class ExtendedConfig:
                 "RAG_CHUNK_OVERLAP",
                 defaults.rag_chunk_overlap,
             ),
-            "rag_auto_domain": _env_bool(
-                "RAG_AUTO_DOMAIN",
-                defaults.rag_auto_domain,
+            "auto_domain": _env_bool(
+                "AUTO_DOMAIN",
+                defaults.auto_domain,
             ),
-            "rag_auto_domain_min_confidence": _env_float(
-                "RAG_AUTO_DOMAIN_MIN_CONFIDENCE",
-                defaults.rag_auto_domain_min_confidence,
+            "auto_domain_min_confidence": _env_float(
+                "AUTO_DOMAIN_MIN_CONFIDENCE",
+                defaults.auto_domain_min_confidence,
             ),
             "rag_suggest_min_confidence": _env_float(
                 "RAG_SUGGEST_MIN_CONFIDENCE",
@@ -168,16 +207,15 @@ class ExtendedConfig:
         for name in (
             "dedup_threshold",
             "confidence_threshold",
-            "rag_auto_domain_min_confidence",
+            "auto_domain_min_confidence",
             "rag_suggest_min_confidence",
         ):
             value = getattr(self, name)
             if not 0.0 <= value <= 1.0:
                 raise ExtendedConfigError(f"{name} debe estar entre 0 y 1")
-        if self.request_timeout_seconds <= 0:
-            raise ExtendedConfigError(
-                "request_timeout_seconds debe ser mayor que cero"
-            )
+        for name in ("connect_timeout_seconds", "inactivity_timeout_seconds"):
+            if getattr(self, name) <= 0:
+                raise ExtendedConfigError(f"{name} debe ser mayor que cero", name)
         if self.promote_min_stability < 0:
             raise ExtendedConfigError(
                 "promote_min_stability no puede ser negativo"
@@ -196,9 +234,10 @@ class ExtendedConfig:
             "database_dsn",
             "embedding_model",
             "extraction_model",
+            "default_service",
         ):
             if not str(getattr(self, name)).strip():
-                raise ExtendedConfigError(f"{name} no puede estar vacio")
+                raise ExtendedConfigError(f"{name} no puede estar vacio", name)
 
 
 def _load_env_file(path: Path) -> None:

@@ -36,6 +36,9 @@ class MemoryStore(Protocol):
     def migrate(self) -> None:
         """Crea o actualiza el esquema versionado."""
 
+    def verify_schema(self) -> None:
+        """Comprueba el esquema sin mutarlo; falla si falta migrar."""
+
     def register_type(self, memory_type: MemoryType) -> None:
         """Valida y registra un tipo."""
 
@@ -112,6 +115,9 @@ class MemoryStore(Protocol):
 class RagStore(Protocol):
     def migrate(self) -> None:
         """Crea el esquema RAG sin modificar las tablas de memoria."""
+
+    def verify_schema(self) -> None:
+        """Comprueba el esquema RAG sin mutarlo; falla si falta migrar."""
 
     def ingest(
         self,
