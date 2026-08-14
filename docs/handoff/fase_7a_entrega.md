@@ -1,7 +1,7 @@
 # Entrega de implementacion: fase 7a (servicio con contrato uniforme y CLI)
 
 Autor: agente codificador (modo ciego, sin ver la conversacion de diseno).
-Base: `main` (`1c6161e`). Rama: `fase-7a-contrato-uniforme`.
+Base: `main`, su ultimo commit (`2812ea9`). Rama: `fase-7a-contrato-uniforme`.
 Fecha: 2026-08-14
 Brief: `docs/handoff/fase_7a_brief.md`.
 
