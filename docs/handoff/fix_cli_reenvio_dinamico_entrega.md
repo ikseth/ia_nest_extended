@@ -1,7 +1,10 @@
 # Entrega: reenvio dinamico en la piel CLI
 
 Autor: agente codificador (modo ciego).
-Base: `main`, su ultimo commit (`8354413`). Rama: `fix-cli-reenvio-dinamico`.
+Base: `main`, su ultimo commit (`8354413`). Rama: `fix-cli-reenvio-dinamico`,
+que ademas de esta implementacion lleva el commit `af8cbef` -la enmienda del
+ADR 0011 y la deuda declarada del PLAN-, escrito por el disenador sobre la misma
+rama mientras se implementaba. Este agente no lo toco.
 Fecha: 2026-08-14
 Encargo: correccion acotada pedida por el agente verificador tras la Fase 7a.
 Doctrina que lo gobierna: `docs/decision_records/0011-...md`, enmienda de
