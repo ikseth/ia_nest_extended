@@ -6,6 +6,18 @@ Sin acentos por convencion.
 ## [No publicado]
 
 ### Anadido
+- `extended CR-0002` (propuesto, destino core): descubrimiento de capacidades en
+  REST (`capability.list`). Motivo verificado contra el codigo del core: el
+  reenvio generico del contrato uniforme lo cumplen REST (once rutas proxeables)
+  y MCP (capacidades registradas con nombre), pero NO el CLI, que necesita
+  enumerar subcomandos para construir su ayuda. Impacto previsto en el core:
+  minor. No bloquea la Fase 7a, que arranca con lista estatica.
+- Verificacion del reenvio generico y del streaming (Fase 7, paso previo al
+  brief): `POST /task/run` del core es SSE siempre, luego sobreescribirlo obliga
+  a hablar streaming y este no se difiere; el timeout unico pasa a conexion mas
+  inactividad; y el cliente actual, que valida campo a campo la respuesta del
+  core, re-declara su contrato en codigo. Regla resultante: tipado donde se
+  sobreescribe, opaco donde se reenvia.
 - Interfaz de consumo de la capa como CONTRATO UNIFORME (ADR 0011, aplicando
   meta ADR 0007): reenvio generico de lo que no se enriquece, sobreescritura de
   `prompt.run`/`reasoning.run`/`task.run` conservando su forma, y capacidades

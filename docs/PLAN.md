@@ -180,11 +180,24 @@ PETICION, y ninguna bandera de politica decide cableado (hoy `RAG_ENABLED` hace
 las dos cosas y produce un no-op silencioso). Combinacion contradictoria = error
 tipado, no precedencia silenciosa.
 
+Verificado contra el codigo del core (2026-08-14): la REST del core expone once
+rutas para sus nueve capacidades, asi que el reenvio generico por ruta es viable;
+`POST /task/run` es SSE SIEMPRE, de modo que sobreescribirlo (7b) obliga a hablar
+streaming; y el cliente actual valida campo a campo la respuesta del core, que es
+re-declarar su contrato en codigo. De ahi la regla: TIPADO donde se sobreescribe,
+OPACO donde se reenvia. El modelo de timeout unico pasa a conexion + inactividad.
+
+Descubrimiento: el CLI no puede reenviar lo que no puede enumerar (necesita el
+catalogo para construir su ayuda). Se pide al core por `extended CR-0002`
+(`capability.list` en REST); mientras no exista, el CLI arranca con lista
+estatica y migra despues. No bloquea.
+
 Criterio de salida (falsable):
 
 1. Conformidad con meta ADR 0007: contra un core stub que declare una capacidad
    que esta capa no conoce, esa capacidad es alcanzable a traves de ella SIN
-   tocar su codigo.
+   tocar su codigo. Para el CLI, el criterio aplica en cuanto exista
+   `capability.list`; hasta entonces se verifica sobre la superficie de servicio.
 2. `prompt.run` enriquecido y una capacidad reenviada responden por el mismo
    servicio y el mismo composition-root.
 3. Passthrough verificable: enriquecimiento desactivado no recupera, no inyecta
