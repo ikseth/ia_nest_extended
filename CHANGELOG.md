@@ -6,57 +6,17 @@ Sin acentos por convencion.
 ## [No publicado]
 
 ### Anadido
-- Implementacion de la Fase 7a (contrato uniforme, meta ADR 0007 / ADR 0011):
-  composition-root perezoso y cacheado (`composition.py`), fachada unica
-  `ExtendedService` con REENVIO GENERICO -sin codigo por capacidad, JSON y
-  `text/event-stream`-, sobreescritura de `prompt.run` con parametros de
-  extension por peticion, capacidades propias `memory_type.*`/`memory.*`/
-  `knowledge.*`, base de errores `ExtendedError` con `type`/`message`/`field`/
-  `origin`/`request_id`, propagacion sin re-envolver del error ajeno y
-  completado del `origin` que la capa inferior no emite (meta ADR 0009, punto 2,
-  excepcion acotada), y piel CLI instalable `ianest-extended` con gramatica
-  GRUPO ACCION, `--env-file`, `--json` y los codigos de salida del core.
-  Anade `runtime migrate` (migracion explicita) y la lista interina de
-  capacidades reenviadas en un unico sitio (`capabilities.py`), a sustituir por
-  `capability.list` cuando el core lo ofrezca (`extended CR-0002`).
-  Impacto de version: ninguno; no hay contrato publicado que romper. Esta capa
-  no tiene tag cortado y `docs/EXTENDED_CONTRACT.md` sigue en estado
-  `propuesta`: la retirada de `REQUEST_TIMEOUT_SECONDS` y de los cuatro
-  harnesses, y el renombrado de `RAG_AUTO_DOMAIN*`, quedan ANTES del primer tag
-  y por tanto no cuentan como rotura. El primer tag (fase 7d) sera la version
-  inicial de esta superficie.
-
-### Cambiado
-- Modelo de timeout: `IANEST_EXTENDED_REQUEST_TIMEOUT_SECONDS` se RETIRA y se
-  parte en `CONNECT_TIMEOUT_SECONDS` (conexion) e `INACTIVITY_TIMEOUT_SECONDS`
-  (inactividad entre eventos), porque un timeout unico no sirve para respuestas
-  en streaming. Ambos con el valor de hoy (30) como default.
-- Telemetria: `core_request_id` pasa a `downstream_request_id`, el nombre
-  generico del ente para encadenar la traza entre capas (meta ADR 0009, punto 4).
-  Se anade el evento `prompt.run`, emitido tambien en passthrough.
-- Configuracion aditiva: `ENRICH_ENABLED`, `MEMORY_ENABLED`, `WRITE_BACK_ENABLED`
-  (defaults de las banderas por peticion), `DEFAULT_USER_ID`, `DEFAULT_SERVICE`,
-  `DEFAULT_NAMESPACE` y `SESSION_STATE_PATH` (identidad con defaults y sesion
-  recordada, ADR 0011 punto 7). `RAG_ENABLED` deja de decidir cableado y pasa a
-  ser solo el default de `use_rag`: pedir RAG sin sustrato es error tipado, no un
-  no-op silencioso.
-- `RAG_AUTO_DOMAIN` y `RAG_AUTO_DOMAIN_MIN_CONFIDENCE` pasan a `AUTO_DOMAIN` y
-  `AUTO_DOMAIN_MIN_CONFIDENCE` (y sus campos, a `auto_domain` y
-  `auto_domain_min_confidence`): la resolucion automatica de dominio ya no es
-  solo del RAG, tambien decide el ruteo del modelo. Se hace antes del primer tag
-  porque el esquema de configuracion es contrato y despues costaria una version.
-  Las claves realmente del RAG (`RAG_ENABLED`, `RAG_TOP_K`, `RAG_MAX_TOKENS`,
-  `RAG_CHUNK_*`, `RAG_SUGGEST_*`) conservan su prefijo.
-- `install.sh` invoca `ianest-extended runtime migrate`; los comandos dejan de
-  migrar al arrancar y solo VERIFICAN el esquema.
-
-### Retirado
-- Los cuatro harnesses `python -m ianest_extended.chat|ingest|knowledge|maintain`
-  y el modulo `chat.py`. Una sola superficie; no se mantienen alias. Su logica de
-  dominio sigue en `ingest.py`, `knowledge.py` y `maintain.py`, ahora envuelta
-  por el servicio.
-
-### Anadido
+- Regla de uso de `user_id` en `docs/FORMA_ENRIQUECIMIENTO.md`: identifica al
+  INTERLOCUTOR, no a la instancia; cada agente que lance prompts contra la
+  instancia usa su PROPIO `user_id`, tambien al verificar o probar. Reusar el del
+  operador mezcla trafico de prueba con su memoria real y anula la segmentacion.
+  Se precisa ademas que `user_id` SEGMENTA pero no AUTORIZA: la autoridad la dan
+  el principal (ADR 0002) y el GRANT del motor (ADR 0010).
+- `docs/ALCANCE.md`: la autenticacion de los interlocutores queda FUERA de esta
+  capa por ahora -no es enriquecimiento; la capa consume la identidad afirmada,
+  no la prueba-. El concern y sus dos hogares candidatos, uno de ellos esta misma
+  capa, quedan registrados sin decidir en `ia_nest_meta/docs/CAPAS_FUTURAS.md`.
+  Impacto de version: ninguno.
 - `docs/handoff/fase_7a_brief.md`: brief de implementacion de la Fase 7a para el
   agente codificador (composition-root perezoso, fachada con reenvio generico y
   sobreescritura de `prompt.run`, regla tipado/opaco, timeout de conexion mas

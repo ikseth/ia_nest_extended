@@ -20,6 +20,10 @@
   -> conscience (ADR 0002). Aqui vive el mecanismo, no el juicio.
 - Regulacion tecnica (limites, homeostasis) -> pulse.
 - Presentacion / GUI -> `ia_nest_web`.
+- Autenticacion de los interlocutores: no es enriquecimiento. Esta capa CONSUME
+  la identidad afirmada del request y la usa como clave; no la prueba. El concern
+  y sus hogares candidatos -esta capa es uno de ellos- estan registrados en
+  `ia_nest_meta/docs/CAPAS_FUTURAS.md`, sin decidir.
 
 ## Lecciones heredadas de la cantera (core ADR 0011)
 
