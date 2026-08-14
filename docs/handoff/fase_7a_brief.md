@@ -14,11 +14,13 @@ Estado de contrato: reconciliado. Gobiernan `extended ADR 0011`, `meta ADR 0007`
 1. `AGENTS.md` y su orden de lectura.
 2. `ia_nest_meta/docs/ARQUITECTURA_DE_CAPAS.md` (meta ADR 0007): el invariante y
    las cuatro reglas. Es lo que esta tarea implementa.
-3. `docs/decision_records/0011-interfaz-de-consumo-contrato-uniforme.md`.
-4. `docs/EXTENDED_CONTRACT.md` (que se expone) y `docs/VERSIONADO.md` (que cuenta
+3. `ia_nest_meta/docs/FORMA_DE_ERRORES_Y_TRAZA.md` (meta ADR 0009): forma de los
+   errores que cruzan capas y encadenado de la traza.
+4. `docs/decision_records/0011-interfaz-de-consumo-contrato-uniforme.md`.
+5. `docs/EXTENDED_CONTRACT.md` (que se expone) y `docs/VERSIONADO.md` (que cuenta
    como contrato).
-5. `docs/PLAN.md`, seccion Fase 7a.
-6. `core docs/CORE_CONTRACT.md` para la forma de las capacidades del core. NO se
+6. `docs/PLAN.md`, seccion Fase 7a.
+7. `core docs/CORE_CONTRACT.md` para la forma de las capacidades del core. NO se
    copia aqui: se referencia (convencion transversal 6).
 
 Ante ambiguedad: PARA y pregunta. No rellenes huecos por inferencia.
@@ -102,15 +104,26 @@ nunca silencio.
 
 ### 6. Errores tipados y codigos de salida
 
-Base `ExtendedError` con `type`, `message`, `field` y `to_dict()`, reparentando
-las familias actuales (`MemoryError`, `RagError`, `ExtendedConfigError`,
-`ExternalServiceError`). Es libre: no hay contrato cortado.
+La FORMA la fija el ente en `ia_nest_meta/docs/FORMA_DE_ERRORES_Y_TRAZA.md`
+(meta ADR 0009), que es lectura obligatoria para este punto. El catalogo de tipos
+es de esta capa; la forma no se inventa aqui.
+
+Base `ExtendedError` con `type`, `message`, `field`, `origin` y `request_id`, mas
+`to_dict()`, reparentando las familias actuales (`MemoryError`, `RagError`,
+`ExtendedConfigError`, `ExternalServiceError`). Es libre: no hay contrato cortado.
+
+**Un error del core NO se re-envuelve**: se propaga tal cual, con su `origin`
+intacto. Esta capa solo emite error propio cuando el fallo es suyo. Nada de
+tablas de traduccion de errores ajenos.
+
+**Encadenado de traza**: la telemetria pasa a usar `downstream_request_id` donde
+hoy usa un nombre especifico del vecino (`core_request_id`). Es el nombre
+generico del ente, para que la cadena se lea igual en toda la pila; el cambio es
+gratis porque no hay tag cortado.
 
 Codigos de salida IGUALES a los del core: `0` ok, `1` error tipado en stderr con
 formato `Tipo (campo): mensaje`, `2` uso incorrecto (imprime la ayuda del grupo).
 No inventes un tercer codigo: la clase va en `type` y en `--json`.
-
-Un error del core reenviado se propaga tal cual, sin re-envolver ni traducir.
 
 ### 7. Piel CLI
 
@@ -203,7 +216,12 @@ actualiza `README.md`. Una sola superficie; no se mantienen alias.
     con error tipado y no muta esquema.
 11. **Codigos de salida.** `0`, `1` con `Tipo (campo): mensaje` en stderr, y `2`
     con ayuda del grupo.
-12. Las pruebas existentes siguen en verde, con los skips esperados de PostgreSQL
+12. **Error ajeno intacto.** Un error devuelto por el stub del core llega al
+    llamante con su `type` y su `origin` originales, sin re-envolver ni traducir;
+    un fallo propio de la capa lleva `origin` de esta capa.
+13. **Traza encadenada.** Un evento de telemetria de una operacion que llamo al
+    core lleva su `request_id` propio y el `downstream_request_id` del core.
+14. Las pruebas existentes siguen en verde, con los skips esperados de PostgreSQL
     cuando no hay DB local.
 
 ## Entrega
