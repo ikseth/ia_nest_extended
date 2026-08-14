@@ -4,7 +4,7 @@ Destinatario: agente codificador (Codex/Sonnet).
 Autor: Claude (Opus), rol disenador.
 Verificacion: Opus, con reconciliacion del usuario. NUNCA quien implementa.
 Fecha: 2026-08-14
-Base: `main`, commit `0c2f6ff`.
+Base: `main`, commit `9df7ac6`.
 
 Estado de contrato: reconciliado. Gobiernan `extended ADR 0011`, `meta ADR 0007`
 (contrato uniforme) y `docs/VERSIONADO.md`. No hay diseno abierto en esta tarea.
@@ -152,11 +152,25 @@ anade `--domain-tag`: la separacion del core no aplica aqui (ADR 0011, punto 8).
 
 Comandos:
 
-- `prompt run` (sobreescrito) y `prompt stream` (reenviado).
+- `prompt run` (sobreescrito) y `prompt stream` (reenviado, SIN enriquecer en
+  esta fase; ver "Fuera de fase 7a").
 - Reenviados: `domain list`, `domain route`, `model list`, `runtime health`,
   `config validate`, `eval run`.
-- Propios: `memory recall|write|consolidate|maintain`, `memory_type list|validate`,
+- Propios: `memory recall`, `memory maintain`, `memory_type list`,
   `knowledge ingest|status|suggest|confirm|reject`.
+
+**Que NO recibe piel de CLI, y por que.** `memory.write`, `memory.consolidate` y
+`memory_type.validate` existen como capacidades del servicio, pero NO se exponen
+en el CLI en esta fase:
+
+- Su consumidor es `conscience`, que llamara por REST (fase 7c), no el operador.
+- `memory.write` aplica autoridad por principal (ADR 0002) y GRANT del motor
+  (ADR 0010). Un comando de operador que pudiera elegir principal seria un
+  boquete en ese modelo; y uno que no pudiera elegirlo no sirve para el caso de
+  uso real, que es la escritura delegada.
+- `memory_type.validate` valida una DECLARACION de tipo, cuyo formato de entrada
+  por linea de comandos no esta reconciliado. Definirlo aqui seria diseno no
+  reconciliado.
 
 **Interino declarado**: el CLI no puede enumerar lo que no puede consultar, y el
 core aun no ofrece catalogo (`extended CR-0002`, propuesto). Por tanto la lista
@@ -181,8 +195,13 @@ actualiza `README.md`. Una sola superficie; no se mantienen alias.
 
 ## Fuera de fase 7a (NO implementar)
 
-- `reasoning.run` y `task.run` SOBREESCRITOS (fase 7b; `task.run` necesita
-  `task.plan`, core v0.4). Reenviados si, sobreescritos no.
+- `reasoning.run`, `task.run` y `prompt.stream` SOBREESCRITOS (fase 7b;
+  `task.run` necesita `task.plan`, core v0.4). Reenviados si, sobreescritos no.
+  Reenviar no degrada: la capacidad funciona igual que en el core, solo que sin
+  enriquecer todavia. La ayuda del CLI debe decirlo, para que nadie crea que
+  `prompt stream` lleva memoria.
+- Piel de CLI para `memory.write`, `memory.consolidate` y `memory_type.validate`
+  (ver "Piel CLI"). Las capacidades si, su comando no.
 - REST y MCP (fase 7c). El servicio debe quedar listo para ellas, sin escribirlas.
 - Descubrimiento de capacidades (espera a `extended CR-0002`).
 - Cortar tag o pasar `docs/EXTENDED_CONTRACT.md` a `activo` (fase 7d).
