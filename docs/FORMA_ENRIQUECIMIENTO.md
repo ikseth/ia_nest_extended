@@ -32,6 +32,11 @@ el core, `CORE_CONTRACT`). Ni el CLI llama a la API ni al reves: ambos llaman al
 servicio en proceso. El comportamiento se controla por parametros del servicio
 (ver "superficie de parametros", `docs/PLAN.md` Fase 7).
 
+Hacia AFUERA, la capa no expone un catalogo propio y menor: expone el contrato
+uniforme (ADR 0011, aplicando meta ADR 0007). Reenvia sin alterar lo que no
+enriquece, sobreescribe conservando la forma, y anade lo suyo. Este documento
+describe COMO se enriquece; QUE se expone esta en `docs/EXTENDED_CONTRACT.md`.
+
 ## Decision 1: mapeo identidad -> clave de memoria
 
 Campos de identidad del core: `user_id`, `service`, `session_id`, `domain_tag`,

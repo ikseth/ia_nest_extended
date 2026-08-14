@@ -154,23 +154,58 @@ Debe cubrir tres consumos, no solo el enriquecimiento:
 2. la escritura de memorias delegadas y el evento de consolidacion (conscience),
 3. la presentacion de memoria/conocimiento (`ia_nest_web`, core `FRONTERAS.md`).
 
-Aqui se fijan los nombres provisionales de las fases anteriores. Criterio:
-contrato versionado y consumible por los tres.
+Aqui se fijan los nombres provisionales de las fases anteriores.
 
-Nota de diseno (superficie de parametros del servicio): la logica vive en UN
-servicio (`MemoryEnricher`); CLI, REST y MCP son pieles finas que exponen los
-MISMOS parametros, sin logica divergente (misma disciplina que el core,
-`CORE_CONTRACT`). El comportamiento se controla por argumentos del servicio, no
-por interfaz. Ejemplo de superficie:
+FORMA (ADR 0011, aplicando meta ADR 0007): la interfaz es el CONTRATO UNIFORME.
+Esta capa REENVIA sin alterar lo que no enriquece, SOBREESCRIBE `prompt.run`,
+`reasoning.run` y `task.run` conservando su forma, y ANADE lo propio
+(`memory_type.*`, `memory.*`, `knowledge.*`). El reenvio es generico: sin codigo
+por capacidad. Detalle en `docs/EXTENDED_CONTRACT.md`; que cuenta como contrato,
+en `docs/VERSIONADO.md`.
 
-    enrich(identity, prompt, *, enrich=True, use_rag=True, domain=None,
-           use_memory=True, ...)
+Motivo del reencuadre: la implementacion hasta la Fase 5c habia derivado a un
+catalogo propio y MENOR (solo `prompt.run`), de modo que subir de capa hacia
+perder capacidades. Eso incumple el invariante del ente y contradice el nombre de
+la capa.
 
-`enrich=False` es passthrough al core (core puro sin cambiar el core). Hoy
-conviven niveles (p.ej. `--domain` por-peticion vs `RAG_ENABLED` por config/env);
-F7 unifica todos como parametros del servicio con defaults por config, y un
-composition-root comun arma el servicio para CLI y REST (ni el cableado se
-duplica). Lo importante ya disponible: que cada switch exista en el servicio.
+### Fase 7a: servicio con contrato uniforme y CLI de operador
+
+Un servicio unico con reenvio generico y sobreescritura de `prompt.run`, armado
+por un composition-root compartido (construccion perezosa: `memory.maintain` no
+debe exigir el core ni Ollama). El CLI es una piel fina sobre ese servicio, y los
+cuatro harnesses (`chat`, `ingest`, `knowledge`, `maintain`) se retiran.
+
+Superficie de parametros: config da DEFAULTS, las banderas son override POR
+PETICION, y ninguna bandera de politica decide cableado (hoy `RAG_ENABLED` hace
+las dos cosas y produce un no-op silencioso). Combinacion contradictoria = error
+tipado, no precedencia silenciosa.
+
+Criterio de salida (falsable):
+
+1. Conformidad con meta ADR 0007: contra un core stub que declare una capacidad
+   que esta capa no conoce, esa capacidad es alcanzable a traves de ella SIN
+   tocar su codigo.
+2. `prompt.run` enriquecido y una capacidad reenviada responden por el mismo
+   servicio y el mismo composition-root.
+3. Passthrough verificable: enriquecimiento desactivado no recupera, no inyecta
+   y no persiste, y sigue emitiendo traza propia.
+
+### Fase 7b: `reasoning.run` y `task.run` sobreescritos
+
+`task.run` enriquecido por subtarea via `task.plan` + `task.run(plan)`
+(`extended CR-0001`, core ADR 0040). Requiere core v0.4, no entregado: esta
+rebanada espera y no bloquea a 7a.
+
+### Fase 7c: REST y MCP
+
+Las mismas capacidades por las tres pieles, sin logica divergente. La REST es,
+ademas, lo que permite que un cliente escrito contra el contrato apunte a esta
+capa sin saber cuantas hay debajo.
+
+### Fase 7d: primer tag
+
+Requisitos en `docs/VERSIONADO.md`. Criterio: contrato versionado y consumible
+por los tres consumos de arriba.
 
 ## Fuera de este plan
 

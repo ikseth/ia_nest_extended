@@ -9,8 +9,10 @@ Antes de proponer o valorar cualquier cambio de diseno, lee en este orden:
 5. `docs/FORMA_ENRIQUECIMIENTO.md` (la forma en que la capa envuelve al core)
 6. `docs/ROSTER_MEMORIA.md` (los tipos de memoria declarados)
 7. `docs/POLITICA_WRITEBACK.md` (que se persiste y la composicion del recall)
-8. `docs/PLAN.md`
-9. ADRs en `docs/decision_records/`
+8. `docs/EXTENDED_CONTRACT.md` (que expone esta capa) y `docs/VERSIONADO.md`
+   (que cuenta como su contrato publico)
+9. `docs/PLAN.md`
+10. ADRs en `docs/decision_records/`
 10. Los CR emitidos por esta capa, en el repo de gobernanza `ia_nest_meta`
     (`docs/change_requests/from-ia_nest_extended/`; el proceso, en su README)
 
@@ -24,9 +26,9 @@ Versionado: politica comun del ente en
 publico declara su impacto (patch/minor/major) y actualiza `CHANGELOG.md`. No
 cortes tags por tu cuenta; el tag se decide en la reconciliacion del usuario.
 
-Pendiente de esta capa: declarar QUE cuenta como su contrato publico, requisito
-de la politica para poder versionarse (`docs/DEPENDENCIAS.md`, seccion "Contrato
-propio").
+Contrato publico de esta capa: declarado en `docs/VERSIONADO.md` (que cuenta y
+que lo rompe) y `docs/EXTENDED_CONTRACT.md` (que expone). El catalogo del core NO
+se re-declara aqui: se reexpone y se referencia (convencion transversal 6).
 
 Doctrina transversal del ente (repo de gobernanza `ia_nest_meta`), que aplica
 aqui y no se duplica en este repo:
@@ -35,7 +37,8 @@ aqui y no se duplica en este repo:
   regla del registro, handoff.
 - `docs/CONVENCIONES_TRANSVERSALES.md`: docs en ASCII puro (sin acentos ni
   enye), identificadores en ingles snake_case, citas `<repo> ADR NNNN`, repo
-  publico sin datos internos.
+  publico sin datos internos, y hogar unico de los documentos (se referencia, no
+  se copia; meta ADR 0008).
 - `docs/REGISTRO_CAPAS.md`: quien existe en el ente, quien depende de quien y la
   regla de vinculo por SemVer. El manifiesto de esta capa
   (`docs/DEPENDENCIAS.md`) es la fuente de verdad; el registro lo refleja.

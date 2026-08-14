@@ -1,0 +1,119 @@
+# Contrato de ia_nest_extended
+
+Estado: propuesta
+Version: 0.1 - 2026-08-14
+
+Frontera publica de la capa de enriquecimiento. Pasa a `activo` al cortarse su
+primer tag (Fase 7d); hasta entonces describe el objetivo, no una promesa
+vigente. Que cuenta como contrato y que lo rompe: `docs/VERSIONADO.md`.
+
+Forma de la composicion entre capas: `ia_nest_meta/docs/ARQUITECTURA_DE_CAPAS.md`
+(meta ADR 0007). Este documento la aplica; no la repite.
+
+## Proposito
+
+Ofrecer las capacidades del core ENRIQUECIDAS con memoria, conocimiento y datos
+web, mas las capacidades propias de la capa, sin que un consumidor tenga que
+saber cuantas capas hay debajo.
+
+## Interfaces publicas
+
+Las mismas capacidades por CLI, REST y MCP, como pieles finas de un unico
+servicio en proceso. Ni la CLI llama a la REST ni al reves. Hoy existe la CLI;
+REST y MCP llegan en la Fase 7c.
+
+## El contrato uniforme
+
+| | capacidades |
+|---|---|
+| **Reenviadas** sin alterar | las del core que esta capa no enriquece |
+| **Sobreescritas** (enriquecidas) | `prompt.run`, `reasoning.run`, `task.run` |
+| **Propias** | `memory_type.*`, `memory.*`, `knowledge.*` |
+
+El reenvio es GENERICO: no hay codigo por capacidad. Una capacidad que el core
+anada es alcanzable a traves de esta capa sin tocar su codigo, y eso se verifica
+con una prueba (Fase 7a).
+
+### Garantia de transparencia
+
+Esta capa reexpone el contrato del core del rango declarado en
+`docs/DEPENDENCIAS.md`, **sin alterar su semantica**. Las capacidades
+sobreescritas conservan la forma de peticion y de respuesta del core; lo unico
+que cambia es que el prompt ejecutado lleva contexto recuperado.
+
+El catalogo del core NO se re-declara aqui: su hogar es `core
+docs/CORE_CONTRACT.md` (convencion transversal 6, meta ADR 0008). Un consumidor
+lee ese documento en el rango declarado, y este para lo propio de la capa.
+
+Igual con el **contexto de identidad del request** (`user_id`, `service`,
+`session_id`, `domain_tag`, `namespace`): lo define el core y esta capa lo usa
+como clave de indexacion. Que subconjunto entra en la clave de memoria, en
+`docs/FORMA_ENRIQUECIMIENTO.md`.
+
+### Parametros de extension del enriquecimiento
+
+Viajan con las capacidades sobreescritas y son propios de esta capa:
+
+- activar o desactivar el enriquecimiento completo (desactivado = passthrough:
+  ni recuperacion, ni inyeccion, ni write-back),
+- desactivar una fuente concreta por nombre,
+- dominio explicito, o resolucion automatica por `domain.route`.
+
+Las fuentes son declaradas por la capa, no fijadas por el consumidor: hoy
+`memory` y `rag`; `web` en la Fase 6. Un consumidor descubre las disponibles, no
+las presupone.
+
+Combinacion contradictoria (desactivar el enriquecimiento y pedir una fuente) es
+error tipado, no precedencia silenciosa.
+
+## Capacidades propias
+
+Estado: `implementada` (existe el mecanismo, falta exponerlo como capacidad) o
+`prevista` (nombre reservado, sin implementacion).
+
+### Memoria
+
+| capacidad | proposito | estado |
+|---|---|---|
+| `memory_type.list` | roster de tipos declarados: namespaces, tier, scopes y `writer_principal` | implementada |
+| `memory_type.validate` | valida una declaracion de tipo (invariantes V1-V4) | implementada |
+| `memory.recall` | recupera lo que se inyectaria, sin ejecutar inferencia | implementada |
+| `memory.write` | escribe un engrama, con autoridad por principal (ADR 0002) | implementada |
+| `memory.consolidate` | ejecuta un evento de consolidacion (ADR 0007) | implementada |
+| `memory.maintain` | barrido mecanico por umbrales: archiva y promociona | implementada |
+
+`memory.write` y `memory.consolidate` son la costura de `conscience`: emite quien
+tiene la autoridad, ejecuta esta capa. La autoridad se aplica en dos niveles,
+principal en codigo y GRANT del motor (ADR 0010).
+
+### Conocimiento
+
+| capacidad | proposito | estado |
+|---|---|---|
+| `knowledge.ingest` | ingiere texto curado en un corpus | implementada |
+| `knowledge.status` | cobertura de conocimiento por dominio del core | implementada |
+| `knowledge.suggest` | propone dominios para un corpus via `domain.route` | implementada |
+| `knowledge.confirm` | confirma un vinculo dominio-corpus | implementada |
+| `knowledge.reject` | retira una propuesta, protegiendo la curacion manual | implementada |
+| `knowledge.retrieve` | recuperacion RAG suelta, sin inferencia | prevista |
+| `knowledge.corpus.list` | corpus y sus vinculos, para presentacion | prevista |
+
+Las dos previstas existen para el consumo de `ia_nest_web`; no se implementan
+hasta que ese consumidor las ejerza (core ADR 0035: una costura sin consumidor
+real se pudre).
+
+## No capacidades
+
+Esta capa no implementa: inferencia (es del core), juicio de consolidacion ni
+personalidad (conscience), regulacion tecnica (pulse), presentacion (web), ni
+accion con efecto sobre sistemas externos (`tool_contracts` / `external_*`).
+
+No expone su base de datos: el esquema es interno y se accede por capacidades.
+
+## Reglas de compatibilidad
+
+- Toda capacidad publica tiene contrato versionado y prueba de aceptacion.
+- El reenvio no requiere codigo por capacidad; si lo requiriera, se ha roto el
+  contrato uniforme.
+- CLI, REST y MCP no tienen logica distinta entre si.
+- Una capacidad del core reenviada nunca se degrada ni se filtra.

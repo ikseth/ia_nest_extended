@@ -5,7 +5,30 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+### Anadido
+- Interfaz de consumo de la capa como CONTRATO UNIFORME (ADR 0011, aplicando
+  meta ADR 0007): reenvio generico de lo que no se enriquece, sobreescritura de
+  `prompt.run`/`reasoning.run`/`task.run` conservando su forma, y capacidades
+  propias `memory_type.*`/`memory.*`/`knowledge.*`. Motivo: la implementacion
+  hasta la Fase 5c habia derivado a un catalogo propio y MENOR que el del core
+  (solo `prompt.run`), de modo que subir de capa hacia perder capacidades.
+- `docs/EXTENDED_CONTRACT.md` (estado `propuesta` hasta el primer tag) y
+  `docs/VERSIONADO.md`: declarado QUE cuenta como contrato publico de esta capa.
+  Cierra el PENDIENTE de `docs/DEPENDENCIAS.md` que impedia cortar el primer tag.
+  Lo que se versiona de lo ajeno es la GARANTIA de reexponer el contrato del core
+  sin alterarlo, no su catalogo: una rotura del core mueve el rango, no la
+  version de esta capa. Sin tag cortado; impacto de version: ninguno.
+
 ### Cambiado
+- Fase 7 del PLAN reescrita en cuatro rebanadas: 7a servicio con contrato
+  uniforme y CLI de operador (con el test de conformidad de meta ADR 0007 como
+  criterio de salida falsable), 7b `reasoning.run` y `task.run` (espera a
+  `task.plan`, core v0.4), 7c REST y MCP, 7d primer tag. La Fase 7a deja de ser
+  "consolidar los cuatro harnesses en un CLI espejo". Riesgo declarado y no
+  supuesto: el reenvio generico de streaming puede no ser barato; se verifica
+  antes de implementar.
+- `docs/FORMA_ENRIQUECIMIENTO.md` alineado: describe COMO se enriquece; QUE se
+  expone vive en el contrato.
 - `AGENTS.md` incorpora al orden de lectura la arquitectura de capas del ente
   (`ia_nest_meta/docs/ARQUITECTURA_DE_CAPAS.md`, meta ADR 0007): contrato
   uniforme entre capas, reenvio por defecto y sobreescritura por excepcion,
