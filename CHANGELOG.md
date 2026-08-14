@@ -6,6 +6,17 @@ Sin acentos por convencion.
 ## [No publicado]
 
 ### Anadido
+- Regla de uso de `user_id` en `docs/FORMA_ENRIQUECIMIENTO.md`: identifica al
+  INTERLOCUTOR, no a la instancia; cada agente que lance prompts contra la
+  instancia usa su PROPIO `user_id`, tambien al verificar o probar. Reusar el del
+  operador mezcla trafico de prueba con su memoria real y anula la segmentacion.
+  Se precisa ademas que `user_id` SEGMENTA pero no AUTORIZA: la autoridad la dan
+  el principal (ADR 0002) y el GRANT del motor (ADR 0010).
+- `docs/ALCANCE.md`: la autenticacion de los interlocutores queda FUERA de esta
+  capa por ahora -no es enriquecimiento; la capa consume la identidad afirmada,
+  no la prueba-. El concern y sus dos hogares candidatos, uno de ellos esta misma
+  capa, quedan registrados sin decidir en `ia_nest_meta/docs/CAPAS_FUTURAS.md`.
+  Impacto de version: ninguno.
 - `docs/handoff/fase_7a_brief.md`: brief de implementacion de la Fase 7a para el
   agente codificador (composition-root perezoso, fachada con reenvio generico y
   sobreescritura de `prompt.run`, regla tipado/opaco, timeout de conexion mas

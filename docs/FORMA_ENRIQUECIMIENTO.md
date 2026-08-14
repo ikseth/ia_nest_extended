@@ -53,6 +53,18 @@ Campos de identidad del core: `user_id`, `service`, `session_id`, `domain_tag`,
 Existe una identidad local configurada por defecto (core `CORE_CONTRACT.md`): en
 uso local no hay que pasar identidad a mano ni se fragmenta la continuidad.
 
+Regla de uso de `user_id`: identifica al INTERLOCUTOR, no a la instancia del ente
+-la base entera es la memoria de esta instancia; no hace falta escribirlo en cada
+fila-. De ahi que **cada agente que lance prompts contra la instancia use su
+PROPIO `user_id`**, tambien cuando lo haga para verificar o probar. Reusar el del
+operador mezcla el trafico de prueba con su memoria real, y entonces la
+segmentacion deja de existir: el ente empieza a "recordar" de su operador cosas
+que dijo un agente en una bateria de pruebas.
+
+`user_id` SEGMENTA, no AUTORIZA: la autoridad la dan el principal (ADR 0002) y el
+GRANT del motor (ADR 0010). Nadie autentica esa afirmacion hoy; cuando haga falta,
+el concern esta registrado en `ia_nest_meta/docs/CAPAS_FUTURAS.md`.
+
 ## Decision 2: composicion y presupuesto
 
 Memoria (varios tipos), RAG y datos web compiten por un prompt FINITO (core
