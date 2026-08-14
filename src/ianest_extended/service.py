@@ -234,7 +234,7 @@ class ExtendedService:
                 config.write_back_enabled if write_back is None else write_back
             ),
             auto_domain=(
-                config.rag_auto_domain if auto_domain is None else auto_domain
+                config.auto_domain if auto_domain is None else auto_domain
             ),
             domain=domain,
             model=model,

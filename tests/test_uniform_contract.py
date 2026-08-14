@@ -91,7 +91,7 @@ def test_core_error_is_propagated_without_rewrapping(
     tmp_path,
     local_service_stub,
 ):
-    """Criterio 12a: el error ajeno conserva type y origin."""
+    """Criterio 12a: el error ajeno, con origin declarado, llega intacto."""
     service = _service(tmp_path, local_service_stub)
 
     with pytest.raises(DownstreamError) as exc_info:
@@ -109,6 +109,53 @@ def test_core_error_is_propagated_without_rewrapping(
         "origin": "ia_nest_core",
         "request_id": "core-error-1",
     }
+
+
+def test_absent_origin_is_completed_with_the_layer_called(
+    tmp_path,
+    local_service_stub,
+):
+    """Criterio 12: `origin` ausente se COMPLETA (meta ADR 0009, punto 2)."""
+    service = _service(tmp_path, local_service_stub)
+
+    with pytest.raises(DownstreamError) as exc_info:
+        service.forward("config.validate", {"config": "core.yaml"})
+
+    error = exc_info.value
+    assert error.origin == "ia_nest_core"
+    assert error.to_dict() == {
+        "type": "ConfigValidationError",
+        "message": "modelo declarado inexistente",
+        "field": "models",
+        "origin": "ia_nest_core",
+    }
+
+
+def test_declared_origin_is_never_overwritten():
+    """Completar es rellenar un hueco; sobrescribir seria falsificar."""
+    declarado = DownstreamError(
+        {
+            "type": "AdapterError",
+            "message": "fallo de una capa mas profunda",
+            "field": None,
+            "origin": "otra_capa",
+        },
+        "ia_nest_core",
+    )
+    ausente = DownstreamError(
+        {"type": "AdapterError", "message": "fallo sin procedencia"},
+        "ia_nest_core",
+    )
+    sin_vecino = DownstreamError(
+        {"type": "AdapterError", "message": "fallo sin procedencia"}
+    )
+
+    assert declarado.origin == "otra_capa"
+    assert declarado.to_dict()["origin"] == "otra_capa"
+    assert ausente.origin == "ia_nest_core"
+    assert ausente.type == "AdapterError"
+    assert ausente.message == "fallo sin procedencia"
+    assert sin_vecino.origin is None
 
 
 def test_own_failure_carries_this_layer_origin(tmp_path, local_service_stub):

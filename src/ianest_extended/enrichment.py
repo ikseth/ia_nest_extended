@@ -104,7 +104,7 @@ class MemoryEnricher:
             self._config.write_back_enabled if write_back is None else write_back
         )
         auto_domain_on = (
-            self._config.rag_auto_domain if auto_domain is None else auto_domain
+            self._config.auto_domain if auto_domain is None else auto_domain
         )
         request_id = request_id or str(uuid4())
         resolved_identity, auto_route, route_confidence = self._resolve_domain(
@@ -339,7 +339,7 @@ class MemoryEnricher:
         if not auto_domain:
             return identity, False, None
         route = self._core.domain_route(prompt, identity)
-        if route.confidence < self._config.rag_auto_domain_min_confidence:
+        if route.confidence < self._config.auto_domain_min_confidence:
             return identity, True, route.confidence
         if route.domain == "general":
             return identity, True, route.confidence

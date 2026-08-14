@@ -47,18 +47,30 @@ class DownstreamError(ExtendedError):
     """Error originado por una capa inferior.
 
     NO se re-envuelve ni se traduce (meta ADR 0009, punto 2): esta clase es solo
-    el transporte en proceso del error ajeno. `to_dict()` devuelve el payload
-    recibido tal cual, sin anadir ni quitar campos.
+    el transporte en proceso del error ajeno. `type`, `message` y `field` se
+    dejan intactos y `to_dict()` devuelve el payload recibido.
+
+    Excepcion acotada del mismo punto: si la capa inferior NO emite `origin`, la
+    que reenvia lo COMPLETA con la identidad de a quien llamo, que conoce con
+    certeza. Completar es rellenar un hueco; un `origin` ya presente jamas se
+    sobrescribe, porque eso falsificaria la procedencia.
     """
 
-    def __init__(self, payload: dict[str, Any]) -> None:
+    def __init__(
+        self,
+        payload: dict[str, Any],
+        downstream_origin: str | None = None,
+    ) -> None:
         self._payload = dict(payload)
+        declared = self._payload.get("origin")
+        if not declared and downstream_origin:
+            self._payload["origin"] = downstream_origin
         super().__init__(
             str(payload.get("message", "")),
             payload.get("field"),
             request_id=payload.get("request_id"),
         )
-        self.origin = payload.get("origin")
+        self.origin = self._payload.get("origin")
 
     @property
     def type(self) -> str:

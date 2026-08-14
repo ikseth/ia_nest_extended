@@ -12,15 +12,19 @@ Sin acentos por convencion.
   `text/event-stream`-, sobreescritura de `prompt.run` con parametros de
   extension por peticion, capacidades propias `memory_type.*`/`memory.*`/
   `knowledge.*`, base de errores `ExtendedError` con `type`/`message`/`field`/
-  `origin`/`request_id` y propagacion sin re-envolver del error ajeno
-  (meta ADR 0009), y piel CLI instalable `ianest-extended` con gramatica
+  `origin`/`request_id`, propagacion sin re-envolver del error ajeno y
+  completado del `origin` que la capa inferior no emite (meta ADR 0009, punto 2,
+  excepcion acotada), y piel CLI instalable `ianest-extended` con gramatica
   GRUPO ACCION, `--env-file`, `--json` y los codigos de salida del core.
   Anade `runtime migrate` (migracion explicita) y la lista interina de
   capacidades reenviadas en un unico sitio (`capabilities.py`), a sustituir por
   `capability.list` cuando el core lo ofrezca (`extended CR-0002`).
-  Impacto de version: MINOR cuando se corte tag (rompe el esquema de
-  configuracion y la superficie CLI, que son contrato segun
-  `docs/VERSIONADO.md`); hoy no hay tag cortado.
+  Impacto de version: ninguno; no hay contrato publicado que romper. Esta capa
+  no tiene tag cortado y `docs/EXTENDED_CONTRACT.md` sigue en estado
+  `propuesta`: la retirada de `REQUEST_TIMEOUT_SECONDS` y de los cuatro
+  harnesses, y el renombrado de `RAG_AUTO_DOMAIN*`, quedan ANTES del primer tag
+  y por tanto no cuentan como rotura. El primer tag (fase 7d) sera la version
+  inicial de esta superficie.
 
 ### Cambiado
 - Modelo de timeout: `IANEST_EXTENDED_REQUEST_TIMEOUT_SECONDS` se RETIRA y se
@@ -36,6 +40,13 @@ Sin acentos por convencion.
   recordada, ADR 0011 punto 7). `RAG_ENABLED` deja de decidir cableado y pasa a
   ser solo el default de `use_rag`: pedir RAG sin sustrato es error tipado, no un
   no-op silencioso.
+- `RAG_AUTO_DOMAIN` y `RAG_AUTO_DOMAIN_MIN_CONFIDENCE` pasan a `AUTO_DOMAIN` y
+  `AUTO_DOMAIN_MIN_CONFIDENCE` (y sus campos, a `auto_domain` y
+  `auto_domain_min_confidence`): la resolucion automatica de dominio ya no es
+  solo del RAG, tambien decide el ruteo del modelo. Se hace antes del primer tag
+  porque el esquema de configuracion es contrato y despues costaria una version.
+  Las claves realmente del RAG (`RAG_ENABLED`, `RAG_TOP_K`, `RAG_MAX_TOKENS`,
+  `RAG_CHUNK_*`, `RAG_SUGGEST_*`) conservan su prefijo.
 - `install.sh` invoca `ianest-extended runtime migrate`; los comandos dejan de
   migrar al arrancar y solo VERIFICAN el esquema.
 
@@ -50,9 +61,9 @@ Sin acentos por convencion.
   agente codificador (composition-root perezoso, fachada con reenvio generico y
   sobreescritura de `prompt.run`, regla tipado/opaco, timeout de conexion mas
   inactividad, superficie de parametros, errores tipados con los codigos de
-  salida del core, piel CLI instalable y retirada de los cuatro harnesses). Doce
-  criterios de aceptacion falsables, los tres primeros el test de conformidad de
-  meta ADR 0007 desglosado. Impacto de version: ninguno.
+  salida del core, piel CLI instalable y retirada de los cuatro harnesses).
+  Catorce criterios de aceptacion falsables, los tres primeros el test de
+  conformidad de meta ADR 0007 desglosado. Impacto de version: ninguno.
 - Tres decisiones de superficie de la Fase 7a (ADR 0011, puntos 6-8): migracion
   explicita en lugar de migrar en cada arranque; identidad con defaults, con
   `session_id` generado y RECORDADO si no se indica -no uno nuevo por invocacion,

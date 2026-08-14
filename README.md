@@ -145,7 +145,7 @@ incorrecto, que imprime la ayuda del grupo.
 omite, el corpus queda sin vinculos y solo participa en recuperacion global. La
 ingesta es idempotente por corpus, vinculo de dominio, `source_ref` y ordinal.
 `prompt run` recupera solo corpus con vinculo confirmado al dominio explicito;
-con `--auto-domain` (o `RAG_AUTO_DOMAIN=true`) pide antes `domain.route` al core
+con `--auto-domain` (o `AUTO_DOMAIN=true`) pide antes `domain.route` al core
 cuando el caller no declara dominio. Cada consulta RAG emite `rag.retrieve` y su
 bloque compite por el presupuesto de contexto sin recortar las memorias
 delegadas ni el prompt del usuario.

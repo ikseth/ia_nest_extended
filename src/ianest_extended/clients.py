@@ -28,6 +28,10 @@ from .models import MemoryIdentity
 DEFAULT_CONNECT_TIMEOUT_SECONDS = 30.0
 DEFAULT_INACTIVITY_TIMEOUT_SECONDS = 30.0
 
+# Identidad de la capa inmediatamente inferior. Se usa SOLO para completar el
+# `origin` que el core no emite (meta ADR 0009, punto 2, excepcion acotada).
+CORE_ORIGIN = "ia_nest_core"
+
 
 @dataclass(frozen=True, slots=True)
 class Timeouts:
@@ -153,7 +157,11 @@ class CoreClient:
             connection_error=CoreConnectionError,
         )
         try:
-            _raise_for_status(response, f"{self._base_url}{route}")
+            _raise_for_status(
+                response,
+                f"{self._base_url}{route}",
+                downstream_origin=CORE_ORIGIN,
+            )
             content_type = response.headers.get("Content-Type", "")
             if "text/event-stream" in content_type:
                 return ForwardedStream(
@@ -276,6 +284,7 @@ class CoreClient:
             self._timeouts,
             connection_error=CoreConnectionError,
             response_error=CoreResponseError,
+            downstream_origin=CORE_ORIGIN,
         )
 
     def _get_json(self, route: str) -> dict[str, Any]:
@@ -286,6 +295,7 @@ class CoreClient:
             self._timeouts,
             connection_error=CoreConnectionError,
             response_error=CoreResponseError,
+            downstream_origin=CORE_ORIGIN,
         )
 
 
@@ -392,6 +402,7 @@ def _request_json(
     *,
     connection_error,
     response_error,
+    downstream_origin: str | None = None,
 ) -> dict[str, Any]:
     connection, response = _open(
         url,
@@ -401,7 +412,12 @@ def _request_json(
         connection_error=connection_error,
     )
     try:
-        _raise_for_status(response, url, response_error=response_error)
+        _raise_for_status(
+            response,
+            url,
+            response_error=response_error,
+            downstream_origin=downstream_origin,
+        )
         raw = response.read()
     except (OSError, TimeoutError, HTTPException) as exc:
         raise connection_error(f"no se pudo leer de {url}: {exc}") from exc
@@ -410,14 +426,21 @@ def _request_json(
     return _decode_json(raw, url, response_error)
 
 
-def _raise_for_status(response, url: str, *, response_error=None) -> None:
+def _raise_for_status(
+    response,
+    url: str,
+    *,
+    response_error=None,
+    downstream_origin: str | None = None,
+) -> None:
     if response.status < 400:
         return
     raw = response.read()
-    error = _core_error_payload(raw)
+    error = _core_error_payload(raw) if downstream_origin else None
     if error is not None:
-        # Un error de una capa inferior se propaga TAL CUAL (meta ADR 0009).
-        raise DownstreamError(error)
+        # Un error de una capa inferior se propaga TAL CUAL, completando solo
+        # el `origin` ausente (meta ADR 0009, punto 2).
+        raise DownstreamError(error, downstream_origin)
     detail = raw.decode("utf-8", errors="replace")
     factory = response_error or CoreResponseError
     raise factory(f"HTTP {response.status} desde {url}: {detail[:500]}")

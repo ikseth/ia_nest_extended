@@ -43,8 +43,8 @@ readonly default_rag_top_k=3
 readonly default_rag_max_tokens=500
 readonly default_rag_chunk_tokens=300
 readonly default_rag_chunk_overlap=0.15
-readonly default_rag_auto_domain=false
-readonly default_rag_auto_domain_min_confidence=0.7
+readonly default_auto_domain=false
+readonly default_auto_domain_min_confidence=0.7
 readonly default_rag_suggest_min_confidence=0.6
 readonly default_rag_suggest_sample_chars=2000
 
@@ -62,8 +62,8 @@ rag_top_k="${default_rag_top_k}"
 rag_max_tokens="${default_rag_max_tokens}"
 rag_chunk_tokens="${default_rag_chunk_tokens}"
 rag_chunk_overlap="${default_rag_chunk_overlap}"
-rag_auto_domain="${default_rag_auto_domain}"
-rag_auto_domain_min_confidence="${default_rag_auto_domain_min_confidence}"
+auto_domain="${default_auto_domain}"
+auto_domain_min_confidence="${default_auto_domain_min_confidence}"
 rag_suggest_min_confidence="${default_rag_suggest_min_confidence}"
 rag_suggest_sample_chars="${default_rag_suggest_sample_chars}"
 core_url_set=false
@@ -76,8 +76,8 @@ rag_top_k_set=false
 rag_max_tokens_set=false
 rag_chunk_tokens_set=false
 rag_chunk_overlap_set=false
-rag_auto_domain_set=false
-rag_auto_domain_min_confidence_set=false
+auto_domain_set=false
+auto_domain_min_confidence_set=false
 os_id=""
 os_id_like=""
 runtime=""
@@ -114,9 +114,10 @@ Opciones:
                 Tamano aproximado de chunk (default: 300).
   --rag-chunk-overlap FRACCION
                 Solape entre chunks [0,1) (default: 0.15).
-  --rag-auto-domain / --no-rag-auto-domain
-                Activar o desactivar domain.route (default: desactivado).
-  --rag-auto-domain-min-confidence N
+  --auto-domain / --no-auto-domain
+                Resolver el dominio con domain.route: gatea el conocimiento y
+                rutea el modelo (default: desactivado).
+  --auto-domain-min-confidence N
                 Umbral de auto-route [0,1] (default: 0.7).
   --pull-models Descargar el modelo de embeddings si Ollama es alcanzable.
   --help        Mostrar esta ayuda.
@@ -225,17 +226,17 @@ configure_extended() {
                 "${rag_chunk_overlap}" \
                 rag_chunk_overlap
         fi
-        if [[ "${rag_auto_domain_set}" == false ]]; then
+        if [[ "${auto_domain_set}" == false ]]; then
             prompt_setting \
-                "Auto-route de dominio RAG (true/false)" \
-                "${rag_auto_domain}" \
-                rag_auto_domain
+                "Auto-route de dominio (true/false)" \
+                "${auto_domain}" \
+                auto_domain
         fi
-        if [[ "${rag_auto_domain_min_confidence_set}" == false ]]; then
+        if [[ "${auto_domain_min_confidence_set}" == false ]]; then
             prompt_setting \
-                "Confianza minima de auto-route RAG [0,1]" \
-                "${rag_auto_domain_min_confidence}" \
-                rag_auto_domain_min_confidence
+                "Confianza minima de auto-route [0,1]" \
+                "${auto_domain_min_confidence}" \
+                auto_domain_min_confidence
         fi
     fi
 
@@ -247,8 +248,8 @@ configure_extended() {
         fail "los modelos configurados no pueden estar vacios"
     [[ "${rag_enabled}" == true || "${rag_enabled}" == false ]] ||
         fail "rag-enabled debe ser true o false"
-    [[ "${rag_auto_domain}" == true || "${rag_auto_domain}" == false ]] ||
-        fail "rag-auto-domain debe ser true o false"
+    [[ "${auto_domain}" == true || "${auto_domain}" == false ]] ||
+        fail "auto-domain debe ser true o false"
     for integer_value in \
         "${rag_top_k}" "${rag_max_tokens}" "${rag_chunk_tokens}"; do
         [[ "${integer_value}" =~ ^[1-9][0-9]*$ ]] ||
@@ -258,10 +259,10 @@ configure_extended() {
         awk -v value="${rag_chunk_overlap}" \
             'BEGIN { exit !(value >= 0 && value < 1) }' ||
         fail "rag-chunk-overlap debe estar en [0,1)"
-    [[ "${rag_auto_domain_min_confidence}" =~ ^([0-9]+)([.][0-9]+)?$ ]] &&
-        awk -v value="${rag_auto_domain_min_confidence}" \
+    [[ "${auto_domain_min_confidence}" =~ ^([0-9]+)([.][0-9]+)?$ ]] &&
+        awk -v value="${auto_domain_min_confidence}" \
             'BEGIN { exit !(value >= 0 && value <= 1) }' ||
-        fail "rag-auto-domain-min-confidence debe estar en [0,1]"
+        fail "auto-domain-min-confidence debe estar en [0,1]"
 }
 
 update_env_value() {
@@ -309,10 +310,10 @@ write_extended_env() {
     update_env_value IANEST_EXTENDED_RAG_MAX_TOKENS "${rag_max_tokens}"
     update_env_value IANEST_EXTENDED_RAG_CHUNK_TOKENS "${rag_chunk_tokens}"
     update_env_value IANEST_EXTENDED_RAG_CHUNK_OVERLAP "${rag_chunk_overlap}"
-    update_env_value IANEST_EXTENDED_RAG_AUTO_DOMAIN "${rag_auto_domain}"
+    update_env_value IANEST_EXTENDED_AUTO_DOMAIN "${auto_domain}"
     update_env_value \
-        IANEST_EXTENDED_RAG_AUTO_DOMAIN_MIN_CONFIDENCE \
-        "${rag_auto_domain_min_confidence}"
+        IANEST_EXTENDED_AUTO_DOMAIN_MIN_CONFIDENCE \
+        "${auto_domain_min_confidence}"
     update_env_value \
         IANEST_EXTENDED_RAG_SUGGEST_MIN_CONFIDENCE \
         "${rag_suggest_min_confidence}"
@@ -618,18 +619,18 @@ main() {
                 rag_chunk_overlap_set=true
                 shift
                 ;;
-            --rag-auto-domain)
-                rag_auto_domain=true
-                rag_auto_domain_set=true
+            --auto-domain)
+                auto_domain=true
+                auto_domain_set=true
                 ;;
-            --no-rag-auto-domain)
-                rag_auto_domain=false
-                rag_auto_domain_set=true
+            --no-auto-domain)
+                auto_domain=false
+                auto_domain_set=true
                 ;;
-            --rag-auto-domain-min-confidence)
+            --auto-domain-min-confidence)
                 require_option_value "$1" "${2:-}"
-                rag_auto_domain_min_confidence="$2"
-                rag_auto_domain_min_confidence_set=true
+                auto_domain_min_confidence="$2"
+                auto_domain_min_confidence_set=true
                 shift
                 ;;
             --pull-models)

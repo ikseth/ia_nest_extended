@@ -52,8 +52,8 @@ class ExtendedConfig:
     rag_max_tokens: int = 500
     rag_chunk_tokens: int = 300
     rag_chunk_overlap: float = 0.15
-    rag_auto_domain: bool = False
-    rag_auto_domain_min_confidence: float = 0.7
+    auto_domain: bool = False
+    auto_domain_min_confidence: float = 0.7
     rag_suggest_min_confidence: float = 0.6
     rag_suggest_sample_chars: int = 2000
 
@@ -168,13 +168,13 @@ class ExtendedConfig:
                 "RAG_CHUNK_OVERLAP",
                 defaults.rag_chunk_overlap,
             ),
-            "rag_auto_domain": _env_bool(
-                "RAG_AUTO_DOMAIN",
-                defaults.rag_auto_domain,
+            "auto_domain": _env_bool(
+                "AUTO_DOMAIN",
+                defaults.auto_domain,
             ),
-            "rag_auto_domain_min_confidence": _env_float(
-                "RAG_AUTO_DOMAIN_MIN_CONFIDENCE",
-                defaults.rag_auto_domain_min_confidence,
+            "auto_domain_min_confidence": _env_float(
+                "AUTO_DOMAIN_MIN_CONFIDENCE",
+                defaults.auto_domain_min_confidence,
             ),
             "rag_suggest_min_confidence": _env_float(
                 "RAG_SUGGEST_MIN_CONFIDENCE",
@@ -207,7 +207,7 @@ class ExtendedConfig:
         for name in (
             "dedup_threshold",
             "confidence_threshold",
-            "rag_auto_domain_min_confidence",
+            "auto_domain_min_confidence",
             "rag_suggest_min_confidence",
         ):
             value = getattr(self, name)

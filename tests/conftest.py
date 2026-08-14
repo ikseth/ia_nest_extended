@@ -65,6 +65,7 @@ def local_service_stub():
                 self._send_stream()
                 return
             if self.path == "/eval/run":
+                # Error de la capa inferior CON origin declarado.
                 self._send(
                     {
                         "error": {
@@ -73,6 +74,19 @@ def local_service_stub():
                             "field": "suite",
                             "origin": "ia_nest_core",
                             "request_id": "core-error-1",
+                        }
+                    },
+                    status=400,
+                )
+                return
+            if self.path == "/config/validate":
+                # Error SIN origin, como el que emite el core hoy.
+                self._send(
+                    {
+                        "error": {
+                            "type": "ConfigValidationError",
+                            "message": "modelo declarado inexistente",
+                            "field": "models",
                         }
                     },
                     status=400,

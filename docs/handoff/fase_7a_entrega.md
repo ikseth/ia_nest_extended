@@ -8,6 +8,9 @@ Brief: `docs/handoff/fase_7a_brief.md`.
 Verificacion: NO la hace quien implementa. Este documento declara lo hecho, lo
 decidido, lo cubierto, lo que quedo fuera y las inconsistencias detectadas.
 
+Incluye las cuatro correcciones pedidas por el agente verificador tras su
+revision (seccion 7).
+
 ## 1. Que se implemento
 
 ### Composition-root (`src/ianest_extended/composition.py`)
@@ -75,9 +78,12 @@ cablea el store RAG siempre que puede y, si se pide RAG sin sustrato, emite
 `ExtendedError` es la base con `type` (la clase), `message`, `field`, `origin`
 (`ia_nest_extended`), `request_id` y `to_dict()`. Reparenta `MemoryError`,
 `RagError`, `ExtendedConfigError` y `ExternalServiceError`. `DownstreamError` es
-el transporte en proceso del error ajeno: `to_dict()` devuelve el payload del
-core TAL CUAL, sin re-envolver, re-tipar ni traducir. Codigos de salida iguales
-a los del core: `0`, `1` con `Tipo (campo): mensaje` en stderr (o su JSON con
+el transporte en proceso del error ajeno: `type`, `message` y `field` se dejan
+intactos, sin re-envolver, re-tipar ni traducir. Si la capa inferior NO emite
+`origin`, esta capa lo COMPLETA con la identidad de a quien llamo
+(`clients.CORE_ORIGIN`), segun la excepcion acotada de meta ADR 0009, punto 2;
+un `origin` ya presente jamas se sobrescribe. Codigos de salida iguales a los
+del core: `0`, `1` con `Tipo (campo): mensaje` en stderr (o su JSON con
 `--json`) y `2` con la ayuda del grupo.
 
 La telemetria pasa de `core_request_id` a `downstream_request_id` y se anade el
@@ -156,9 +162,10 @@ para que se reconcilien o se corrijan; ninguna se da por doctrina.
 
 ## 3. Criterios de aceptacion, uno a uno
 
-Resultado real de `python -m pytest` en este entorno (sin PostgreSQL local):
-**63 pasan, 26 se omiten**. Los 26 skips son los de PostgreSQL, con su razon
-explicita (`IANEST_EXTENDED_TEST_DSN no definido`).
+Resultado real de `python -m pytest` en este entorno (sin PostgreSQL local),
+tras las correcciones de la seccion 7: **65 pasan, 26 se omiten**. Los 26 skips
+son los de PostgreSQL, con su razon explicita
+(`IANEST_EXTENDED_TEST_DSN no definido`).
 
 | # | criterio | prueba | estado |
 |---|---|---|---|
@@ -173,9 +180,9 @@ explicita (`IANEST_EXTENDED_TEST_DSN no definido`).
 | 9 | Aislamiento de la piel (`cli.py` sin `adapters` ni `clients`) | `tests/test_composition_and_cli.py::test_cli_does_not_import_adapters_or_clients` | pasa |
 | 10 | Migracion (solo lectura con esquema sin migrar falla y no muta) | `tests/test_composition_and_cli.py::test_read_only_capability_fails_on_unmigrated_schema` (pasa) y `tests/test_phase7a_postgres.py::test_read_only_capability_fails_on_unmigrated_schema` | pasa con fake; **la version contra PostgreSQL se OMITE aqui** |
 | 11 | Codigos de salida `0`, `1` y `2` | `tests/test_composition_and_cli.py::test_exit_code_zero_on_forwarded_capability`, `::test_exit_code_one_on_typed_error`, `::test_exit_code_one_with_json_error_payload`, `::test_exit_code_two_prints_group_help` | pasa |
-| 12 | Error ajeno intacto / fallo propio con `origin` de la capa | `tests/test_uniform_contract.py::test_core_error_is_propagated_without_rewrapping` y `::test_own_failure_carries_this_layer_origin` | pasa, con la salvedad del punto 4.1 |
+| 12 | Error ajeno intacto / fallo propio con `origin` de la capa | `tests/test_uniform_contract.py::test_core_error_is_propagated_without_rewrapping`, `::test_absent_origin_is_completed_with_the_layer_called`, `::test_declared_origin_is_never_overwritten` y `::test_own_failure_carries_this_layer_origin` | pasa, y ya es verificable contra el core real (seccion 7.1) |
 | 13 | Traza encadenada (`request_id` + `downstream_request_id`) | `tests/test_prompt_run_service.py::test_telemetry_chains_the_downstream_request_id` | pasa |
-| 14 | Pruebas existentes en verde con los skips esperados | suite completa | pasa: 63 pasan, 26 skips de PostgreSQL |
+| 14 | Pruebas existentes en verde con los skips esperados | suite completa | pasa: 65 pasan, 26 skips de PostgreSQL |
 
 Lo que NO se pudo verificar en este entorno:
 
@@ -188,26 +195,26 @@ Lo que NO se pudo verificar en este entorno:
 
 ## 4. Inconsistencias detectadas (SIN corregir por inferencia)
 
-1. **El core no emite `origin` ni `request_id` en sus errores.** El criterio 12
-   pide que el error ajeno llegue "con su `type` y su `origin` originales", y
-   `ia_nest_meta/docs/FORMA_DE_ERRORES_Y_TRAZA.md` incluye `origin` en el minimo
-   comun. Pero `ia_nest_core/src/ianest_core/errors.py` (`CoreError.to_dict`)
-   devuelve solo `type`, `message` y `field`. Consecuencia: contra el core real,
-   `DownstreamError.origin` sera `None`. NO se rellena por inferencia (poner
-   `ia_nest_core` seria inventar un dato del vecino). El criterio se prueba con
-   un stub que si declara `origin`. Parece material para un CR al core.
+1. **El core no emite `origin` ni `request_id` en sus errores.**
+   `ia_nest_core/src/ianest_core/errors.py` (`CoreError.to_dict`) devuelve solo
+   `type`, `message` y `field`. RESUELTO por el verificador: meta ADR 0009 pasa
+   a incluir una excepcion acotada -la capa que reenvia COMPLETA el `origin`
+   ausente con la identidad de a quien llamo- y esta capa la implementa
+   (seccion 7.1). Queda sin resolver la parte de `request_id`: si el core no lo
+   emite, el error ajeno llega sin el, y ese hueco NO se rellena, porque el
+   identificador de la llamada del vecino no se puede conocer desde aqui.
 2. **`docs/EXTENDED_CONTRACT.md` habla de fuentes descubribles.** Dice
    "desactivar una fuente concreta por nombre" y "Un consumidor descubre las
    disponibles, no las presupone", mientras que la fase 7a entrega banderas
    fijas (`use_memory`, `use_rag`) y ningun mecanismo de descubrimiento, que el
    brief difiere a `extended CR-0002`. No se implementa catalogo de fuentes ni
    se toca el contrato: se senala la divergencia.
-3. **El `CHANGELOG` dice "Doce criterios de aceptacion falsables"** al describir
-   el brief de la fase 7a, y el brief entregado enumera catorce. No se corrige.
-4. **`rag_auto_domain` conserva su prefijo `rag_`** aunque `auto_domain` ha
-   pasado a ser un parametro de `prompt.run` y no de RAG. Renombrar la clave
-   tocaria el esquema de configuracion, que es contrato, sin que el brief lo
-   pida. Se senala.
+3. **El `CHANGELOG` decia "Doce criterios de aceptacion falsables"** al describir
+   el brief de la fase 7a, y el brief entregado enumera catorce. CORREGIDO a
+   peticion del verificador (seccion 7.3).
+4. **`rag_auto_domain` conservaba su prefijo `rag_`** aunque `auto_domain` ha
+   pasado a ser un parametro de `prompt.run` y no de RAG. RENOMBRADO a peticion
+   del verificador (seccion 7.4).
 5. **`errors.MemoryError` sigue tapando el `MemoryError` incorporado de
    Python.** Es previo a esta fase y el brief solo pide reparentar las familias;
    no se renombra.
@@ -238,9 +245,51 @@ Lo que NO se pudo verificar en este entorno:
 
 ## 6. Impacto de version
 
-Declarado en `CHANGELOG.md` bajo `[No publicado]`: **MINOR cuando se corte tag**
-(serie pre-1.0). Rompen contrato el esquema de configuracion -se retira
-`REQUEST_TIMEOUT_SECONDS`- y la superficie CLI -se retiran los cuatro
-harnesses-, ambos declarados como contrato en `docs/VERSIONADO.md`. Tambien
-cambia el esquema de telemetria (`core_request_id` -> `downstream_request_id`).
-No se corta tag ni se hace merge a `main`.
+Declarado en `CHANGELOG.md` bajo `[No publicado]`: **ninguno; no hay contrato
+publicado que romper.** Esta capa no tiene ningun tag cortado y
+`docs/EXTENDED_CONTRACT.md` sigue en estado `propuesta`, asi que lo que hoy
+cambia es superficie ANTERIOR a la primera publicacion y no cuenta como rotura.
+El primer tag (fase 7d) sera la version inicial.
+
+Los cambios de superficie, que siguen siendo informacion util aunque no sean
+rotura: se retira `REQUEST_TIMEOUT_SECONDS` (partido en conexion e inactividad),
+se retiran los cuatro harnesses, se renombra `RAG_AUTO_DOMAIN*` a `AUTO_DOMAIN*`
+y la telemetria pasa de `core_request_id` a `downstream_request_id`. No se corta
+tag ni se hace merge a `main`.
+
+## 7. Correcciones pedidas por el verificador
+
+1. **`origin` ausente se COMPLETA.** `ia_nest_meta/docs/FORMA_DE_ERRORES_Y_TRAZA.md`
+   (meta ADR 0009, punto 2) incorpora una excepcion acotada: la capa que reenvia
+   completa el `origin` que la inferior no emite, con la identidad de a quien
+   llamo. Implementado en `DownstreamError`, que recibe esa identidad del
+   llamante (`clients.CORE_ORIGIN`, para el core), y solo la aplica si el campo
+   viene vacio o ausente; `type`, `message` y `field` siguen intactos y un
+   `origin` declarado nunca se sobrescribe. El stub del core gana una ruta de
+   error SIN `origin` (`/config/validate`) junto a la que si lo declara
+   (`/eval/run`). Pruebas de las dos ramas:
+   `tests/test_uniform_contract.py::test_absent_origin_is_completed_with_the_layer_called`
+   (completa) y `::test_declared_origin_is_never_overwritten` (respeta un
+   `origin` distinto y no inventa uno cuando no hay vecino declarado). Con esto,
+   el criterio 12 pasa a ser verificable tambien contra el core real, que hoy no
+   emite `origin`.
+2. **Impacto de version reescrito** en `CHANGELOG.md` y en la seccion 6: de
+   "MINOR cuando se corte tag" a "ninguno; no hay contrato publicado que
+   romper". La objecion es correcta: `docs/VERSIONADO.md` declara QUE contara
+   como contrato, pero nada esta publicado todavia.
+3. **Errata corregida** en `CHANGELOG.md`: el brief de la fase 7a lleva CATORCE
+   criterios de aceptacion falsables, no doce.
+4. **Renombrado del prefijo enganoso**: `RAG_AUTO_DOMAIN` y
+   `RAG_AUTO_DOMAIN_MIN_CONFIDENCE` pasan a `AUTO_DOMAIN` y
+   `AUTO_DOMAIN_MIN_CONFIDENCE`, y sus campos de `ExtendedConfig` a
+   `auto_domain` y `auto_domain_min_confidence`. Actualizados `.env.example`,
+   `install.sh` (variables, ayuda, banderas `--auto-domain` /
+   `--no-auto-domain` / `--auto-domain-min-confidence` y claves que escribe en
+   `.env`), `README.md` y las pruebas que los usaban. Las claves realmente del
+   RAG (`RAG_ENABLED`, `RAG_TOP_K`, `RAG_MAX_TOKENS`, `RAG_CHUNK_*`,
+   `RAG_SUGGEST_*`) conservan su prefijo.
+
+   No se tocan los handoff historicos `docs/handoff/fase_5_brief.md` y
+   `fase_5_entrega.md`, que citan `RAG_AUTO_DOMAIN`: son el registro de lo que
+   se reconcilio entonces y no se reescriben. Si se prefiere anotarlos, es
+   decision del disenador.
