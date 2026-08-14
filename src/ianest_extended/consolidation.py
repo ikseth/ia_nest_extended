@@ -35,7 +35,7 @@ class ConsolidationExecutor:
             self._telemetry.record(
                 event="memory.consolidation",
                 request_id=request_id,
-                core_request_id=None,
+                downstream_request_id=None,
                 identity=MemoryIdentity(),
                 counters={
                     "sources_archived": 0,
@@ -49,7 +49,7 @@ class ConsolidationExecutor:
         self._telemetry.record(
             event="memory.consolidation",
             request_id=request_id,
-            core_request_id=None,
+            downstream_request_id=None,
             identity=result.identity,
             counters={
                 "sources_archived": len(result.archived_sources),

@@ -18,7 +18,7 @@ def test_core_client_propagates_complete_identity(local_service_stub):
         domain_tag="linux.ops",
         namespace="facts",
     )
-    client = CoreClient(local_service_stub.base_url, timeout_seconds=2)
+    client = CoreClient(local_service_stub.base_url, connect_timeout_seconds=2)
 
     result = client.prompt_run("hola", identity, model="extractor")
 
@@ -45,7 +45,7 @@ def test_ollama_embedder_normalizes_and_validates_dimension(
         local_service_stub.base_url,
         "test-embed",
         2,
-        timeout_seconds=2,
+        connect_timeout_seconds=2,
     )
 
     vector = embedder.embed("hola")
@@ -59,14 +59,14 @@ def test_ollama_embedder_normalizes_and_validates_dimension(
         local_service_stub.base_url,
         "test-embed",
         3,
-        timeout_seconds=2,
+        connect_timeout_seconds=2,
     )
     with pytest.raises(InvalidEmbeddingDimensionError):
         wrong.embed("hola")
 
 
 def test_core_client_routes_domain(local_service_stub):
-    client = CoreClient(local_service_stub.base_url, timeout_seconds=2)
+    client = CoreClient(local_service_stub.base_url, connect_timeout_seconds=2)
 
     result = client.domain_route("administra linux", MemoryIdentity(user_id="u"))
 
@@ -78,7 +78,7 @@ def test_core_client_routes_domain(local_service_stub):
 
 
 def test_core_client_lists_domains_once_per_client(local_service_stub):
-    client = CoreClient(local_service_stub.base_url, timeout_seconds=2)
+    client = CoreClient(local_service_stub.base_url, connect_timeout_seconds=2)
 
     assert client.list_domains() == ("general", "linux", "codigo")
     assert client.list_domains() == ("general", "linux", "codigo")

@@ -1,15 +1,12 @@
-"""CLI de ingesta curada para corpus RAG."""
+"""Ingesta curada de texto en corpus RAG (capacidad knowledge.ingest)."""
 
 from __future__ import annotations
 
-import argparse
 import math
 from collections.abc import Sequence
 from pathlib import Path
 
-from .adapters import PostgresRagStore
-from .clients import CoreClient, OllamaEmbedder
-from .config import ExtendedConfig
+from .clients import CoreClient
 from .errors import InvalidCoreDomainError, InvalidRagInputError
 from .models import RagChunkWrite, RagIngestResult
 from .ports import RagStore
@@ -90,50 +87,6 @@ def ingest_path(
     )
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        prog="python -m ianest_extended.ingest",
-        description="Ingiere texto curado en un corpus RAG.",
-    )
-    parser.add_argument("--corpus", required=True)
-    parser.add_argument(
-        "--domain",
-        action="append",
-        default=[],
-        help="Dominio del core; se puede repetir.",
-    )
-    parser.add_argument("--source-ref")
-    parser.add_argument("path", type=Path)
-    args = parser.parse_args(argv)
-
-    config = ExtendedConfig.from_env()
-    embedder = OllamaEmbedder(
-        config.ollama_url,
-        config.embedding_model,
-        config.embedding_dimension,
-        config.request_timeout_seconds,
-    )
-    store = PostgresRagStore(config.database_dsn, embedder)
-    core = CoreClient(config.core_url, config.request_timeout_seconds)
-    store.migrate()
-    result = ingest_path(
-        store=store,
-        core=core,
-        path=args.path,
-        corpus_name=args.corpus,
-        domains=args.domain,
-        source_ref=args.source_ref,
-        chunk_tokens=config.rag_chunk_tokens,
-        overlap=config.rag_chunk_overlap,
-    )
-    domains = ",".join(result.domains) or "(global)"
-    print(
-        f"corpus={result.corpus_name} domains={domains} "
-        f"chunks_new={result.inserted} chunks_updated={result.updated}"
-    )
-    return 0
-
-
 def _source_files(path: Path) -> tuple[Path, ...]:
     if path.is_file():
         if path.suffix.lower() not in SUPPORTED_SUFFIXES:
@@ -182,6 +135,3 @@ def _validate_domains(
             )
     return tuple(domains)
 
-
-if __name__ == "__main__":
-    raise SystemExit(main())

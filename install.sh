@@ -485,6 +485,19 @@ prepare_venv() {
     "${script_dir}/.venv/bin/python" -m pip install -e "${script_dir}[test]"
 }
 
+migrate_schema() {
+    if [[ "${skip_db}" == true ]]; then
+        log "Migracion omitida por --skip-db."
+        return 0
+    fi
+
+    log "Migrando el esquema local con 'ianest-extended runtime migrate'."
+    log "La migracion es EXPLICITA: ningun otro comando muta el esquema."
+    "${script_dir}/.venv/bin/ianest-extended" \
+        --env-file "${script_dir}/.env" runtime migrate ||
+        fail "la migracion del esquema local fallo"
+}
+
 count_skips() {
     local summary=""
     summary="$(grep -Eo '[0-9]+ skipped' "${test_output}" | tail -n 1 || true)"
@@ -648,6 +661,7 @@ main() {
     fi
 
     prepare_venv
+    migrate_schema
 
     if [[ "${skip_tests}" == true ]]; then
         log "Pruebas omitidas por --skip-tests."

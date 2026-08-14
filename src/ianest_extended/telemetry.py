@@ -1,4 +1,8 @@
-"""Telemetria JSONL diaria de la capa."""
+"""Telemetria JSONL diaria de la capa.
+
+`downstream_request_id` es el nombre generico del ente para el identificador de
+la llamada hacia la capa inmediatamente inferior (meta ADR 0009, punto 4).
+"""
 
 from __future__ import annotations
 
@@ -21,7 +25,7 @@ class TelemetryWriter:
         *,
         event: str,
         request_id: str,
-        core_request_id: str | None,
+        downstream_request_id: str | None,
         identity: MemoryIdentity,
         counters: dict[str, int],
         latency_ms: int,
@@ -33,7 +37,7 @@ class TelemetryWriter:
             "timestamp": now.isoformat(),
             "event": event,
             "request_id": request_id,
-            "core_request_id": core_request_id,
+            "downstream_request_id": downstream_request_id,
             "identity": {
                 "user_id": identity.user_id,
                 "service": identity.service,

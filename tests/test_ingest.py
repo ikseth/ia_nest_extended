@@ -40,7 +40,7 @@ def test_ingest_directory_uses_stable_relative_source_refs(
     (nested / "b.txt").write_text("contenido b", encoding="utf-8")
     (tmp_path / "ignored.json").write_text("{}", encoding="utf-8")
     store = CapturingRagStore()
-    core = CoreClient(local_service_stub.base_url, timeout_seconds=2)
+    core = CoreClient(local_service_stub.base_url, connect_timeout_seconds=2)
 
     result = ingest_path(
         store=store,

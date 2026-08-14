@@ -1,14 +1,10 @@
-"""Workflow de operador para conocimiento por dominio."""
+"""Workflow de conocimiento por dominio (capacidades knowledge.*)."""
 
 from __future__ import annotations
 
-import argparse
-from collections.abc import Sequence
 from typing import Any
 
-from .adapters import PostgresRagStore
-from .clients import CoreClient, OllamaEmbedder
-from .config import ExtendedConfig
+from .clients import CoreClient
 from .errors import CoreResponseError, InvalidCoreDomainError, InvalidRagInputError
 from .models import KnowledgeDomainStatus, KnowledgeSuggestion, MemoryIdentity
 from .ports import RagStore
@@ -92,86 +88,6 @@ def reject_domain(
     return store.reject_domain(corpus_name, value)
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        prog="python -m ianest_extended.knowledge",
-        description="Gestiona conocimiento por dominio bajo control del operador.",
-    )
-    commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("status", help="Muestra cobertura por dominio del core.")
-
-    suggest = commands.add_parser("suggest", help="Propone dominios para un corpus.")
-    suggest.add_argument("--corpus", required=True)
-
-    for command in ("confirm", "reject"):
-        link = commands.add_parser(command, help=f"{command} un vinculo de dominio.")
-        link.add_argument("--corpus", required=True)
-        link.add_argument("--domain", required=True)
-    args = parser.parse_args(argv)
-
-    config = ExtendedConfig.from_env()
-    embedder = OllamaEmbedder(
-        config.ollama_url,
-        config.embedding_model,
-        config.embedding_dimension,
-        config.request_timeout_seconds,
-    )
-    store = PostgresRagStore(config.database_dsn, embedder)
-    core = CoreClient(config.core_url, config.request_timeout_seconds)
-    store.migrate()
-
-    if args.command == "status":
-        statuses = knowledge_status(store=store, core=core)
-        for status in statuses:
-            label = "OK" if status.confirmed_corpora else "HUECO"
-            print(
-                f"domain={status.domain} confirmed_corpora="
-                f"{status.confirmed_corpora} status={label}"
-            )
-        return 0
-    if args.command == "suggest":
-        suggestions = suggest_domains(
-            store=store,
-            core=core,
-            corpus_name=args.corpus,
-            min_confidence=config.rag_suggest_min_confidence,
-            sample_chars=config.rag_suggest_sample_chars,
-        )
-        if not suggestions:
-            print(f"corpus={args.corpus} proposals=0")
-        for item in suggestions:
-            action = "stored" if item.stored else "protected"
-            print(
-                f"corpus={args.corpus} domain={item.domain} "
-                f"confidence={item.confidence:.3f} proposal={action}"
-            )
-        return 0
-    if args.command == "confirm":
-        changed = confirm_domain(
-            store=store,
-            core=core,
-            corpus_name=args.corpus,
-            domain=args.domain,
-        )
-        print(
-            f"corpus={args.corpus} domain={args.domain} "
-            f"confirmed={'yes' if changed else 'already'}"
-        )
-        return 0
-
-    removed = reject_domain(
-        store=store,
-        core=core,
-        corpus_name=args.corpus,
-        domain=args.domain,
-    )
-    print(
-        f"corpus={args.corpus} domain={args.domain} "
-        f"rejected={'yes' if removed else 'absent'}"
-    )
-    return 0
-
-
 def _validate_core_domain(core: CoreClient, domain: str) -> str:
     value = domain.strip()
     valid = core.list_domains()
@@ -196,6 +112,3 @@ def _parse_alternative(item: dict[str, Any]) -> tuple[str, float] | None:
         return None
     return domain.strip(), float(confidence)
 
-
-if __name__ == "__main__":
-    raise SystemExit(main())

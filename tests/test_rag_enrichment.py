@@ -61,7 +61,7 @@ def _enricher(tmp_path, local_service_stub, memory_store, rag_store, **changes):
     return MemoryEnricher(
         store=memory_store,
         rag_store=rag_store,
-        core=CoreClient(local_service_stub.base_url, timeout_seconds=2),
+        core=CoreClient(local_service_stub.base_url, connect_timeout_seconds=2),
         telemetry=TelemetryWriter(tmp_path),
         config=config,
     )

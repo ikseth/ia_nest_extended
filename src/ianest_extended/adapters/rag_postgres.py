@@ -15,6 +15,7 @@ from ..errors import (
     KnowledgeLinkNotFoundError,
     ProtectedKnowledgeLinkError,
     RagSchemaError,
+    SchemaMigrationRequiredError,
 )
 from ..models import RagChunk, RagChunkWrite, RagIngestResult
 from ..ports import Embedder
@@ -33,6 +34,22 @@ class PostgresRagStore:
         self._embedder = embedder
         self._migration_path = migration_path or _default_migration_path()
         self._domain_migration_path = _default_domain_migration_path()
+
+    def verify_schema(self) -> None:
+        """Comprueba el esquema RAG SIN mutarlo (migracion explicita)."""
+        with self._connect() as connection:
+            for relation in ("rag_corpora", "rag_chunks", "rag_corpus_domains"):
+                exists = connection.execute(
+                    "SELECT to_regclass(%s) AS relation",
+                    (relation,),
+                ).fetchone()["relation"]
+                if exists is None:
+                    raise SchemaMigrationRequiredError(
+                        "el esquema RAG no esta migrado "
+                        f"(falta '{relation}'); ejecuta "
+                        "'ianest-extended runtime migrate'",
+                        relation,
+                    )
 
     def migrate(self) -> None:
         with self._connect() as connection:

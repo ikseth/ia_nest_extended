@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import math
 import time
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any
 from uuid import uuid4
 
@@ -49,6 +49,9 @@ class EnrichResult:
     trace: dict[str, Any]
     context: str
     request_id: str
+    payload: dict[str, Any] = field(default_factory=dict)
+    enriched_prompt: str = ""
+    downstream_request_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,11 +82,35 @@ class MemoryEnricher:
         self,
         identity: MemoryIdentity,
         prompt: str,
+        *,
+        use_memory: bool | None = None,
+        use_rag: bool | None = None,
+        write_back: bool | None = None,
+        auto_domain: bool | None = None,
+        model: str | None = None,
+        dry_run: bool = False,
+        request_id: str | None = None,
     ) -> EnrichResult:
-        request_id = str(uuid4())
+        """Sobreescritura de `prompt.run`: recall, composicion, core y write-back.
+
+        Los tres estados de cada bandera importan: `None` toma el default de
+        configuracion; `True`/`False` son override por peticion.
+        """
+        memory_on = (
+            self._config.memory_enabled if use_memory is None else use_memory
+        )
+        rag_on = self._config.rag_enabled if use_rag is None else use_rag
+        write_back_on = (
+            self._config.write_back_enabled if write_back is None else write_back
+        )
+        auto_domain_on = (
+            self._config.rag_auto_domain if auto_domain is None else auto_domain
+        )
+        request_id = request_id or str(uuid4())
         resolved_identity, auto_route, route_confidence = self._resolve_domain(
             identity,
             prompt,
+            auto_domain=auto_domain_on,
         )
         recall_started = time.monotonic()
         try:
@@ -93,13 +120,19 @@ class MemoryEnricher:
                 prompt=prompt,
                 auto_route=auto_route,
                 route_confidence=route_confidence,
+                use_rag=rag_on,
             )
-            bundle = self.recall(resolved_identity, prompt, rag=rag)
+            bundle = self.recall(
+                resolved_identity,
+                prompt,
+                rag=rag,
+                include_memory=memory_on,
+            )
         except Exception:
             self._telemetry.record(
                 event="enrich.recall",
                 request_id=request_id,
-                core_request_id=None,
+                downstream_request_id=None,
                 identity=resolved_identity,
                 counters=self._empty_recall_counters(),
                 latency_ms=_latency_ms(recall_started),
@@ -109,17 +142,38 @@ class MemoryEnricher:
         recall_latency = _latency_ms(recall_started)
         enriched_prompt = compose_prompt(bundle.context, prompt)
 
+        if dry_run:
+            self._telemetry.record(
+                event="enrich.recall",
+                request_id=request_id,
+                downstream_request_id=None,
+                identity=resolved_identity,
+                counters=self._recall_counters(bundle),
+                latency_ms=recall_latency,
+                status="dry_run",
+            )
+            return EnrichResult(
+                response="",
+                trace={},
+                context=bundle.context,
+                request_id=request_id,
+                payload={},
+                enriched_prompt=enriched_prompt,
+                downstream_request_id=None,
+            )
+
         try:
             core_result = self._core.prompt_run(
                 enriched_prompt,
                 resolved_identity,
+                model=model,
                 domain=resolved_identity.domain_tag,
             )
         except Exception:
             self._telemetry.record(
                 event="enrich.recall",
                 request_id=request_id,
-                core_request_id=None,
+                downstream_request_id=None,
                 identity=resolved_identity,
                 counters=self._recall_counters(bundle),
                 latency_ms=recall_latency,
@@ -130,12 +184,23 @@ class MemoryEnricher:
         self._telemetry.record(
             event="enrich.recall",
             request_id=request_id,
-            core_request_id=core_result.request_id,
+            downstream_request_id=core_result.request_id,
             identity=resolved_identity,
             counters=self._recall_counters(bundle),
             latency_ms=recall_latency,
             status="ok",
         )
+
+        if not write_back_on:
+            return EnrichResult(
+                response=core_result.response,
+                trace=core_result.trace,
+                context=bundle.context,
+                request_id=request_id,
+                payload=core_result.payload,
+                enriched_prompt=enriched_prompt,
+                downstream_request_id=core_result.request_id,
+            )
 
         write_started = time.monotonic()
         try:
@@ -148,7 +213,7 @@ class MemoryEnricher:
             self._telemetry.record(
                 event="enrich.write_back",
                 request_id=request_id,
-                core_request_id=core_result.request_id,
+                downstream_request_id=core_result.request_id,
                 identity=resolved_identity,
                 counters={
                     "dialog_written": 0,
@@ -165,7 +230,7 @@ class MemoryEnricher:
         self._telemetry.record(
             event="enrich.write_back",
             request_id=request_id,
-            core_request_id=core_result.request_id,
+            downstream_request_id=core_result.request_id,
             identity=resolved_identity,
             counters=counters,
             latency_ms=_latency_ms(write_started),
@@ -176,6 +241,9 @@ class MemoryEnricher:
             trace=core_result.trace,
             context=bundle.context,
             request_id=request_id,
+            payload=core_result.payload,
+            enriched_prompt=enriched_prompt,
+            downstream_request_id=core_result.request_id,
         )
 
     def recall(
@@ -184,45 +252,50 @@ class MemoryEnricher:
         prompt: str,
         *,
         rag: tuple[RagChunk, ...] = (),
+        include_memory: bool = True,
     ) -> RecallBundle:
         delegated: list[RecallItem] = []
-        for type_name, namespace in DELEGATED_TYPES:
-            delegated.extend(
+        semantic: tuple[RecallItem, ...] = ()
+        episodic: tuple[RecallItem, ...] = ()
+        dialog: tuple[RecallItem, ...] = ()
+        if include_memory:
+            for type_name, namespace in DELEGATED_TYPES:
+                delegated.extend(
+                    self._store.recall(
+                        RecallQuery(
+                            type_names=(type_name,),
+                            identity=identity,
+                            text=prompt,
+                            namespace=namespace,
+                        )
+                    )
+                )
+
+            semantic = self._recall_ranked_namespaces(
+                "semantic",
+                SEMANTIC_NAMESPACES,
+                self._config.semantic_top_k,
+                identity,
+                prompt,
+            )
+            episodic = self._recall_ranked_namespaces(
+                "episodic",
+                EPISODIC_NAMESPACES,
+                self._config.episodic_top_k,
+                identity,
+                prompt,
+            )
+            dialog = tuple(
                 self._store.recall(
                     RecallQuery(
-                        type_names=(type_name,),
+                        type_names=("dialog",),
                         identity=identity,
                         text=prompt,
-                        namespace=namespace,
+                        domain_tag=identity.domain_tag,
+                        top_k=self._config.dialog_top_k,
                     )
                 )
             )
-
-        semantic = self._recall_ranked_namespaces(
-            "semantic",
-            SEMANTIC_NAMESPACES,
-            self._config.semantic_top_k,
-            identity,
-            prompt,
-        )
-        episodic = self._recall_ranked_namespaces(
-            "episodic",
-            EPISODIC_NAMESPACES,
-            self._config.episodic_top_k,
-            identity,
-            prompt,
-        )
-        dialog = tuple(
-            self._store.recall(
-                RecallQuery(
-                    type_names=("dialog",),
-                    identity=identity,
-                    text=prompt,
-                    domain_tag=identity.domain_tag,
-                    top_k=self._config.dialog_top_k,
-                )
-            )
-        )
         lines = (
             _lines("delegated", delegated, permanent=True)
             + _rag_lines(rag)
@@ -248,6 +321,8 @@ class MemoryEnricher:
         self,
         identity: MemoryIdentity,
         prompt: str,
+        *,
+        auto_domain: bool,
     ) -> tuple[MemoryIdentity, bool, float | None]:
         if identity.domain_tag is not None:
             domain = identity.domain_tag
@@ -261,11 +336,7 @@ class MemoryEnricher:
             if domain == "general":
                 return replace(identity, domain_tag=None), False, None
             return identity, False, None
-        if not (
-            self._config.rag_enabled
-            and self._rag_store is not None
-            and self._config.rag_auto_domain
-        ):
+        if not auto_domain:
             return identity, False, None
         route = self._core.domain_route(prompt, identity)
         if route.confidence < self._config.rag_auto_domain_min_confidence:
@@ -282,8 +353,9 @@ class MemoryEnricher:
         prompt: str,
         auto_route: bool,
         route_confidence: float | None,
+        use_rag: bool,
     ) -> tuple[RagChunk, ...]:
-        if not self._config.rag_enabled or self._rag_store is None:
+        if not use_rag or self._rag_store is None:
             return ()
         started = time.monotonic()
         try:
@@ -330,7 +402,7 @@ class MemoryEnricher:
         self._telemetry.record(
             event="rag.retrieve",
             request_id=request_id,
-            core_request_id=None,
+            downstream_request_id=None,
             identity=identity,
             counters={
                 "k_requested": self._config.rag_top_k,

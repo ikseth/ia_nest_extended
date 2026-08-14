@@ -27,7 +27,7 @@ def _enricher(postgres_store, local_service_stub, tmp_path):
     )
     return MemoryEnricher(
         store=postgres_store,
-        core=CoreClient(local_service_stub.base_url, timeout_seconds=2),
+        core=CoreClient(local_service_stub.base_url, connect_timeout_seconds=2),
         telemetry=TelemetryWriter(tmp_path),
         config=config,
     )
@@ -123,4 +123,4 @@ def test_phase3_d_telemetry_events_share_request_id(
         "enrich.write_back",
     ]
     assert events[0]["request_id"] == events[1]["request_id"]
-    assert events[0]["core_request_id"] == events[1]["core_request_id"]
+    assert events[0]["downstream_request_id"] == events[1]["downstream_request_id"]

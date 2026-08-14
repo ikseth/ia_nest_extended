@@ -9,11 +9,28 @@ import pytest
 
 @pytest.fixture
 def local_service_stub():
-    state = SimpleNamespace(requests=[], counter=0)
+    state = SimpleNamespace(
+        requests=[],
+        counter=0,
+        stream_gate=None,
+        stream_events=(
+            ("token", '{"chunk": "uno"}'),
+            ("token", '{"chunk": "dos"}'),
+            ("done", '{"stop_reason": "stop"}'),
+        ),
+    )
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             state.requests.append((self.path, None))
+            if self.path == "/runtime/health":
+                self._send(
+                    {
+                        "status": "ok",
+                        "campo_desconocido": {"anidado": [1, 2, 3]},
+                    }
+                )
+                return
             if self.path == "/domain/list":
                 self._send(
                     {
@@ -33,6 +50,33 @@ def local_service_stub():
             state.requests.append((self.path, payload))
             if self.path == "/api/embed":
                 self._send({"embeddings": [[3.0, 4.0]]})
+                return
+            if self.path == "/capability/nueva":
+                # Capacidad que esta capa NO conoce: prueba de conformidad.
+                self._send(
+                    {
+                        "eco": payload,
+                        "campo_desconocido": ["a", "b"],
+                        "anidado": {"otro_campo": 42},
+                    }
+                )
+                return
+            if self.path == "/prompt/stream":
+                self._send_stream()
+                return
+            if self.path == "/eval/run":
+                self._send(
+                    {
+                        "error": {
+                            "type": "ConfigError",
+                            "message": "suite desconocida",
+                            "field": "suite",
+                            "origin": "ia_nest_core",
+                            "request_id": "core-error-1",
+                        }
+                    },
+                    status=400,
+                )
                 return
             if self.path == "/domain/route":
                 if "low-route" in payload["prompt"]:
@@ -106,13 +150,27 @@ def local_service_stub():
         def log_message(self, format, *args):
             return
 
-        def _send(self, payload):
+        def _send(self, payload, status=200):
             body = json.dumps(payload).encode()
-            self.send_response(200)
+            self.send_response(status)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+
+        def _send_stream(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.end_headers()
+            for index, (name, data) in enumerate(state.stream_events):
+                if index == len(state.stream_events) - 1:
+                    gate = state.stream_gate
+                    if gate is not None and not gate.wait(timeout=10):
+                        return
+                self.wfile.write(
+                    f"event: {name}\ndata: {data}\n\n".encode()
+                )
+                self.wfile.flush()
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     state.base_url = f"http://127.0.0.1:{server.server_address[1]}"
