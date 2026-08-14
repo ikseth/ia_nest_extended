@@ -1,10 +1,18 @@
-"""Catalogo de capacidades: unico sitio donde se declara lo reenviado.
+"""Catalogo de capacidades: lo propio, y AYUDA de lo ajeno que conocemos.
 
-INTERINO DECLARADO (fase 7a): el reenvio del servicio es GENERICO y no necesita
-esta lista -una capacidad que el core anada es alcanzable sin tocar codigo-.
-La lista existe solo porque el CLI debe construir su ayuda y el core aun no
-ofrece catalogo (`extended CR-0002`, propuesto). Cuando exista `capability.list`,
-sustituir este dato por la consulta debe ser un cambio local a este modulo.
+`FORWARDED_CAPABILITIES` NO es la condicion para poder invocar una capacidad del
+core, y no debe volver a serlo (ADR 0011, punto 11). El reenvio del servicio es
+GENERICO y el CLI resuelve como capacidad reenviada cualquier `GRUPO ACCION` que
+no declare: una capacidad nueva del core es invocable sin editar este fichero.
+
+Lo unico que aporta esta lista es AYUDA ENRIQUECIDA -subcomando documentado,
+verbo declarado, resumen- para las capacidades que hoy conocemos. Conocerlas
+mejora la ergonomia; no las habilita.
+
+INTERINO DECLARADO: sigue siendo una copia del catalogo ajeno, aunque ya no
+bloquee nada. Desaparece cuando el core entregue `capability.list`
+(`extended CR-0002`), momento en que el catalogo de abajo se OBTIENE en
+ejecucion y se fusiona con el propio (ADR 0011, puntos 9 y 10).
 """
 
 from __future__ import annotations

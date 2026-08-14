@@ -5,6 +5,21 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+### Corregido
+- El CLI deja de exigir conocer una capacidad para poder invocarla (ADR 0011,
+  punto 11). Un `GRUPO ACCION` que la piel no declara se resuelve como la
+  capacidad `grupo.accion` y se reenvia por el camino generico del servicio, con
+  las mismas banderas de cuerpo (`--prompt`, `--param`, `--payload`), la misma
+  regla de verbo (sin cuerpo, GET; con cuerpo, POST), el mismo tratamiento de
+  streaming y `--json`, y los mismos codigos de salida. Asi, una capacidad nueva
+  del core es invocable sin editar esta capa, que era el invariante de meta
+  ADR 0007 incumplido en la piel. Un grupo conocido se comporta exactamente como
+  antes, y la ayuda de primer nivel declara la invocacion dinamica.
+  `capabilities.py` se queda, pero cambia de papel: ya no habilita nada, solo
+  aporta la AYUDA enriquecida de lo que conocemos, y desaparece cuando el core
+  entregue `capability.list` (`extended CR-0002`). Sin cambios en el servicio, el
+  sustrato, la memoria ni el RAG. Impacto de version: ninguno.
+
 ### Anadido
 - Enmienda al ADR 0011 (puntos 9-11): el catalogo de capacidades se DECLARA por
   capa y se FUSIONA en tiempo de ejecucion, nunca se copia. Ninguna piel puede
