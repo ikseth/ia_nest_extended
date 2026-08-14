@@ -180,6 +180,13 @@ PETICION, y ninguna bandera de politica decide cableado (hoy `RAG_ENABLED` hace
 las dos cosas y produce un no-op silencioso). Combinacion contradictoria = error
 tipado, no precedencia silenciosa.
 
+Tres decisiones de superficie, en ADR 0011: migracion explicita (deja de migrarse
+en cada arranque); identidad con defaults, con `session_id` generado y RECORDADO
+si no se indica (no uno nuevo por invocacion, que romperia la continuidad de
+`dialog`); y `--domain` unificado -gate de conocimiento, ruteo de modelo y faceta
+de memoria con un solo valor-, divergencia deliberada respecto al core, que los
+separa.
+
 Verificado contra el codigo del core (2026-08-14): la REST del core expone once
 rutas para sus nueve capacidades, asi que el reenvio generico por ruta es viable;
 `POST /task/run` es SSE SIEMPRE, de modo que sobreescribirlo (7b) obliga a hablar

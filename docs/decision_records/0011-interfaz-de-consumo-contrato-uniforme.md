@@ -23,6 +23,26 @@ La interfaz de consumo de esta capa (Fase 7) es el CONTRATO UNIFORME de
    que esta capa versiona de lo ajeno es la GARANTIA de reexponerlo sin
    alterarlo, en el rango de `docs/DEPENDENCIAS.md`.
 
+### Decisiones de superficie derivadas (Fase 7a)
+
+6. **Migracion explicita.** El composition-root VERIFICA el esquema y falla con
+   error tipado indicando el comando a ejecutar; deja de migrarse en cada
+   arranque de cada comando. Hoy un `knowledge status`, que es de solo lectura,
+   muta esquema. Coste asumido: un paso mas en el despliegue.
+7. **La identidad deja de ser obligatoria.** `user_id`, `service`, `session_id` y
+   `namespace` toman defaults de configuracion, alineando con la identidad local
+   por defecto que el core ya define (`core CORE_CONTRACT.md`). Si no se indica
+   `session_id`, se GENERA UNO Y SE RECUERDA (persistido localmente, no
+   versionado), no uno nuevo por invocacion: con un aleatorio por comando, el
+   tier `dialog` dejaria de encadenar dos invocaciones seguidas y la memoria
+   conversacional del CLI no funcionaria.
+8. **`--domain` unificado, divergencia deliberada.** El core separa `--domain`
+   (rutea el modelo) de `--domain-tag` (etiqueta de identidad y traza). Esta capa
+   funde ambos en un unico valor, que gatea el conocimiento por dominio, viaja al
+   core como dominio de ruteo y queda como faceta de lectura de la memoria. Es lo
+   que el codigo ya hace; se registra para que no se "corrija" por simetria con el
+   core anadiendo un `--domain-tag` que aqui no tendria sentido.
+
 ## Motivo
 
 La Fase 7 estaba escrita como "consolidar la interfaz de consumo", sin decir que

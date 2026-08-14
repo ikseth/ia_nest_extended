@@ -6,6 +6,18 @@ Sin acentos por convencion.
 ## [No publicado]
 
 ### Anadido
+- `docs/handoff/fase_7a_brief.md`: brief de implementacion de la Fase 7a para el
+  agente codificador (composition-root perezoso, fachada con reenvio generico y
+  sobreescritura de `prompt.run`, regla tipado/opaco, timeout de conexion mas
+  inactividad, superficie de parametros, errores tipados con los codigos de
+  salida del core, piel CLI instalable y retirada de los cuatro harnesses). Doce
+  criterios de aceptacion falsables, los tres primeros el test de conformidad de
+  meta ADR 0007 desglosado. Impacto de version: ninguno.
+- Tres decisiones de superficie de la Fase 7a (ADR 0011, puntos 6-8): migracion
+  explicita en lugar de migrar en cada arranque; identidad con defaults, con
+  `session_id` generado y RECORDADO si no se indica -no uno nuevo por invocacion,
+  que romperia la continuidad de `dialog`-; y `--domain` unificado como
+  divergencia deliberada respecto al core, que separa ruteo y etiqueta.
 - `extended CR-0002` (propuesto, destino core): descubrimiento de capacidades en
   REST (`capability.list`). Motivo verificado contra el codigo del core: el
   reenvio generico del contrato uniforme lo cumplen REST (once rutas proxeables)
