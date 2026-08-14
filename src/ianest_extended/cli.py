@@ -3,6 +3,11 @@
 Esta piel es FINA: no conoce adaptadores ni clientes, solo el servicio. Toda la
 logica vive en `ExtendedService`, de modo que REST y MCP (fase 7c) la compartan
 sin divergir.
+
+Ninguna capacidad necesita ser CONOCIDA para poder invocarse (ADR 0011, punto
+11): un `GRUPO ACCION` que esta piel no declara se resuelve como la capacidad
+`grupo.accion` y se reenvia por el camino generico del servicio. Conocerla de
+antemano solo sirve para ofrecer mejor ayuda, nunca para habilitarla.
 """
 
 from __future__ import annotations
@@ -23,8 +28,12 @@ PROG = "ianest-extended"
 
 
 def main(argv: list[str] | None = None) -> int:
+    tokens = list(sys.argv[1:] if argv is None else argv)
     parser = _build_parser()
-    args = parser.parse_args(argv)
+    group = _first_positional(tokens)
+    if group is not None and group not in _group_names(parser):
+        return _run_unknown_capability(group, tokens)
+    args = parser.parse_args(tokens)
     if args.command is None:
         parser.print_help()
         return 2
@@ -41,6 +50,134 @@ def main(argv: list[str] | None = None) -> int:
         return _emit_error(exc, json_output=getattr(args, "json", False))
 
 
+# --- capacidad no declarada por esta piel ---------------------------------
+
+
+def _first_positional(tokens: list[str]) -> str | None:
+    """Primer token posicional, saltando las opciones globales y sus valores."""
+    skip_next = False
+    for token in tokens:
+        if skip_next:
+            skip_next = False
+            continue
+        if token == "--":
+            continue
+        if token.startswith("-"):
+            if token in ("-h", "--help"):
+                # La ayuda pedida antes de cualquier posicional es la general.
+                return None
+            if token == "--env-file":
+                skip_next = True
+            continue
+        return token
+    return None
+
+
+def _group_names(parser: argparse.ArgumentParser) -> set[str]:
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            return set(action.choices)
+    return set()
+
+
+def _run_unknown_capability(group: str, tokens: list[str]) -> int:
+    """Resuelve `GRUPO ACCION` desconocidos como capacidad reenviada.
+
+    Mismas banderas de cuerpo, misma regla de verbo (sin cuerpo, GET; con
+    cuerpo, POST), mismo tratamiento de streaming, `--json` y codigos de salida
+    que el reenvio de las capacidades declaradas. No se inventan rutas: la
+    capacidad es literalmente `grupo.accion`, y si el core no la sirve, su error
+    llega tal cual.
+    """
+    action = _second_positional(tokens, group)
+    if action is None:
+        return _emit_error(
+            ExtendedError(
+                f"'{group}' no es un grupo de esta capa; para invocar una "
+                "capacidad del core hace falta GRUPO ACCION",
+                "capability",
+            ),
+            json_output="--json" in tokens,
+        )
+    name = f"{group}.{action}"
+    parser = _build_unknown_capability_parser(group, action)
+    remaining = _without(tokens, group, action)
+    args = parser.parse_args(remaining)
+    try:
+        config = ExtendedConfig.from_env(env_file=args.env_file)
+        service = ExtendedService.from_config(config)
+        payload = _declared_payload(config, args)
+        result = service.forward(name, payload)
+        return _emit_forward(result, args.json)
+    except ExtendedError as exc:
+        return _emit_error(exc, json_output=args.json)
+
+
+def _second_positional(tokens: list[str], group: str) -> str | None:
+    remaining = _tokens_after_group(tokens, group)
+    return _first_positional(remaining)
+
+
+def _tokens_after_group(tokens: list[str], group: str) -> list[str]:
+    index = tokens.index(group)
+    return tokens[index + 1 :]
+
+
+def _without(tokens: list[str], group: str, action: str) -> list[str]:
+    index = tokens.index(group)
+    rest = tokens[index + 1 :]
+    action_index = rest.index(action)
+    return tokens[:index] + rest[:action_index] + rest[action_index + 1 :]
+
+
+def _build_unknown_capability_parser(
+    group: str,
+    action: str,
+) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog=f"{PROG} {group} {action}",
+        description=(
+            f"Reenvia la capacidad '{group}.{action}' al core SIN alterar su "
+            "respuesta. Esta piel no la declara: se resuelve por el camino "
+            "generico, de modo que una capacidad nueva del core es invocable "
+            "sin editar esta capa."
+        ),
+        epilog=(
+            "Sin cuerpo declarado la peticion es GET; con cuerpo, POST. El "
+            "cuerpo se declara con --prompt, --param y --payload."
+        ),
+    )
+    parser.add_argument(
+        "--env-file",
+        default=".env",
+        metavar="RUTA",
+        help="fichero de entorno de la capa (por defecto: %(default)s)",
+    )
+    parser.add_argument("--prompt", metavar="TEXTO")
+    parser.add_argument(
+        "--param",
+        action="append",
+        default=[],
+        metavar="CLAVE=VALOR",
+        help="campo del cuerpo reenviado; se puede repetir",
+    )
+    parser.add_argument(
+        "--payload",
+        metavar="JSON",
+        help="cuerpo completo reenviado, como objeto JSON",
+    )
+    _add_identity_arguments(parser)
+    _add_json_argument(parser)
+    return parser
+
+
+def _declared_payload(config, args) -> dict[str, Any] | None:
+    """Cuerpo solo si el operador declaro alguno; si no, peticion sin cuerpo."""
+    if args.prompt is None and not args.param and not args.payload:
+        return None
+    return _forward_payload(config, args)
+
+
 # --- parser ---------------------------------------------------------------
 
 
@@ -53,7 +190,10 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
         epilog=(
             f"Usa '{PROG} GRUPO --help' para ver sus acciones y "
-            f"'{PROG} GRUPO ACCION --help' para ver todas sus opciones."
+            f"'{PROG} GRUPO ACCION --help' para ver todas sus opciones. "
+            "CUALQUIER capacidad del core es invocable como GRUPO ACCION "
+            "aunque no aparezca en esta lista: los grupos listados solo son "
+            "los que esta capa conoce lo bastante para documentarlos."
         ),
     )
     parser.add_argument(
@@ -518,12 +658,17 @@ def _forward(service, config, args) -> int:
     if capability.method != "GET":
         payload = _forward_payload(config, args)
     result = service.forward(capability.name, payload, method=capability.method)
+    return _emit_forward(result, args.json)
+
+
+def _emit_forward(result, json_output: bool) -> int:
+    """Salida del reenvio: JSON opaco o retransmision evento a evento."""
     if hasattr(result, "payload"):
-        _print_json(result.payload, compact=args.json)
+        _print_json(result.payload, compact=json_output)
         return 0
     try:
         for event in result:
-            if args.json:
+            if json_output:
                 _print_json(
                     {"event": event.event, "data": event.data},
                     compact=True,

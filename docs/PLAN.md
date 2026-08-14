@@ -227,6 +227,50 @@ capa sin saber cuantas hay debajo.
 Requisitos en `docs/VERSIONADO.md`. Criterio: contrato versionado y consumible
 por los tres consumos de arriba.
 
+## Deuda de diseno declarada
+
+Hallazgos reconciliados que NO son de la fase en curso. Se registran con su
+disparador para que no se pierdan ni se cuelen sin decidir.
+
+### D1. Suelo de relevancia en la recuperacion RAG
+
+Hoy la recuperacion devuelve `rag_top_k` chunks SIEMPRE, por poco que se parezcan
+al prompt: hay top-k y presupuesto de tokens, pero ningun umbral minimo de
+similitud. Observado en laboratorio (2026-08-14): a un "que recuerdas de mi?" sin
+dominio se le inyectaron primeros auxilios y critica literaria.
+
+Es un defecto mecanico y barato de corregir; no requiere juicio ni conscience.
+Distinto es saber que una pregunta NO necesita conocimiento: eso si es juicio, y
+es de conscience. Disparador: antes de crecer el corpus, porque el ruido escala
+con el.
+
+### D2. El filtro de dominio excluye las memorias sin dominio
+
+Con `--domain` se filtran tambien los tiers experienciales (`semantic`,
+`episodic`), de modo que una memoria SIN `domain_tag` queda fuera. Efecto
+observado: preguntando con dominio, el ente "olvida" lo que sabe de su
+interlocutor.
+
+La regla anti-colision (`docs/FORMA_ENRIQUECIMIENTO.md`, decision 2) esta pensada
+para dominios INCOMPATIBLES; una memoria sin dominio no es incompatible, es
+neutra. Propuesta a reconciliar: que las memorias sin `domain_tag` sean siempre
+candidatas y el filtro excluya solo las de un dominio distinto. Toca ranking y
+recall, fuera del alcance de la Fase 7. Nota: los tipos delegados
+(`identity`, `principles`, `safety`) ya se inyectan de forma incondicional y no
+estan afectados.
+
+### D3. La identidad como fuente conmutable
+
+Las fuentes de enriquecimiento son declaradas por la capa y desactivables por
+nombre (`docs/EXTENDED_CONTRACT.md`). La identidad del ente debe ser una de
+ellas, con su switch (`--personality` o equivalente), para poder comparar
+respuestas con y sin la capa de personalidad.
+
+Motivo: la personalidad no es neutra ni siquiera en una pregunta tecnica -puede
+mejorar o empeorar la respuesta-, y sin switch no hay forma de medir cual de las
+dos cosas hace. No se implementa en la Fase 7a. Disparador: cuando conscience
+escriba en los tipos delegados y haya algo que conmutar.
+
 ## Fuera de este plan
 
 - Cambios en el core.

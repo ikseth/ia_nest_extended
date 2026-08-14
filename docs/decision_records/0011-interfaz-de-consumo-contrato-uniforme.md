@@ -43,6 +43,29 @@ La interfaz de consumo de esta capa (Fase 7) es el CONTRATO UNIFORME de
    que el codigo ya hace; se registra para que no se "corrija" por simetria con el
    core anadiendo un `--domain-tag` que aqui no tendria sentido.
 
+### Enmienda (2026-08-14): el catalogo se declara y se fusiona, no se copia
+
+9. **Cada capa declara SOLO sus propias capacidades.** Ninguna capa escribe en su
+   codigo el catalogo de otra.
+10. **El catalogo de la capa inferior se OBTIENE en tiempo de ejecucion** y se
+    fusiona con el propio. De ese catalogo fusionado salen TODAS las pieles -CLI,
+    REST, MCP y la GUI futura-: una sola fuente, varios consumidores.
+11. **Ninguna piel puede exigir conocer una capacidad para poder invocarla.** El
+    CLI resuelve `GRUPO ACCION` desconocidos como capacidad reenviada; conocerla
+    de antemano solo sirve para ofrecer mejor ayuda, nunca para habilitarla.
+
+Motivo de la enmienda: la implementacion de la Fase 7a dejo el catalogo de lo
+reenviado como una lista escrita a mano, y eso obligaba a EDITAR esta capa cada
+vez que el core anadiera una capacidad, aunque el servicio ya la alcanzase sin
+tocar nada. Es el invariante de meta ADR 0007 incumplido en la piel: la regla
+correcta es que una feature del core pueda REQUERIR trabajo aqui para
+aprovecharla -un puerto, una capacidad ampliada-, pero nunca obligar a COPIAR
+codigo suyo.
+
+El punto 11 se implementa sin depender de nadie. Los puntos 9 y 10 se completan
+cuando el core entregue `capability.list` (`extended CR-0002`), que pasa asi de
+comodidad a mecanismo: es la forma de obtener el catalogo ajeno sin replicarlo.
+
 ## Motivo
 
 La Fase 7 estaba escrita como "consolidar la interfaz de consumo", sin decir que

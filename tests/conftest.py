@@ -23,6 +23,10 @@ def local_service_stub():
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             state.requests.append((self.path, None))
+            if self.path == "/estado/nuevo":
+                # Capacidad desconocida servida por GET (sin cuerpo).
+                self._send({"estado": "nuevo", "campo_desconocido": True})
+                return
             if self.path == "/runtime/health":
                 self._send(
                     {
@@ -61,8 +65,23 @@ def local_service_stub():
                     }
                 )
                 return
-            if self.path == "/prompt/stream":
+            if self.path in ("/prompt/stream", "/flujo/nuevo"):
                 self._send_stream()
+                return
+            if self.path == "/capability/rota":
+                # Capacidad desconocida que falla en el core.
+                self._send(
+                    {
+                        "error": {
+                            "type": "AdapterError",
+                            "message": "el adaptador no respondio",
+                            "field": "modelo",
+                            "origin": "ia_nest_core",
+                            "request_id": "core-error-2",
+                        }
+                    },
+                    status=400,
+                )
                 return
             if self.path == "/eval/run":
                 # Error de la capa inferior CON origin declarado.
