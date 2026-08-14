@@ -4,7 +4,7 @@ Destinatario: agente codificador (Codex/Sonnet).
 Autor: Claude (Opus), rol disenador.
 Verificacion: Opus, con reconciliacion del usuario. NUNCA quien implementa.
 Fecha: 2026-08-14
-Base: `main`, commit `9df7ac6`.
+Base: `main`, su ultimo commit. Rama propia desde ahi.
 
 Estado de contrato: reconciliado. Gobiernan `extended ADR 0011`, `meta ADR 0007`
 (contrato uniforme) y `docs/VERSIONADO.md`. No hay diseno abierto en esta tarea.
