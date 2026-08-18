@@ -96,6 +96,60 @@ class MemoryEnricher:
         Los tres estados de cada bandera importan: `None` toma el default de
         configuracion; `True`/`False` son override por peticion.
         """
+        return self._enrich(
+            identity,
+            prompt,
+            use_memory=use_memory,
+            use_rag=use_rag,
+            write_back=write_back,
+            auto_domain=auto_domain,
+            model=model,
+            dry_run=dry_run,
+            request_id=request_id,
+            core_run=self._core.prompt_run,
+        )
+
+    def enrich_reasoning(
+        self,
+        identity: MemoryIdentity,
+        prompt: str,
+        *,
+        use_memory: bool | None = None,
+        use_rag: bool | None = None,
+        write_back: bool | None = None,
+        auto_domain: bool | None = None,
+        model: str | None = None,
+        dry_run: bool = False,
+        request_id: str | None = None,
+    ) -> EnrichResult:
+        """Mismo vertical de enriquecimiento para `reasoning.run`."""
+        return self._enrich(
+            identity,
+            prompt,
+            use_memory=use_memory,
+            use_rag=use_rag,
+            write_back=write_back,
+            auto_domain=auto_domain,
+            model=model,
+            dry_run=dry_run,
+            request_id=request_id,
+            core_run=self._core.reasoning_run,
+        )
+
+    def _enrich(
+        self,
+        identity: MemoryIdentity,
+        prompt: str,
+        *,
+        use_memory: bool | None,
+        use_rag: bool | None,
+        write_back: bool | None,
+        auto_domain: bool | None,
+        model: str | None,
+        dry_run: bool,
+        request_id: str | None,
+        core_run,
+    ) -> EnrichResult:
         memory_on = (
             self._config.memory_enabled if use_memory is None else use_memory
         )
@@ -163,7 +217,7 @@ class MemoryEnricher:
             )
 
         try:
-            core_result = self._core.prompt_run(
+            core_result = core_run(
                 enriched_prompt,
                 resolved_identity,
                 model=model,
@@ -202,39 +256,11 @@ class MemoryEnricher:
                 downstream_request_id=core_result.request_id,
             )
 
-        write_started = time.monotonic()
-        try:
-            counters, status = self._write_back(
-                identity=resolved_identity,
-                prompt=prompt,
-                core_result=core_result,
-            )
-        except Exception:
-            self._telemetry.record(
-                event="enrich.write_back",
-                request_id=request_id,
-                downstream_request_id=core_result.request_id,
-                identity=resolved_identity,
-                counters={
-                    "dialog_written": 0,
-                    "items_extracted": 0,
-                    "items_written": 0,
-                    "items_reinforced": 0,
-                    "items_discarded": 0,
-                    "invalid_json": 0,
-                },
-                latency_ms=_latency_ms(write_started),
-                status="error",
-            )
-            raise
-        self._telemetry.record(
-            event="enrich.write_back",
+        self.write_back(
             request_id=request_id,
-            downstream_request_id=core_result.request_id,
             identity=resolved_identity,
-            counters=counters,
-            latency_ms=_latency_ms(write_started),
-            status=status,
+            prompt=prompt,
+            core_result=core_result,
         )
         return EnrichResult(
             response=core_result.response,
@@ -253,6 +279,8 @@ class MemoryEnricher:
         *,
         rag: tuple[RagChunk, ...] = (),
         include_memory: bool = True,
+        token_budget: int | None = None,
+        rag_token_budget: int | None = None,
     ) -> RecallBundle:
         delegated: list[RecallItem] = []
         semantic: tuple[RecallItem, ...] = ()
@@ -305,8 +333,16 @@ class MemoryEnricher:
         )
         context = _compose_context(
             lines,
-            token_budget=self._config.memory_budget_tokens,
-            rag_token_budget=self._config.rag_max_tokens,
+            token_budget=(
+                self._config.memory_budget_tokens
+                if token_budget is None
+                else token_budget
+            ),
+            rag_token_budget=(
+                self._config.rag_max_tokens
+                if rag_token_budget is None
+                else rag_token_budget
+            ),
         )
         return RecallBundle(
             delegated=tuple(delegated),
@@ -387,6 +423,23 @@ class MemoryEnricher:
             status="ok",
         )
         return chunks
+
+    def retrieve_rag(
+        self,
+        *,
+        request_id: str,
+        identity: MemoryIdentity,
+        prompt: str,
+    ) -> tuple[RagChunk, ...]:
+        """Recupera RAG para un dominio ya resuelto, sin llamar al router."""
+        return self._retrieve_rag(
+            request_id=request_id,
+            identity=identity,
+            prompt=prompt,
+            auto_route=False,
+            route_confidence=None,
+            use_rag=True,
+        )
 
     def _record_rag_retrieve(
         self,
@@ -519,6 +572,51 @@ class MemoryEnricher:
             )
             counters["items_written"] += 1
         return counters, "ok"
+
+    def write_back(
+        self,
+        *,
+        request_id: str,
+        identity: MemoryIdentity,
+        prompt: str,
+        core_result: CoreResult,
+    ) -> tuple[dict[str, int], str]:
+        """Aplica la politica comun al par original/final de otra capacidad."""
+        started = time.monotonic()
+        try:
+            counters, status = self._write_back(
+                identity=identity,
+                prompt=prompt,
+                core_result=core_result,
+            )
+        except Exception:
+            self._telemetry.record(
+                event="enrich.write_back",
+                request_id=request_id,
+                downstream_request_id=core_result.request_id,
+                identity=identity,
+                counters={
+                    "dialog_written": 0,
+                    "items_extracted": 0,
+                    "items_written": 0,
+                    "items_reinforced": 0,
+                    "items_discarded": 0,
+                    "invalid_json": 0,
+                },
+                latency_ms=_latency_ms(started),
+                status="error",
+            )
+            raise
+        self._telemetry.record(
+            event="enrich.write_back",
+            request_id=request_id,
+            downstream_request_id=core_result.request_id,
+            identity=identity,
+            counters=counters,
+            latency_ms=_latency_ms(started),
+            status=status,
+        )
+        return counters, status
 
     def _recall_counters(self, bundle: RecallBundle) -> dict[str, int]:
         return {

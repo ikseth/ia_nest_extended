@@ -1,6 +1,6 @@
 # Plan de ia_nest_extended
 
-Estado: fases 0-4 (memoria) reconciliadas; fases 5-7 en BORRADOR
+Estado: fases 0-5c y 7a-7b implementadas; fases 6 y 7c-7d en BORRADOR
 Version: 0.1 - 2026-07-18
 
 Misma disciplina que el core: fases con criterio de salida falsable; no se abre
@@ -103,25 +103,25 @@ memorias estrictas.
 CR-0001 RESUELTO (core ADR 0040, REFORMULADO): en vez de un checkpoint, la forma
 adoptada es `task.plan` (devuelve el plan con el dominio de cada subtarea) +
 `task.run` que acepta un `plan` enriquecido entre las dos llamadas. Impacto en el
-core: minor, objetivo v0.4. NO entregado aun (no esta en el contrato ni en el
-codigo del core; el lab corre v0.2.0).
+core: minor, linea v0.4 completa en `main` (`705941e`) pero aun SIN tag; la
+dependencia declarada no se mueve hasta que exista v0.4.0.
 
 Estado de los dos caminos:
 
 - RAG upfront (`prompt.run`): DESBLOQUEADO. No depende de `task.plan`. El sustrato
   (ingesta, troceo, embedding, almacen, recuperacion por dominio) es agnostico de
   la version del core; la integracion usa el `prompt.run` estable. Se construye ya.
-- RAG per-subtarea (`task.run`): espera a que el core entregue `task.plan` (v0.4)
-  y al trabajo de cliente correspondiente (hoy extended solo habla `prompt.run`).
+- RAG per-subtarea (`task.run`): IMPLEMENTADO en la Fase 7b contra el `main` de
+  la linea v0.4 del core; `docs/DEPENDENCIAS.md` espera al tag v0.4.0.
 
 RAG no es un tier de memoria: es un subsistema hermano que comparte el mecanismo
 de inyeccion y su presupuesto, no el modelo (`docs/VISION_MEMORIA.md`). Forma
 reconciliada en ADR 0008: gate por dominio con similitud-en-todo sin dominio (D1);
 dominio explicito o via `domain.route` semantico (D2, core ADR 0043); presupuesto
 duro y minimo (D3). El camino upfront (`prompt.run`) se implementa ya
-(`docs/handoff/fase_5_brief.md`); el per-subtarea (`task.run`) espera a `task.plan`
-(core v0.4). Criterio: recuperacion relevante por dominio inyectada en el prompt,
-dentro del presupuesto; sin tocar el core.
+(`docs/handoff/fase_5_brief.md`); el per-subtarea (`task.run`) se implementa en
+la Fase 7b sobre `task.plan` (core v0.4). Criterio: recuperacion relevante por
+dominio inyectada en el prompt, dentro del presupuesto; sin tocar el core.
 
 ## Fase 5b: Conocimiento por dominio
 
@@ -187,12 +187,12 @@ si no se indica (no uno nuevo por invocacion, que romperia la continuidad de
 de memoria con un solo valor-, divergencia deliberada respecto al core, que los
 separa.
 
-Verificado contra el codigo del core (2026-08-14): la REST del core expone once
-rutas para sus nueve capacidades, asi que el reenvio generico por ruta es viable;
-`POST /task/run` es SSE SIEMPRE, de modo que sobreescribirlo (7b) obliga a hablar
-streaming; y el cliente actual valida campo a campo la respuesta del core, que es
-re-declarar su contrato en codigo. De ahi la regla: TIPADO donde se sobreescribe,
-OPACO donde se reenvia. El modelo de timeout unico pasa a conexion + inactividad.
+Verificado contra el codigo del core: la REST expone un catalogo derivado de una
+fuente unica, asi que el reenvio generico por ruta es viable. Desde la linea v0.4,
+`POST /task/run` devuelve JSON y el flujo vive en `POST /task/stream` (core
+ADR 0046, enmienda D5-a). El cliente valida campo a campo solo lo que esta capa
+necesita interpretar: TIPADO donde se sobreescribe, OPACO donde se reenvia. El
+modelo de timeout unico pasa a conexion + inactividad.
 
 Descubrimiento: el CLI no puede reenviar lo que no puede enumerar (necesita el
 catalogo para construir su ayuda). Se pide al core por `extended CR-0002`
@@ -212,9 +212,18 @@ Criterio de salida (falsable):
 
 ### Fase 7b: `reasoning.run` y `task.run` sobreescritos
 
-`task.run` enriquecido por subtarea via `task.plan` + `task.run(plan)`
-(`extended CR-0001`, core ADR 0040). Requiere core v0.4, no entregado: esta
-rebanada espera y no bloquea a 7a.
+IMPLEMENTADA. `reasoning.run` reusa el vertical upfront de `prompt.run`.
+`task.run` pide `task.plan`, copia el objeto sin `params`, edita solo cada
+`plan[i].prompt` con RAG de su dominio resuelto y devuelve el plan al core
+(`extended CR-0001`, core ADR 0040/0047/0048). La memoria experiencial y
+delegada se inyecta una sola vez en el prompt superior para COMBINE/EVALUATE;
+el write-back conserva solo el prompt original y la respuesta combinada.
+
+Coste declarado: el plan suministrado no puede re-planificarse; `--no-enrich`
+conserva el camino sin plan y su capacidad de re-planificacion. `task.stream`
+sigue reenviado sin enriquecer porque el core no admite plan suministrado en esa
+capacidad. Implementado contra el `main` de la linea v0.4 del core (`705941e`),
+aun sin tag; el rango de `docs/DEPENDENCIAS.md` espera a v0.4.0.
 
 ### Fase 7c: REST y MCP
 

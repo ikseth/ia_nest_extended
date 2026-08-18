@@ -4,8 +4,8 @@ Aplica meta ADR 0007 (contrato uniforme):
 
 - REENVIA con un mecanismo GENERICO -uno, no uno por capacidad- lo que esta capa
   no enriquece, en JSON y en `text/event-stream`.
-- SOBREESCRIBE `prompt.run`, conservando la forma de peticion y respuesta del
-  core: lo unico que cambia es que el prompt ejecutado lleva contexto.
+- SOBREESCRIBE `prompt.run`, `reasoning.run` y `task.run`, conservando la forma
+  de respuesta del core; en tareas, el RAG se aplica por subtarea.
 - ANADE las capacidades propias `memory_type.*`, `memory.*` y `knowledge.*`.
 
 Todas las pieles (CLI hoy; REST y MCP en la fase 7c) usan esta superficie y no
@@ -15,7 +15,7 @@ tienen logica propia.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -25,6 +25,7 @@ from .clients import ForwardedJson, ForwardedStream
 from .composition import ExtendedComposition
 from .config import ExtendedConfig
 from .errors import EnrichmentParameterError, ExtendedError
+from .enrichment import compose_prompt
 from .ingest import ingest_path
 from .knowledge import (
     confirm_domain,
@@ -54,6 +55,41 @@ class PromptRunResult:
     enriched: bool = True
     dry_run: bool = False
     downstream_request_id: str | None = None
+
+    @property
+    def response(self) -> str:
+        value = self.payload.get("response")
+        return "" if value is None else str(value)
+
+
+@dataclass(frozen=True, slots=True)
+class ReasoningRunResult:
+    """Respuesta intacta de `reasoning.run` y metadatos internos de capa."""
+
+    payload: dict[str, Any]
+    request_id: str
+    context: str = ""
+    enriched_prompt: str = ""
+    enriched: bool = True
+    dry_run: bool = False
+    downstream_request_id: str | None = None
+
+    @property
+    def output(self) -> str:
+        value = self.payload.get("output")
+        return "" if value is None else str(value)
+
+
+@dataclass(frozen=True, slots=True)
+class TaskRunResult:
+    """Respuesta intacta de `task.run` y contabilidad propia de enriquecimiento."""
+
+    payload: dict[str, Any]
+    request_id: str
+    enriched: bool
+    downstream_request_id: str | None = None
+    subtasks_enriched: int = 0
+    context: str = ""
 
     @property
     def response(self) -> str:
@@ -168,6 +204,288 @@ class ExtendedService:
         if not plan.enrich:
             return self._passthrough(request_identity, prompt, plan, dry_run)
         return self._enriched(request_identity, prompt, plan, dry_run)
+
+    def reasoning_run(
+        self,
+        prompt: str,
+        identity: MemoryIdentity,
+        *,
+        enrich: bool | None = None,
+        use_memory: bool | None = None,
+        use_rag: bool | None = None,
+        write_back: bool | None = None,
+        domain: str | None = None,
+        auto_domain: bool | None = None,
+        model: str | None = None,
+        dry_run: bool = False,
+    ) -> ReasoningRunResult:
+        plan = self.plan_enrichment(
+            enrich=enrich,
+            use_memory=use_memory,
+            use_rag=use_rag,
+            write_back=write_back,
+            domain=domain,
+            auto_domain=auto_domain,
+            model=model,
+        )
+        request_identity = identity
+        if plan.domain is not None:
+            request_identity = replace(identity, domain_tag=plan.domain)
+        request_id = str(uuid4())
+        started = time.monotonic()
+        if not plan.enrich:
+            if dry_run:
+                self._record_run(
+                    event="reasoning.run",
+                    request_id=request_id,
+                    downstream_request_id=None,
+                    identity=request_identity,
+                    plan=plan,
+                    started=started,
+                    status="dry_run",
+                )
+                return ReasoningRunResult(
+                    payload={},
+                    request_id=request_id,
+                    enriched_prompt=prompt,
+                    enriched=False,
+                    dry_run=True,
+                )
+            try:
+                core_result = self._composition.core().reasoning_run(
+                    prompt,
+                    request_identity,
+                    model=plan.model,
+                    domain=request_identity.domain_tag,
+                )
+            except Exception:
+                self._record_run(
+                    event="reasoning.run",
+                    request_id=request_id,
+                    downstream_request_id=None,
+                    identity=request_identity,
+                    plan=plan,
+                    started=started,
+                    status="error",
+                )
+                raise
+            result = ReasoningRunResult(
+                payload=core_result.payload,
+                request_id=request_id,
+                enriched_prompt=prompt,
+                enriched=False,
+                downstream_request_id=core_result.request_id,
+            )
+        else:
+            rag_store = self._composition.rag_store() if plan.use_rag else None
+            memory_store = (
+                self._composition.memory_store()
+                if plan.use_memory or plan.write_back
+                else _UnavailableMemoryStore()
+            )
+            enricher = self._composition.enricher(
+                memory_store=memory_store,
+                rag_store=rag_store,
+            )
+            try:
+                enriched = enricher.enrich_reasoning(
+                    request_identity,
+                    prompt,
+                    use_memory=plan.use_memory,
+                    use_rag=plan.use_rag,
+                    write_back=plan.write_back,
+                    auto_domain=plan.auto_domain,
+                    model=plan.model,
+                    dry_run=dry_run,
+                    request_id=request_id,
+                )
+            except Exception:
+                self._record_run(
+                    event="reasoning.run",
+                    request_id=request_id,
+                    downstream_request_id=None,
+                    identity=request_identity,
+                    plan=plan,
+                    started=started,
+                    status="error",
+                )
+                raise
+            result = ReasoningRunResult(
+                payload=enriched.payload,
+                request_id=request_id,
+                context=enriched.context,
+                enriched_prompt=enriched.enriched_prompt,
+                enriched=True,
+                dry_run=dry_run,
+                downstream_request_id=enriched.downstream_request_id,
+            )
+        self._record_run(
+            event="reasoning.run",
+            request_id=request_id,
+            downstream_request_id=result.downstream_request_id,
+            identity=request_identity,
+            plan=plan,
+            started=started,
+            status="dry_run" if dry_run else "ok",
+        )
+        return result
+
+    def task_run(
+        self,
+        prompt: str,
+        identity: MemoryIdentity,
+        *,
+        enrich: bool | None = None,
+        use_memory: bool | None = None,
+        use_rag: bool | None = None,
+        write_back: bool | None = None,
+        domain: str | None = None,
+        effort: str | None = None,
+    ) -> TaskRunResult:
+        plan = self.plan_enrichment(
+            enrich=enrich,
+            use_memory=use_memory,
+            use_rag=use_rag,
+            write_back=write_back,
+            domain=domain,
+            auto_domain=False,
+            model=None,
+        )
+        request_id = str(uuid4())
+        started = time.monotonic()
+        memory_identity = (
+            replace(identity, domain_tag=domain) if domain is not None else identity
+        )
+        if not plan.enrich:
+            try:
+                core_result = self._composition.core().task_run(
+                    prompt,
+                    identity,
+                    effort=effort,
+                )
+            except Exception:
+                self._record_task_run(
+                    request_id=request_id,
+                    downstream_request_id=None,
+                    identity=memory_identity,
+                    plan=plan,
+                    started=started,
+                    status="error",
+                    subtasks_enriched=0,
+                )
+                raise
+            self._record_task_run(
+                request_id=request_id,
+                downstream_request_id=core_result.request_id,
+                identity=memory_identity,
+                plan=plan,
+                started=started,
+                status="ok",
+                subtasks_enriched=0,
+            )
+            return TaskRunResult(
+                payload=core_result.payload,
+                request_id=request_id,
+                enriched=False,
+                downstream_request_id=core_result.request_id,
+            )
+
+        rag_store = self._composition.rag_store() if plan.use_rag else None
+        memory_store = (
+            self._composition.memory_store()
+            if plan.use_memory or plan.write_back
+            else _UnavailableMemoryStore()
+        )
+        enricher = self._composition.enricher(
+            memory_store=memory_store,
+            rag_store=rag_store,
+        )
+        subtasks_enriched = 0
+        try:
+            planned = self._composition.core().task_plan(
+                prompt,
+                identity,
+                effort=effort,
+            )
+            plan_payload = dict(planned.payload)
+            plan_payload.pop("params", None)
+            enriched_plan = []
+            for original in planned.plan:
+                item = dict(original)
+                if plan.use_rag:
+                    subtask_domain = item["domain"]
+                    rag_identity = replace(
+                        identity,
+                        domain_tag=(
+                            None if subtask_domain == "general" else subtask_domain
+                        ),
+                    )
+                    chunks = enricher.retrieve_rag(
+                        request_id=request_id,
+                        identity=rag_identity,
+                        prompt=item["prompt"],
+                    )
+                    bundle = enricher.recall(
+                        rag_identity,
+                        item["prompt"],
+                        rag=chunks,
+                        include_memory=False,
+                        token_budget=self.config.rag_max_tokens,
+                        rag_token_budget=self.config.rag_max_tokens,
+                    )
+                    enriched_prompt = compose_prompt(bundle.context, item["prompt"])
+                    if enriched_prompt != item["prompt"]:
+                        item["prompt"] = enriched_prompt
+                        subtasks_enriched += 1
+                enriched_plan.append(item)
+            plan_payload["plan"] = enriched_plan
+
+            memory_bundle = enricher.recall(
+                memory_identity,
+                prompt,
+                include_memory=plan.use_memory,
+            )
+            combined_prompt = compose_prompt(memory_bundle.context, prompt)
+            core_result = self._composition.core().task_run(
+                combined_prompt,
+                identity,
+                plan_payload=plan_payload,
+            )
+            if plan.write_back:
+                enricher.write_back(
+                    request_id=request_id,
+                    identity=memory_identity,
+                    prompt=prompt,
+                    core_result=core_result,
+                )
+        except Exception:
+            self._record_task_run(
+                request_id=request_id,
+                downstream_request_id=None,
+                identity=memory_identity,
+                plan=plan,
+                started=started,
+                status="error",
+                subtasks_enriched=subtasks_enriched,
+            )
+            raise
+        self._record_task_run(
+            request_id=request_id,
+            downstream_request_id=core_result.request_id,
+            identity=memory_identity,
+            plan=plan,
+            started=started,
+            status="ok",
+            subtasks_enriched=subtasks_enriched,
+        )
+        return TaskRunResult(
+            payload=core_result.payload,
+            request_id=request_id,
+            enriched=True,
+            downstream_request_id=core_result.request_id,
+            subtasks_enriched=subtasks_enriched,
+            context=memory_bundle.context,
+        )
 
     def plan_enrichment(
         self,
@@ -366,8 +684,29 @@ class ExtendedService:
         started: float,
         status: str,
     ) -> None:
-        self._composition.telemetry().record(
+        self._record_run(
             event="prompt.run",
+            request_id=request_id,
+            downstream_request_id=downstream_request_id,
+            identity=identity,
+            plan=plan,
+            started=started,
+            status=status,
+        )
+
+    def _record_run(
+        self,
+        *,
+        event: str,
+        request_id: str,
+        downstream_request_id: str | None,
+        identity: MemoryIdentity,
+        plan: EnrichmentPlan,
+        started: float,
+        status: str,
+    ) -> None:
+        self._composition.telemetry().record(
+            event=event,
             request_id=request_id,
             downstream_request_id=downstream_request_id,
             identity=identity,
@@ -376,6 +715,33 @@ class ExtendedService:
                 "use_memory": int(plan.use_memory),
                 "use_rag": int(plan.use_rag),
                 "write_back": int(plan.write_back),
+            },
+            latency_ms=max(0, round((time.monotonic() - started) * 1000)),
+            status=status,
+        )
+
+    def _record_task_run(
+        self,
+        *,
+        request_id: str,
+        downstream_request_id: str | None,
+        identity: MemoryIdentity,
+        plan: EnrichmentPlan,
+        started: float,
+        status: str,
+        subtasks_enriched: int,
+    ) -> None:
+        self._composition.telemetry().record(
+            event="task.run",
+            request_id=request_id,
+            downstream_request_id=downstream_request_id,
+            identity=identity,
+            counters={
+                "enrich": int(plan.enrich),
+                "use_memory": int(plan.use_memory),
+                "use_rag": int(plan.use_rag),
+                "write_back": int(plan.write_back),
+                "subtasks_enriched": subtasks_enriched,
             },
             latency_ms=max(0, round((time.monotonic() - started) * 1000)),
             status=status,

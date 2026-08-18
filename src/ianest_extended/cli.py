@@ -254,6 +254,62 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_json_argument(run_parser)
     run_parser.set_defaults(handler=_prompt_run)
 
+    reasoning_group = group(
+        "reasoning",
+        "ejecuta razonamiento iterativo",
+        "Ejecuta reasoning.run con el mismo enriquecimiento upfront que prompt.run.",
+    )
+    reasoning_run = reasoning_group.add_parser(
+        "run",
+        help="ejecuta razonamiento iterativo enriquecido",
+        description=(
+            "Superficie INTERINA de reasoning.run: se derivara del catalogo "
+            "fusionado en la siguiente rebanada. Recupera contexto, llama al "
+            "core y aplica write-back conservando la respuesta del core."
+        ),
+    )
+    reasoning_run.add_argument("--prompt", required=True, metavar="TEXTO")
+    reasoning_run.add_argument("--model", metavar="MODELO")
+    _add_enrichment_arguments(reasoning_run)
+    reasoning_run.add_argument(
+        "--show-context",
+        action="store_true",
+        help="imprime el bloque de contexto inyectado",
+    )
+    reasoning_run.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="compone e imprime el prompt enriquecido sin llamar al core",
+    )
+    _add_identity_arguments(reasoning_run)
+    _add_json_argument(reasoning_run)
+    reasoning_run.set_defaults(handler=_reasoning_run)
+
+    task_group = group(
+        "task",
+        "ejecuta tareas orquestadas",
+        "Planifica en el core y enriquece cada subtarea por su dominio resuelto.",
+    )
+    task_run = task_group.add_parser(
+        "run",
+        help="ejecuta una tarea enriquecida por subtarea",
+        description=(
+            "Superficie INTERINA de task.run: se derivara del catalogo fusionado "
+            "en la siguiente rebanada. --domain solo es una faceta de lectura "
+            "de memoria; no se envia al core como dominio de tarea."
+        ),
+    )
+    task_run.add_argument("--prompt", required=True, metavar="TEXTO")
+    task_run.add_argument(
+        "--effort",
+        choices=("low", "medium", "high"),
+        metavar="NIVEL",
+    )
+    _add_enrichment_arguments(task_run, include_auto_domain=False)
+    _add_identity_arguments(task_run, task_domain=True)
+    _add_json_argument(task_run)
+    task_run.set_defaults(handler=_task_run)
+
     memory_group = group(
         "memory",
         "capacidades propias de memoria",
@@ -440,7 +496,11 @@ def _add_forwarded_commands(group) -> None:
         parser.set_defaults(handler=_forward, capability=capability)
 
 
-def _add_enrichment_arguments(parser: argparse.ArgumentParser) -> None:
+def _add_enrichment_arguments(
+    parser: argparse.ArgumentParser,
+    *,
+    include_auto_domain: bool = True,
+) -> None:
     extension = parser.add_argument_group("parametros de enriquecimiento")
     extension.add_argument(
         "--enrich",
@@ -451,12 +511,14 @@ def _add_enrichment_arguments(parser: argparse.ArgumentParser) -> None:
             "toma el default de configuracion"
         ),
     )
-    for name, helptext in (
+    switches = [
         ("use-memory", "usa o no la memoria de la capa"),
         ("use-rag", "usa o no el conocimiento RAG"),
         ("write-back", "persiste o no lo aprendido en la interaccion"),
-        ("auto-domain", "resuelve el dominio con domain.route"),
-    ):
+    ]
+    if include_auto_domain:
+        switches.append(("auto-domain", "resuelve el dominio con domain.route"))
+    for name, helptext in switches:
         extension.add_argument(
             f"--{name}",
             action=argparse.BooleanOptionalAction,
@@ -465,7 +527,11 @@ def _add_enrichment_arguments(parser: argparse.ArgumentParser) -> None:
         )
 
 
-def _add_identity_arguments(parser: argparse.ArgumentParser) -> None:
+def _add_identity_arguments(
+    parser: argparse.ArgumentParser,
+    *,
+    task_domain: bool = False,
+) -> None:
     identity = parser.add_argument_group("identidad del request")
     identity.add_argument(
         "--user-id",
@@ -491,8 +557,11 @@ def _add_identity_arguments(parser: argparse.ArgumentParser) -> None:
         "--domain",
         metavar="DOMINIO",
         help=(
-            "dominio unico: gatea el conocimiento, rutea el modelo y etiqueta "
-            "la memoria"
+            "faceta de lectura de memoria; no se envia al core como dominio "
+            "de tarea"
+            if task_domain
+            else "dominio unico: gatea el conocimiento, rutea el modelo y "
+            "etiqueta la memoria"
         ),
     )
 
@@ -547,6 +616,55 @@ def _prompt_run(service, config, args) -> int:
         print(result.context or "(sin contexto recuperado)")
         print()
     print(result.response)
+    return 0
+
+
+def _reasoning_run(service, config, args) -> int:
+    result = service.reasoning_run(
+        args.prompt,
+        _identity(config, args),
+        enrich=args.enrich,
+        use_memory=args.use_memory,
+        use_rag=args.use_rag,
+        write_back=args.write_back,
+        domain=getattr(args, "domain", None),
+        auto_domain=args.auto_domain,
+        model=args.model,
+        dry_run=args.dry_run,
+    )
+    if args.dry_run:
+        payload = {
+            "request_id": result.request_id,
+            "enriched_prompt": result.enriched_prompt,
+            "context": result.context,
+            "dry_run": True,
+        }
+        return _emit(payload, args.json, text=result.enriched_prompt)
+    if args.json:
+        _print_json(result.payload)
+        return 0
+    if args.show_context:
+        print(result.context or "(sin contexto recuperado)")
+        print()
+    print(result.output)
+    return 0
+
+
+def _task_run(service, config, args) -> int:
+    result = service.task_run(
+        args.prompt,
+        _identity(config, args, include_domain=False),
+        enrich=args.enrich,
+        use_memory=args.use_memory,
+        use_rag=args.use_rag,
+        write_back=args.write_back,
+        domain=getattr(args, "domain", None),
+        effort=args.effort,
+    )
+    if args.json:
+        _print_json(result.payload)
+    else:
+        print(result.response)
     return 0
 
 
@@ -708,14 +826,14 @@ def _forward_payload(config, args) -> dict[str, Any]:
     return payload
 
 
-def _identity(config, args):
+def _identity(config, args, *, include_domain: bool = True):
     return resolve_identity(
         config,
         user_id=getattr(args, "user_id", None),
         session_id=getattr(args, "session_id", None),
         service=getattr(args, "service", None),
         namespace=getattr(args, "namespace", None),
-        domain=getattr(args, "domain", None),
+        domain=getattr(args, "domain", None) if include_domain else None,
     )
 
 

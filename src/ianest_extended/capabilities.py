@@ -45,6 +45,34 @@ FORWARDED_CAPABILITIES: tuple[ForwardedCapability, ...] = (
         ),
     ),
     ForwardedCapability(
+        name="reasoning.stream",
+        group="reasoning",
+        action="stream",
+        method="POST",
+        streaming=True,
+        summary=(
+            "reenvia el razonamiento en streaming al core; NO lleva "
+            "enriquecimiento"
+        ),
+    ),
+    ForwardedCapability(
+        name="task.plan",
+        group="task",
+        action="plan",
+        method="POST",
+        summary="reenvia la planificacion de tarea del core sin enriquecer",
+    ),
+    ForwardedCapability(
+        name="task.stream",
+        group="task",
+        action="stream",
+        method="POST",
+        streaming=True,
+        summary=(
+            "reenvia la tarea en streaming al core; NO lleva enriquecimiento"
+        ),
+    ),
+    ForwardedCapability(
         name="domain.list",
         group="domain",
         action="list",
@@ -89,7 +117,11 @@ FORWARDED_CAPABILITIES: tuple[ForwardedCapability, ...] = (
 )
 
 # Capacidades del core que esta capa SOBREESCRIBE (enriquece).
-OVERRIDDEN_CAPABILITIES: tuple[str, ...] = ("prompt.run",)
+OVERRIDDEN_CAPABILITIES: tuple[str, ...] = (
+    "prompt.run",
+    "reasoning.run",
+    "task.run",
+)
 
 # Capacidades PROPIAS de esta capa (extension aditiva).
 OWN_CAPABILITIES: tuple[str, ...] = (

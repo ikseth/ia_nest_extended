@@ -14,6 +14,7 @@ from .clients import (
     ForwardedStream,
     OllamaEmbedder,
     SseEvent,
+    TaskPlanResult,
 )
 from .composition import ExtendedComposition
 from .config import ExtendedConfig
@@ -80,7 +81,13 @@ from .models import (
 )
 from .registry import MemoryTypeRegistry, seed_memory_types
 from .ranking import calculate_relevance
-from .service import EnrichmentPlan, ExtendedService, PromptRunResult
+from .service import (
+    EnrichmentPlan,
+    ExtendedService,
+    PromptRunResult,
+    ReasoningRunResult,
+    TaskRunResult,
+)
 from .telemetry import TelemetryWriter
 
 __all__ = [
@@ -99,9 +106,12 @@ __all__ = [
     "OVERRIDDEN_CAPABILITIES",
     "OWN_CAPABILITIES",
     "PromptRunResult",
+    "ReasoningRunResult",
     "RagUnavailableError",
     "SchemaMigrationRequiredError",
     "SseEvent",
+    "TaskPlanResult",
+    "TaskRunResult",
     "remembered_session_id",
     "resolve_identity",
     "CorpusNotFoundError",
