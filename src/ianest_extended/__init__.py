@@ -1,10 +1,17 @@
 """Capa de enriquecimiento de ia_nest_extended."""
 
 from .capabilities import (
-    FORWARDED_CAPABILITIES,
+    LOCAL_CAPABILITIES,
     OVERRIDDEN_CAPABILITIES,
     OWN_CAPABILITIES,
-    ForwardedCapability,
+    Capability,
+    CapabilityParam,
+    CliInput,
+    CliProjection,
+    McpProjection,
+    RestProjection,
+    extended_version,
+    local_catalog,
 )
 from .clients import (
     CoreClient,
@@ -99,8 +106,13 @@ __all__ = [
     "ExtendedComposition",
     "ExtendedError",
     "ExtendedService",
-    "FORWARDED_CAPABILITIES",
-    "ForwardedCapability",
+    "LOCAL_CAPABILITIES",
+    "Capability",
+    "CapabilityParam",
+    "CliInput",
+    "CliProjection",
+    "McpProjection",
+    "RestProjection",
     "ForwardedJson",
     "ForwardedStream",
     "OVERRIDDEN_CAPABILITIES",
@@ -174,4 +186,6 @@ __all__ = [
     "WriteAuthorityError",
     "calculate_relevance",
     "seed_memory_types",
+    "extended_version",
+    "local_catalog",
 ]

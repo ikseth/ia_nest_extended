@@ -26,13 +26,25 @@ REST y MCP llegan en la Fase 7c.
 
 | | capacidades |
 |---|---|
-| **Reenviadas** sin alterar | las del core que esta capa no enriquece |
-| **Sobreescritas** (enriquecidas) | `prompt.run`, `reasoning.run`, `task.run` |
+| **Reenviadas** sin alterar | las del core que esta capa no enriquece; hoy `runtime.health` y `config.validate` responden por el core, no por la pila |
+| **Sobreescritas** (compuestas o enriquecidas) | `capability.list`, `prompt.run`, `reasoning.run`, `task.run` |
 | **Propias** | `memory_type.*`, `memory.*`, `knowledge.*` |
 
 El reenvio es GENERICO: no hay codigo por capacidad. Una capacidad que el core
 anada es alcanzable a traves de esta capa sin tocar su codigo, y eso se verifica
 con una prueba (Fase 7a).
+
+`capability.list` es reflexiva y por eso no se reenvia: declara las capacidades
+propias, obtiene el catalogo del core en ejecucion y devuelve la fusion. Una
+sobreescritura aparece una vez con la declaracion de extended; una reenviada
+conserva todos los campos declarados abajo. Cada entrada anade `provenance`
+(`own`, `overridden` o `forwarded`) y la respuesta publica `extended_version` y
+`core_version`.
+
+Si el core no esta disponible, la respuesta conserva el catalogo local, deja
+`core_version` nulo y publica `error` con la forma tipada del ente. El catalogo
+sirve para explicar, nunca para habilitar una invocacion: ninguna capacidad deja
+de ser alcanzable por no poder descubrirla.
 
 ### Garantia de transparencia
 

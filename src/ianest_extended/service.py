@@ -20,7 +20,12 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from .capabilities import OVERRIDDEN_CAPABILITIES, OWN_CAPABILITIES
+from .capabilities import (
+    OVERRIDDEN_CAPABILITIES,
+    OWN_CAPABILITIES,
+    extended_version,
+    local_catalog,
+)
 from .clients import ForwardedJson, ForwardedStream
 from .composition import ExtendedComposition
 from .config import ExtendedConfig
@@ -168,6 +173,41 @@ class ExtendedService:
         return self._composition.core().forward(name, payload, method=method)
 
     # --- capacidad sobreescrita -------------------------------------------
+
+    def capability_list(self) -> dict[str, Any]:
+        """Compone el catalogo local con el obtenido del core en ejecucion.
+
+        Las entradas ajenas son opacas: solo se usa su nombre para resolver una
+        sobreescritura y se anade `provenance`. Si el core no responde, el
+        catalogo local sigue disponible junto al error tipado que explica la
+        degradacion.
+        """
+        local = local_catalog()
+        local_names = {item["name"] for item in local}
+        try:
+            downstream = self._composition.core().list_capabilities()
+        except ExtendedError as exc:
+            return {
+                "extended_version": extended_version(),
+                "core_version": None,
+                "capabilities": local,
+                "error": exc.to_dict(),
+            }
+
+        merged = list(local)
+        for declared in downstream["capabilities"]:
+            name = declared.get("name")
+            if name in local_names:
+                continue
+            forwarded = dict(declared)
+            forwarded["provenance"] = "forwarded"
+            merged.append(forwarded)
+        merged.sort(key=lambda item: str(item.get("name", "")))
+        return {
+            "extended_version": extended_version(),
+            "core_version": downstream["core_version"],
+            "capabilities": merged,
+        }
 
     def prompt_run(
         self,

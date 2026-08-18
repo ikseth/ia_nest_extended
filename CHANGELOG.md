@@ -5,6 +5,17 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+### Anadido
+- Catalogo declarativo propio y `capability.list` sobreescrita: la capa obtiene
+  el catalogo del core en ejecucion y lo fusiona sin copiarlo, sustituye las
+  capacidades sobreescritas, preserva intactas las reenviadas y anade
+  `provenance`, `extended_version` y `core_version`. Con el core inalcanzable
+  devuelve lo local junto a un error tipado. La CLI deriva su ayuda del catalogo
+  y conserva la invocacion generica sin exigir descubrimiento; construir el
+  parser sigue sin red. REST y MCP permanecen nulos y las capacidades previstas
+  no se anuncian. Impacto de version: ninguno, porque aun no hay contrato
+  publicado ni primer tag.
+
 ### Cambiado
 - El suelo de relevancia del RAG (`rag_min_score`) pasa de 0.38 a **0.50**. El
   motivo es una medida, no una preferencia: al ampliar el corpus, la banda de
