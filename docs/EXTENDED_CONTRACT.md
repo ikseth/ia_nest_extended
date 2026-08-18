@@ -41,6 +41,16 @@ Esta capa reexpone el contrato del core del rango declarado en
 sobreescritas conservan la forma de peticion y de respuesta del core; lo unico
 que cambia es que el prompt ejecutado lleva contexto recuperado.
 
+En `task.run`, el enriquecimiento por subtarea requiere suministrar al core el
+plan obtenido antes con `task.plan`. Ese camino no re-planifica: si EVALUATE lo
+pide, el core corta con `replan_unavailable`. Desactivar el enriquecimiento
+recupera el passthrough sin plan y, con el, la capacidad de re-planificacion.
+No hay reintento automatico sin plan: seria no determinista y duplicaria coste.
+
+`task.stream` se reenvia SIN enriquecer. Es un hueco conocido: el core no acepta
+`plan` ni `requirements` suministrados en esa capacidad. `prompt.stream` tambien
+sigue reenviado sin enriquecer.
+
 El catalogo del core NO se re-declara aqui: su hogar es `core
 docs/CORE_CONTRACT.md` (convencion transversal 6, meta ADR 0008). Un consumidor
 lee ese documento en el rango declarado, y este para lo propio de la capa.

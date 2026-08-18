@@ -4,6 +4,7 @@ import pytest
 
 from ianest_extended import (
     CoreClient,
+    CoreConnectionError,
     InvalidEmbeddingDimensionError,
     MemoryIdentity,
     OllamaEmbedder,
@@ -89,3 +90,28 @@ def test_core_client_lists_domains_once_per_client(local_service_stub):
         if request[0] == "/domain/list"
     ]
     assert requests == [("/domain/list", None)]
+
+
+def test_task_run_uses_its_own_long_operation_timeout(local_service_stub):
+    client = CoreClient(
+        local_service_stub.base_url,
+        connect_timeout_seconds=1,
+        inactivity_timeout_seconds=0.05,
+        task_timeout_seconds=0.5,
+    )
+
+    result = client.task_run("tarea lenta", MemoryIdentity(user_id="u"))
+
+    assert result.response == "tarea lenta completada"
+
+
+def test_prompt_run_keeps_the_short_inactivity_timeout(local_service_stub):
+    client = CoreClient(
+        local_service_stub.base_url,
+        connect_timeout_seconds=1,
+        inactivity_timeout_seconds=0.05,
+        task_timeout_seconds=0.5,
+    )
+
+    with pytest.raises(CoreConnectionError):
+        client.prompt_run("slow-prompt", MemoryIdentity(user_id="u"))

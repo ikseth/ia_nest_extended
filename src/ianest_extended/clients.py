@@ -69,6 +69,19 @@ class DomainRouteResult:
 
 
 @dataclass(frozen=True, slots=True)
+class TaskPlanResult:
+    """Respuesta tipada solo en los campos que la capa debe interpretar."""
+
+    payload: dict[str, Any]
+    plan: tuple[dict[str, Any], ...]
+    trace: dict[str, Any]
+
+    @property
+    def request_id(self) -> str:
+        return str(self.trace["request_id"])
+
+
+@dataclass(frozen=True, slots=True)
 class SseEvent:
     """Un evento del flujo `text/event-stream`, tal como llego."""
 
@@ -125,11 +138,16 @@ class CoreClient:
         *,
         connect_timeout_seconds: float = DEFAULT_CONNECT_TIMEOUT_SECONDS,
         inactivity_timeout_seconds: float = DEFAULT_INACTIVITY_TIMEOUT_SECONDS,
+        task_timeout_seconds: float = 600.0,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._timeouts = Timeouts(
             connect_seconds=connect_timeout_seconds,
             inactivity_seconds=inactivity_timeout_seconds,
+        )
+        self._task_timeouts = Timeouts(
+            connect_seconds=connect_timeout_seconds,
+            inactivity_seconds=task_timeout_seconds,
         )
         self._domain_ids: tuple[str, ...] | None = None
 
@@ -220,6 +238,84 @@ class CoreClient:
             params=params,
         )
 
+    def reasoning_run(
+        self,
+        prompt: str,
+        identity: MemoryIdentity,
+        model: str | None = None,
+        domain: str | None = None,
+    ) -> CoreResult:
+        payload: dict[str, Any] = {
+            "prompt": prompt,
+            "identity": identity.to_core_dict(),
+        }
+        if model is not None:
+            payload["model"] = model
+        if domain is not None:
+            payload["domain"] = domain
+        data = self._post_json("/reasoning/run", payload)
+        return _typed_core_result(data, text_field="output")
+
+    def task_plan(
+        self,
+        prompt: str,
+        identity: MemoryIdentity,
+        *,
+        effort: str | None = None,
+    ) -> TaskPlanResult:
+        payload: dict[str, Any] = {
+            "prompt": prompt,
+            "identity": identity.to_core_dict(),
+        }
+        if effort is not None:
+            payload["effort"] = effort
+        data = self._post_json(
+            "/task/plan",
+            payload,
+            timeouts=self._task_timeouts,
+        )
+        plan = data.get("plan")
+        if not isinstance(plan, list):
+            raise CoreResponseError("task.plan no devolvio plan como lista")
+        for item in plan:
+            if not isinstance(item, dict):
+                raise CoreResponseError("task.plan devolvio una subtarea invalida")
+            if not isinstance(item.get("prompt"), str):
+                raise CoreResponseError(
+                    "task.plan devolvio una subtarea sin prompt de texto"
+                )
+            if not isinstance(item.get("domain"), str):
+                raise CoreResponseError(
+                    "task.plan devolvio una subtarea sin dominio resuelto"
+                )
+        trace = _required_trace(data, "task.plan")
+        return TaskPlanResult(
+            payload=data,
+            plan=tuple(plan),
+            trace=trace,
+        )
+
+    def task_run(
+        self,
+        prompt: str,
+        identity: MemoryIdentity,
+        *,
+        plan_payload: dict[str, Any] | None = None,
+        effort: str | None = None,
+    ) -> CoreResult:
+        payload = dict(plan_payload or {})
+        payload.pop("params", None)
+        payload["prompt"] = prompt
+        payload["identity"] = identity.to_core_dict()
+        if effort is not None:
+            payload["effort"] = effort
+        data = self._post_json(
+            "/task/run",
+            payload,
+            timeouts=self._task_timeouts,
+        )
+        return _typed_core_result(data, text_field="response")
+
     def domain_route(
         self,
         prompt: str,
@@ -276,12 +372,18 @@ class CoreClient:
         self._domain_ids = tuple(domain_ids)
         return self._domain_ids
 
-    def _post_json(self, route: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def _post_json(
+        self,
+        route: str,
+        payload: dict[str, Any],
+        *,
+        timeouts: Timeouts | None = None,
+    ) -> dict[str, Any]:
         return _request_json(
             f"{self._base_url}{route}",
             "POST",
             payload,
-            self._timeouts,
+            timeouts or self._timeouts,
             connection_error=CoreConnectionError,
             response_error=CoreResponseError,
             downstream_origin=CORE_ORIGIN,
@@ -297,6 +399,41 @@ class CoreClient:
             response_error=CoreResponseError,
             downstream_origin=CORE_ORIGIN,
         )
+
+
+def _required_trace(data: dict[str, Any], capability: str) -> dict[str, Any]:
+    trace = data.get("trace")
+    if not isinstance(trace, dict):
+        raise CoreResponseError(f"{capability} no devolvio una traza")
+    if not trace.get("request_id"):
+        raise CoreResponseError(
+            f"la traza de {capability} no incluye request_id"
+        )
+    return trace
+
+
+def _typed_core_result(
+    data: dict[str, Any],
+    *,
+    text_field: str,
+) -> CoreResult:
+    value = data.get(text_field)
+    if not isinstance(value, str):
+        raise CoreResponseError(
+            f"el core no devolvio {text_field} como texto"
+        )
+    trace = _required_trace(data, text_field)
+    params = data.get("params")
+    if params is not None and not isinstance(params, dict):
+        raise CoreResponseError("params del core no es un objeto")
+    return CoreResult(
+        response=value,
+        trace=trace,
+        payload=data,
+        model=_optional_text(data.get("model")),
+        domain=_optional_text(data.get("domain")),
+        params=params,
+    )
 
 
 class OllamaEmbedder:

@@ -5,7 +5,32 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+### Anadido
+- Implementacion de la Fase 7b: `reasoning.run` sobreescrito con el mismo
+  vertical upfront de `prompt.run`, y `task.run` enriquecido por subtarea via
+  `task.plan` + `task.run(plan)`. El round-trip copia el objeto de plan, elimina
+  solo `params`, preserva campos hermanos y estructurales desconocidos, y edita
+  solo `plan[i].prompt`; `requirements` y `effort` viajan intactos. El RAG se
+  gatea por el dominio ya resuelto de cada subtarea y aplica `rag_max_tokens`
+  por subtarea; la memoria se inyecta una sola vez en el prompt superior para
+  COMBINE/EVALUATE. Incluye CLI interina, telemetria `reasoning.run`/`task.run`,
+  pruebas falsables y medida reproducible de tres brazos en `local/lab/`.
+  `task.run --no-enrich` no planifica y conserva la re-planificacion del core.
+  `task.stream` y `prompt.stream` siguen reenviados sin enriquecer. Implementado
+  contra el `main` v0.4 del core (`705941e`), aun sin tag; no se mueve
+  `docs/DEPENDENCIAS.md`. Impacto de version: ninguno, porque aun no hay contrato
+  publicado ni primer tag.
+
 ### Corregido
+- Retrabajo de la Fase 7b: `task.plan` y `task.run` usan el nuevo plazo de
+  orquestacion `IANEST_EXTENDED_TASK_TIMEOUT_SECONDS` (600 s por defecto), sin
+  alargar el timeout de inactividad de `prompt.run`; la telemetria RAG por
+  subtarea declara `domain` y `corpora`; y la medida de tres brazos pasa de
+  `local/lab/` a `tools/lab/` para viajar con el despliegue. Impacto de version:
+  ninguno, porque aun no hay contrato publicado ni primer tag.
+- `docs/PLAN.md` retira dos premisas caducadas: `task.plan` ya esta entregado en
+  el `main` del core, y desde v0.4 `task.run` devuelve JSON mientras el SSE vive
+  en `task.stream`.
 - El CLI deja de exigir conocer una capacidad para poder invocarla (ADR 0011,
   punto 11). Un `GRUPO ACCION` que la piel no declara se resuelve como la
   capacidad `grupo.accion` y se reenvia por el camino generico del servicio, con
