@@ -50,7 +50,7 @@ class ExtendedConfig:
     promote_recency_max: float = 0.1
     rag_enabled: bool = True
     rag_top_k: int = 3
-    rag_min_score: float = 0.38
+    rag_min_score: float = 0.50
     rag_max_tokens: int = 500
     rag_chunk_tokens: int = 300
     rag_chunk_overlap: float = 0.15

@@ -55,10 +55,10 @@ def test_config_rejects_invalid_rag_values(monkeypatch):
 
 
 def test_config_rag_min_score_defaults_to_the_measured_floor():
-    """D1 criterio 2: la ausencia de la clave toma el default medido (0.38)."""
+    """D1 criterio 2: la ausencia de la clave toma el default medido (0.50)."""
     config = ExtendedConfig.from_env(env_file=None)
 
-    assert config.rag_min_score == 0.38
+    assert config.rag_min_score == 0.50
 
 
 def test_config_rejects_out_of_range_rag_min_score(monkeypatch):
