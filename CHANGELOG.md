@@ -22,6 +22,12 @@ Sin acentos por convencion.
   publicado ni primer tag.
 
 ### Corregido
+- Retrabajo de la Fase 7b: `task.plan` y `task.run` usan el nuevo plazo de
+  orquestacion `IANEST_EXTENDED_TASK_TIMEOUT_SECONDS` (600 s por defecto), sin
+  alargar el timeout de inactividad de `prompt.run`; la telemetria RAG por
+  subtarea declara `domain` y `corpora`; y la medida de tres brazos pasa de
+  `local/lab/` a `tools/lab/` para viajar con el despliegue. Impacto de version:
+  ninguno, porque aun no hay contrato publicado ni primer tag.
 - `docs/PLAN.md` retira dos premisas caducadas: `task.plan` ya esta entregado en
   el `main` del core, y desde v0.4 `task.run` devuelve JSON mientras el SSE vive
   en `task.stream`.

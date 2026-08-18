@@ -43,6 +43,7 @@ class ExtendedConfig:
     confidence_threshold: float = 0.7
     connect_timeout_seconds: float = 30.0
     inactivity_timeout_seconds: float = 30.0
+    task_timeout_seconds: float = 600.0
     dialog_hot_window_seconds: int = 4 * 60 * 60
     promote_min_stability: int = 3
     promote_min_score: float = 0.8
@@ -138,6 +139,10 @@ class ExtendedConfig:
                 "INACTIVITY_TIMEOUT_SECONDS",
                 defaults.inactivity_timeout_seconds,
             ),
+            "task_timeout_seconds": _env_float(
+                "TASK_TIMEOUT_SECONDS",
+                defaults.task_timeout_seconds,
+            ),
             "dialog_hot_window_seconds": _env_int(
                 "DIALOG_HOT_WINDOW",
                 defaults.dialog_hot_window_seconds,
@@ -213,7 +218,11 @@ class ExtendedConfig:
             value = getattr(self, name)
             if not 0.0 <= value <= 1.0:
                 raise ExtendedConfigError(f"{name} debe estar entre 0 y 1")
-        for name in ("connect_timeout_seconds", "inactivity_timeout_seconds"):
+        for name in (
+            "connect_timeout_seconds",
+            "inactivity_timeout_seconds",
+            "task_timeout_seconds",
+        ):
             if getattr(self, name) <= 0:
                 raise ExtendedConfigError(f"{name} debe ser mayor que cero", name)
         if self.promote_min_stability < 0:

@@ -306,6 +306,31 @@ def test_task_telemetry_chains_ids_and_counts_subtasks(tmp_path):
     assert event["counters"]["subtasks_enriched"] == 2
 
 
+def test_task_rag_telemetry_declares_domain_and_corpora(tmp_path):
+    chunks = (
+        _chunk("linux", "linux", 0.9),
+        _chunk("codigo", "codigo", 0.9),
+    )
+    service, _, _, _ = _service(tmp_path, rag_store=InMemoryRagStore(chunks))
+
+    service.task_run(
+        "tarea",
+        _identity(),
+        use_memory=False,
+        use_rag=True,
+        write_back=False,
+    )
+
+    events = [
+        item for item in _events(tmp_path) if item["event"] == "rag.retrieve"
+    ]
+    assert [event["domain"] for event in events] == ["linux", "codigo"]
+    assert [event["corpora"] for event in events] == [
+        ["manual-linux"],
+        ["manual-codigo"],
+    ]
+
+
 def test_task_domain_is_only_a_memory_facet(tmp_path):
     """La bandera CLI no fuerza dominio de tarea ni invoca domain.route."""
     service, core, _, _ = _service(tmp_path)

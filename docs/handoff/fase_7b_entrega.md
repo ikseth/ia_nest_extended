@@ -49,7 +49,7 @@ como faceta de lectura de memoria y no entra en la identidad enviada al core.
 Los eventos propios `reasoning.run` y `task.run` encadenan `request_id` y
 `downstream_request_id`; `task.run` anade `subtasks_enriched`.
 
-`local/lab/fase_7b_tres_brazos.py` ejecuta tres repeticiones de la misma tarea en
+`tools/lab/fase_7b_tres_brazos.py` ejecuta tres repeticiones de la misma tarea en
 los brazos sin plan, plan en eco y plan enriquecido. Emite `stop_reason`,
 `requirements_covered`, numero de degradaciones, gasto, longitud de respuesta y
 tiempo. Usa un `user_id` de laboratorio propio y desactiva write-back.
@@ -136,3 +136,13 @@ push. No pudo dejarse staged porque el sandbox monta `.git` como solo lectura:
 intento ningun rodeo sobre el indice. Las rutas exactas que debe anadir el
 revisor fuera de este sandbox son las enumeradas en el estado final; el script
 de `local/lab/` requiere `git add -f` porque `local/` esta ignorado.
+
+## 8. Retrabajo: defectos hallados en laboratorio
+
+1. `task.plan` y `task.run` usan `task_timeout_seconds` (600 s por defecto),
+   separado del timeout de inactividad general. Asi la orquestacion bloqueante
+   tiene plazo propio sin alargar un `prompt.run` colgado.
+2. Cada `rag.retrieve` del camino de tarea conserva en telemetria el `domain`
+   resuelto de su subtarea y los `corpora` de los chunks recuperados.
+3. El script de tres brazos se versiona en
+   `tools/lab/fase_7b_tres_brazos.py`; `tools/README.md` declara el directorio.

@@ -64,6 +64,7 @@ class ExtendedComposition:
                 inactivity_timeout_seconds=(
                     self._config.inactivity_timeout_seconds
                 ),
+                task_timeout_seconds=self._config.task_timeout_seconds,
             )
         return self._core
 

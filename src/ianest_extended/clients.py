@@ -138,11 +138,16 @@ class CoreClient:
         *,
         connect_timeout_seconds: float = DEFAULT_CONNECT_TIMEOUT_SECONDS,
         inactivity_timeout_seconds: float = DEFAULT_INACTIVITY_TIMEOUT_SECONDS,
+        task_timeout_seconds: float = 600.0,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._timeouts = Timeouts(
             connect_seconds=connect_timeout_seconds,
             inactivity_seconds=inactivity_timeout_seconds,
+        )
+        self._task_timeouts = Timeouts(
+            connect_seconds=connect_timeout_seconds,
+            inactivity_seconds=task_timeout_seconds,
         )
         self._domain_ids: tuple[str, ...] | None = None
 
@@ -264,7 +269,11 @@ class CoreClient:
         }
         if effort is not None:
             payload["effort"] = effort
-        data = self._post_json("/task/plan", payload)
+        data = self._post_json(
+            "/task/plan",
+            payload,
+            timeouts=self._task_timeouts,
+        )
         plan = data.get("plan")
         if not isinstance(plan, list):
             raise CoreResponseError("task.plan no devolvio plan como lista")
@@ -300,7 +309,11 @@ class CoreClient:
         payload["identity"] = identity.to_core_dict()
         if effort is not None:
             payload["effort"] = effort
-        data = self._post_json("/task/run", payload)
+        data = self._post_json(
+            "/task/run",
+            payload,
+            timeouts=self._task_timeouts,
+        )
         return _typed_core_result(data, text_field="response")
 
     def domain_route(
@@ -359,12 +372,18 @@ class CoreClient:
         self._domain_ids = tuple(domain_ids)
         return self._domain_ids
 
-    def _post_json(self, route: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def _post_json(
+        self,
+        route: str,
+        payload: dict[str, Any],
+        *,
+        timeouts: Timeouts | None = None,
+    ) -> dict[str, Any]:
         return _request_json(
             f"{self._base_url}{route}",
             "POST",
             payload,
-            self._timeouts,
+            timeouts or self._timeouts,
             connection_error=CoreConnectionError,
             response_error=CoreResponseError,
             downstream_origin=CORE_ORIGIN,

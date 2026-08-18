@@ -1,6 +1,7 @@
 import os
 import json
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
 
@@ -128,12 +129,27 @@ def local_service_stub():
                     }
                 )
                 return
+            if self.path == "/task/run":
+                if payload["prompt"] == "tarea lenta":
+                    time.sleep(0.15)
+                self._send(
+                    {
+                        "response": "tarea lenta completada",
+                        "trace": {
+                            "request_id": "slow-task",
+                            "stop_reason": "task_done",
+                        },
+                    }
+                )
+                return
             if self.path != "/prompt/run":
                 self.send_error(404)
                 return
 
             state.counter += 1
             prompt = payload["prompt"]
+            if prompt == "slow-prompt":
+                time.sleep(0.15)
             if payload.get("model"):
                 if "invalid-json" in prompt:
                     response = "not-json"
