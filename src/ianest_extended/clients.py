@@ -199,6 +199,21 @@ class CoreClient:
 
     # --- llamadas tipadas (lo que esta capa interpreta) --------------------
 
+    def list_capabilities(self) -> dict[str, Any]:
+        """Obtiene el catalogo del core sin interpretar sus entradas."""
+        data = self._get_json("/capability/list")
+        if not isinstance(data.get("core_version"), str):
+            raise CoreResponseError(
+                "capability.list no devolvio core_version como texto"
+            )
+        if not isinstance(data.get("capabilities"), list) or not all(
+            isinstance(item, dict) for item in data["capabilities"]
+        ):
+            raise CoreResponseError(
+                "capability.list no devolvio capabilities como lista de objetos"
+            )
+        return data
+
     def prompt_run(
         self,
         prompt: str,

@@ -24,9 +24,67 @@ def local_service_stub():
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             state.requests.append((self.path, None))
+            if self.path == "/capability/list":
+                self._send(
+                    {
+                        "core_version": "0.4.0",
+                        "capabilities": [
+                            {
+                                "name": "capability.list",
+                                "summary": "catalogo del core",
+                                "identity": False,
+                                "streaming": False,
+                                "params": [],
+                                "rest": {
+                                    "path": "/capability/list",
+                                    "method": "GET",
+                                },
+                                "cli": {
+                                    "group": "capability",
+                                    "action": "list",
+                                    "description": "catalogo del core",
+                                },
+                                "mcp": {"tool": "capability.list"},
+                            },
+                            {
+                                "name": "prompt.run",
+                                "summary": "prompt del core que se sobreescribe",
+                                "identity": True,
+                                "streaming": False,
+                                "params": [],
+                                "rest": {"path": "/prompt/run", "method": "POST"},
+                                "cli": {
+                                    "group": "prompt",
+                                    "action": "run",
+                                    "description": "prompt del core",
+                                },
+                                "mcp": {"tool": "prompt.run"},
+                            },
+                            {
+                                "name": "future.inspect",
+                                "summary": "capacidad futura desconocida",
+                                "identity": False,
+                                "streaming": False,
+                                "params": [],
+                                "rest": {"path": "/future/inspect", "method": "GET"},
+                                "cli": {
+                                    "group": "future",
+                                    "action": "inspect",
+                                    "description": "inspeccion futura",
+                                },
+                                "mcp": {"tool": "future.inspect"},
+                                "future_field": {"preserved": True},
+                            },
+                        ],
+                    }
+                )
+                return
             if self.path == "/estado/nuevo":
                 # Capacidad desconocida servida por GET (sin cuerpo).
                 self._send({"estado": "nuevo", "campo_desconocido": True})
+                return
+            if self.path == "/memory/nuevo":
+                self._send({"memory": "nuevo", "forwarded": True})
                 return
             if self.path == "/runtime/health":
                 self._send(

@@ -201,7 +201,7 @@ def test_exit_code_two_prints_group_help(
     assert "recall" in captured.out
 
 
-def test_cli_exposes_the_uniform_surface(
+def test_general_help_uses_the_merged_catalog(
     monkeypatch,
     tmp_path,
     capsys,
@@ -209,12 +209,12 @@ def test_cli_exposes_the_uniform_surface(
 ):
     argv = _cli_env(monkeypatch, tmp_path, local_service_stub)
 
-    code = cli.main([*argv, "prompt"])
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([*argv, "--help"])
 
     captured = capsys.readouterr()
-    assert code == 2
-    assert "run" in captured.out
-    assert "stream" in captured.out
+    assert exc_info.value.code == 0
+    assert "future" in captured.out
 
 
 def test_cli_streams_forwarded_events(

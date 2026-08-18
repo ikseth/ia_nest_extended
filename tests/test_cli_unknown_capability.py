@@ -11,7 +11,7 @@ import pytest
 
 from ianest_extended import cli
 from ianest_extended.capabilities import (
-    FORWARDED_CAPABILITIES,
+    LOCAL_CAPABILITIES,
     OWN_CAPABILITIES,
 )
 
@@ -39,7 +39,7 @@ def test_unknown_capability_is_invocable_without_editing_the_layer(
     local_service_stub,
 ):
     """Criterio 1: `capability nueva` llega al core y devuelve 0."""
-    declaradas = {item.name for item in FORWARDED_CAPABILITIES}
+    declaradas = {item.name for item in LOCAL_CAPABILITIES}
     assert "capability.nueva" not in declaradas
     assert "capability.nueva" not in set(OWN_CAPABILITIES)
     argv = _cli_env(monkeypatch, tmp_path, local_service_stub)
@@ -143,35 +143,32 @@ def test_unknown_group_without_action_is_a_typed_error(
     """Falta la accion: error tipado, sin inventar ni adivinar la ruta."""
     argv = _cli_env(monkeypatch, tmp_path, local_service_stub)
 
-    code = cli.main([*argv, "capability"])
+    code = cli.main([*argv, "estado"])
 
     captured = capsys.readouterr()
     assert code == 1
     assert captured.err.startswith("ExtendedError (capability): ")
     assert "GRUPO ACCION" in captured.err
     assert not [
-        path for path, _ in local_service_stub.requests if "capability" in path
+        path for path, _ in local_service_stub.requests if "estado" in path
     ]
 
 
-def test_known_group_is_never_resolved_dynamically(
+def test_unknown_action_in_known_group_is_resolved_dynamically(
     monkeypatch,
     tmp_path,
     capsys,
     local_service_stub,
 ):
-    """Criterio 4: un grupo conocido se comporta EXACTAMENTE como antes."""
+    """ADR 0011.11: decide GRUPO ACCION, no solo si el grupo es conocido."""
     argv = _cli_env(monkeypatch, tmp_path, local_service_stub)
 
-    with pytest.raises(SystemExit) as exc_info:
-        cli.main([*argv, "memory", "inexistente"])
+    code = cli.main([*argv, "memory", "nuevo", "--json"])
 
     captured = capsys.readouterr()
-    assert exc_info.value.code == 2
-    assert "invalid choice" in captured.err
-    assert not [
-        path for path, _ in local_service_stub.requests if "inexistente" in path
-    ]
+    assert code == 0
+    assert local_service_stub.requests[-1] == ("/memory/nuevo", None)
+    assert json.loads(captured.out) == {"memory": "nuevo", "forwarded": True}
 
 
 def test_top_level_help_declares_the_dynamic_invocation(capsys):

@@ -378,16 +378,8 @@ def test_task_domain_is_only_a_memory_facet(tmp_path):
     assert run_call[2].domain_tag is None
 
 
-def test_interim_cli_keeps_neighboring_capabilities_reachable():
-    """Crear los grupos nuevos no bloquea task.plan ni los streams crudos."""
+def test_local_parser_does_not_require_the_downstream_catalog():
+    """El parser local explica lo propio; el reenvio resuelve lo desconocido."""
     parser = _build_parser()
 
-    task_plan = parser.parse_args(["task", "plan", "--prompt", "tarea"])
-    task_stream = parser.parse_args(["task", "stream", "--prompt", "tarea"])
-    reasoning_stream = parser.parse_args(
-        ["reasoning", "stream", "--prompt", "razona"]
-    )
-
-    assert task_plan.capability.name == "task.plan"
-    assert task_stream.capability.name == "task.stream"
-    assert reasoning_stream.capability.name == "reasoning.stream"
+    assert parser.parse_args(["task", "run", "--prompt", "tarea"]).handler

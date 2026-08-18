@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .capabilities import FORWARDED_CAPABILITIES
+from .capabilities import LOCAL_CAPABILITIES
 from .config import ExtendedConfig
 from .errors import ExtendedError
 from .identity import resolve_identity
@@ -30,9 +30,15 @@ PROG = "ianest-extended"
 def main(argv: list[str] | None = None) -> int:
     tokens = list(sys.argv[1:] if argv is None else argv)
     parser = _build_parser()
+    if _is_general_help(tokens):
+        parser = _build_general_help_parser(tokens)
     group = _first_positional(tokens)
-    if group is not None and group not in _group_names(parser):
-        return _run_unknown_capability(group, tokens)
+    if group is not None:
+        action = _second_positional(tokens, group)
+        if group not in _group_names(parser) or (
+            action is not None and action not in _action_names(parser, group)
+        ):
+            return _run_unknown_capability(group, tokens)
     args = parser.parse_args(tokens)
     if args.command is None:
         parser.print_help()
@@ -78,6 +84,42 @@ def _group_names(parser: argparse.ArgumentParser) -> set[str]:
         if isinstance(action, argparse._SubParsersAction):
             return set(action.choices)
     return set()
+
+
+def _action_names(parser: argparse.ArgumentParser, group: str) -> set[str]:
+    for action in parser._actions:
+        if not isinstance(action, argparse._SubParsersAction):
+            continue
+        group_parser = action.choices.get(group)
+        if group_parser is None:
+            return set()
+        for nested in group_parser._actions:
+            if isinstance(nested, argparse._SubParsersAction):
+                return set(nested.choices)
+    return set()
+
+
+def _is_general_help(tokens: list[str]) -> bool:
+    return not tokens or (
+        _first_positional(tokens) is None
+        and any(token in ("-h", "--help") for token in tokens)
+    )
+
+
+def _build_general_help_parser(tokens: list[str]) -> argparse.ArgumentParser:
+    """Enriquece solo la ayuda general; construir el parser sigue siendo local."""
+    env_file = ".env"
+    for index, token in enumerate(tokens):
+        if token == "--env-file" and index + 1 < len(tokens):
+            env_file = tokens[index + 1]
+        elif token.startswith("--env-file="):
+            env_file = token.partition("=")[2]
+    try:
+        config = ExtendedConfig.from_env(env_file=env_file)
+        catalog = ExtendedService.from_config(config).capability_list()["capabilities"]
+    except ExtendedError:
+        catalog = None
+    return _build_parser(catalog=catalog)
 
 
 def _run_unknown_capability(group: str, tokens: list[str]) -> int:
@@ -181,7 +223,10 @@ def _declared_payload(config, args) -> dict[str, Any] | None:
 # --- parser ---------------------------------------------------------------
 
 
-def _build_parser() -> argparse.ArgumentParser:
+def _build_parser(
+    *,
+    catalog: list[dict[str, Any]] | None = None,
+) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=PROG,
         description=(
@@ -223,20 +268,21 @@ def _build_parser() -> argparse.ArgumentParser:
             )
         return groups[name]
 
+    capability_group = group(
+        "capability",
+        "consulta las capacidades de la pila",
+        "Consulta el catalogo local y el obtenido del core en ejecucion.",
+    )
+    capability_list = _add_local_parser(capability_group, "capability.list")
+    _add_json_argument(capability_list)
+    capability_list.set_defaults(handler=_capability_list)
+
     prompt_group = group(
         "prompt",
         "ejecuta inferencias",
         "Ejecuta prompts contra el core, con o sin enriquecimiento.",
     )
-    run_parser = prompt_group.add_parser(
-        "run",
-        help="ejecuta un prompt enriquecido",
-        description=(
-            "Sobreescritura de prompt.run: recupera contexto, compone dentro "
-            "del presupuesto, llama al core y persiste el write-back. La forma "
-            "de la respuesta es la del core."
-        ),
-    )
+    run_parser = _add_local_parser(prompt_group, "prompt.run")
     run_parser.add_argument("--prompt", required=True, metavar="TEXTO")
     run_parser.add_argument("--model", metavar="MODELO")
     _add_enrichment_arguments(run_parser)
@@ -259,15 +305,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "ejecuta razonamiento iterativo",
         "Ejecuta reasoning.run con el mismo enriquecimiento upfront que prompt.run.",
     )
-    reasoning_run = reasoning_group.add_parser(
-        "run",
-        help="ejecuta razonamiento iterativo enriquecido",
-        description=(
-            "Superficie INTERINA de reasoning.run: se derivara del catalogo "
-            "fusionado en la siguiente rebanada. Recupera contexto, llama al "
-            "core y aplica write-back conservando la respuesta del core."
-        ),
-    )
+    reasoning_run = _add_local_parser(reasoning_group, "reasoning.run")
     reasoning_run.add_argument("--prompt", required=True, metavar="TEXTO")
     reasoning_run.add_argument("--model", metavar="MODELO")
     _add_enrichment_arguments(reasoning_run)
@@ -290,15 +328,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "ejecuta tareas orquestadas",
         "Planifica en el core y enriquece cada subtarea por su dominio resuelto.",
     )
-    task_run = task_group.add_parser(
-        "run",
-        help="ejecuta una tarea enriquecida por subtarea",
-        description=(
-            "Superficie INTERINA de task.run: se derivara del catalogo fusionado "
-            "en la siguiente rebanada. --domain solo es una faceta de lectura "
-            "de memoria; no se envia al core como dominio de tarea."
-        ),
-    )
+    task_run = _add_local_parser(task_group, "task.run")
     task_run.add_argument("--prompt", required=True, metavar="TEXTO")
     task_run.add_argument(
         "--effort",
@@ -315,39 +345,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "capacidades propias de memoria",
         "Recuperacion y mantenimiento del sustrato de memoria de la capa.",
     )
-    recall_parser = memory_group.add_parser(
-        "recall",
-        help="muestra lo que se inyectaria, sin ejecutar inferencia",
-        description="Ejecuta memory.recall sin llamar a la inferencia del core.",
-    )
-    recall_parser.add_argument("--prompt", required=True, metavar="TEXTO")
-    recall_parser.add_argument(
-        "--use-memory",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-    )
-    recall_parser.add_argument(
-        "--use-rag",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-    )
+    recall_parser = _add_local_parser(memory_group, "memory.recall")
+    _add_local_parameter(recall_parser, "memory.recall", "prompt")
+    _add_local_parameter(recall_parser, "memory.recall", "use_memory")
+    _add_local_parameter(recall_parser, "memory.recall", "use_rag")
     _add_identity_arguments(recall_parser)
     _add_json_argument(recall_parser)
     recall_parser.set_defaults(handler=_memory_recall)
 
-    maintain_parser = memory_group.add_parser(
-        "maintain",
-        help="archiva y promociona memoria estricta por umbrales",
-        description=(
-            "Barrido mecanico: archiva dialog fuera de ventana y promociona "
-            "episodic elegible. No necesita el core ni Ollama."
-        ),
-    )
-    maintain_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="muestra el resumen sin mutar engramas ni lineage",
-    )
+    maintain_parser = _add_local_parser(memory_group, "memory.maintain")
+    _add_local_parameter(maintain_parser, "memory.maintain", "dry_run")
     _add_json_argument(maintain_parser)
     maintain_parser.set_defaults(handler=_memory_maintain)
 
@@ -356,10 +363,8 @@ def _build_parser() -> argparse.ArgumentParser:
         "registro de tipos de memoria",
         "Consulta el roster de tipos declarados por la capa.",
     )
-    memory_type_list = memory_type_group.add_parser(
-        "list",
-        help="lista los tipos declarados",
-        description="Namespaces, tier, scopes y writer_principal declarados.",
+    memory_type_list = _add_local_parser(
+        memory_type_group, "memory_type.list"
     )
     _add_json_argument(memory_type_list)
     memory_type_list.set_defaults(handler=_memory_type_list)
@@ -369,57 +374,32 @@ def _build_parser() -> argparse.ArgumentParser:
         "conocimiento por dominio",
         "Ingesta curada y curacion de vinculos dominio-corpus.",
     )
-    ingest_parser = knowledge_group.add_parser(
-        "ingest",
-        help="ingiere texto curado en un corpus",
-        description="Ingiere ficheros .txt/.md de una ruta local en un corpus.",
-    )
-    ingest_parser.add_argument("--corpus", required=True)
-    ingest_parser.add_argument(
-        "--domain",
-        action="append",
-        default=[],
-        help="dominio del core; se puede repetir",
-    )
-    ingest_parser.add_argument("--source-ref")
+    ingest_parser = _add_local_parser(knowledge_group, "knowledge.ingest")
+    _add_local_parameter(ingest_parser, "knowledge.ingest", "corpus")
+    _add_local_parameter(ingest_parser, "knowledge.ingest", "domain")
+    _add_local_parameter(ingest_parser, "knowledge.ingest", "source_ref")
     ingest_parser.add_argument("path", type=Path)
     _add_json_argument(ingest_parser)
     ingest_parser.set_defaults(handler=_knowledge_ingest)
 
-    status_parser = knowledge_group.add_parser(
-        "status",
-        help="cobertura de conocimiento por dominio",
-        description="Compara los dominios del core con los corpus confirmados.",
-    )
+    status_parser = _add_local_parser(knowledge_group, "knowledge.status")
     _add_json_argument(status_parser)
     status_parser.set_defaults(handler=_knowledge_status)
 
-    suggest_parser = knowledge_group.add_parser(
-        "suggest",
-        help="propone dominios para un corpus",
-        description="Propone vinculos via domain.route, sin confirmarlos.",
-    )
-    suggest_parser.add_argument("--corpus", required=True)
+    suggest_parser = _add_local_parser(knowledge_group, "knowledge.suggest")
+    _add_local_parameter(suggest_parser, "knowledge.suggest", "corpus")
     _add_json_argument(suggest_parser)
     suggest_parser.set_defaults(handler=_knowledge_suggest)
 
-    confirm_parser = knowledge_group.add_parser(
-        "confirm",
-        help="confirma un vinculo dominio-corpus",
-        description="Confirma un vinculo y habilita el gate de recuperacion.",
-    )
-    confirm_parser.add_argument("--corpus", required=True)
-    confirm_parser.add_argument("--domain", required=True)
+    confirm_parser = _add_local_parser(knowledge_group, "knowledge.confirm")
+    _add_local_parameter(confirm_parser, "knowledge.confirm", "corpus")
+    _add_local_parameter(confirm_parser, "knowledge.confirm", "domain")
     _add_json_argument(confirm_parser)
     confirm_parser.set_defaults(handler=_knowledge_confirm)
 
-    reject_parser = knowledge_group.add_parser(
-        "reject",
-        help="retira una propuesta de vinculo",
-        description="Retira una propuesta automatica no confirmada.",
-    )
-    reject_parser.add_argument("--corpus", required=True)
-    reject_parser.add_argument("--domain", required=True)
+    reject_parser = _add_local_parser(knowledge_group, "knowledge.reject")
+    _add_local_parameter(reject_parser, "knowledge.reject", "corpus")
+    _add_local_parameter(reject_parser, "knowledge.reject", "domain")
     _add_json_argument(reject_parser)
     reject_parser.set_defaults(handler=_knowledge_reject)
 
@@ -439,61 +419,85 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_json_argument(migrate_parser)
     migrate_parser.set_defaults(handler=_runtime_migrate)
 
-    _add_forwarded_commands(group)
+    if catalog is not None:
+        _add_catalog_help(group, catalog)
     return parser
 
 
-def _add_forwarded_commands(group) -> None:
-    """Construye las acciones reenviadas a partir del dato declarado.
+def _add_local_parser(actions, name: str) -> argparse.ArgumentParser:
+    capability = next(item for item in LOCAL_CAPABILITIES if item.name == name)
+    projection = capability.cli
+    assert projection is not None and projection.action is not None
+    return actions.add_parser(
+        projection.action,
+        help=capability.summary,
+        description=projection.description,
+        epilog=projection.epilog,
+    )
 
-    INTERINO: la lista viene de `capabilities.py` porque el core aun no ofrece
-    catalogo (`extended CR-0002`). El reenvio del servicio ya es generico.
-    """
-    summaries = {
-        "prompt": ("ejecuta inferencias", "Ejecuta prompts contra el core."),
-        "domain": ("dominios del core", "Reenvia las capacidades de dominio."),
-        "model": ("modelos del core", "Reenvia el catalogo de modelos."),
-        "runtime": (
-            "operacion local de la capa",
-            "Estado del runtime y migracion explicita del esquema local.",
-        ),
-        "config": (
-            "configuracion del core",
-            "Reenvia la validacion de configuracion.",
-        ),
-        "eval": ("evaluacion del core", "Reenvia la bateria de evaluacion."),
+
+def _add_local_parameter(
+    parser: argparse.ArgumentParser,
+    capability_name: str,
+    parameter_name: str,
+) -> None:
+    capability = next(
+        item for item in LOCAL_CAPABILITIES if item.name == capability_name
+    )
+    parameter = next(
+        item for item in capability.params if item.name == parameter_name
+    )
+    option = f"--{parameter.name.replace('_', '-')}"
+    kwargs: dict[str, Any] = {
+        "required": parameter.required,
+        "help": parameter.summary,
     }
-    for capability in FORWARDED_CAPABILITIES:
-        summary, description = summaries.get(
-            capability.group,
-            ("capacidad reenviada", "Capacidad reenviada al core sin alterar."),
+    if parameter.metavar is not None:
+        kwargs["metavar"] = parameter.metavar
+    if parameter.choices is not None:
+        kwargs["choices"] = parameter.choices
+    if parameter.type == "boolean":
+        kwargs["action"] = (
+            "store_true"
+            if parameter.default is False
+            else argparse.BooleanOptionalAction
         )
-        actions = group(capability.group, summary, description)
-        parser = actions.add_parser(
-            capability.action,
-            help=capability.summary,
-            description=(
-                f"Reenvia {capability.name} al core SIN alterar su respuesta. "
-                "Esta capa no la enriquece en esta fase."
+        kwargs["default"] = parameter.default
+    elif parameter.type == "array":
+        kwargs["action"] = "append"
+        kwargs["default"] = list(parameter.default or ())
+    else:
+        kwargs["default"] = parameter.default
+    parser.add_argument(option, **kwargs)
+
+
+def _add_catalog_help(group, catalog: list[dict[str, Any]]) -> None:
+    """Anade ayuda ajena usando solo los campos conocidos de la proyeccion."""
+    for capability in catalog:
+        if capability.get("provenance") != "forwarded":
+            continue
+        projection = capability.get("cli")
+        if not isinstance(projection, dict):
+            continue
+        group_name = projection.get("group")
+        action = projection.get("action")
+        if not isinstance(group_name, str) or not isinstance(action, str):
+            continue
+        actions = group(
+            group_name,
+            "capacidades obtenidas del core",
+            "Ayuda obtenida del catalogo del core en ejecucion.",
+        )
+        if action in actions.choices:
+            continue
+        actions.add_parser(
+            action,
+            help=str(capability.get("summary", "capacidad reenviada")),
+            description=str(
+                projection.get("description", "Capacidad reenviada al core.")
             ),
+            epilog=projection.get("epilog"),
         )
-        if capability.method != "GET":
-            parser.add_argument("--prompt", metavar="TEXTO")
-            parser.add_argument(
-                "--param",
-                action="append",
-                default=[],
-                metavar="CLAVE=VALOR",
-                help="campo del cuerpo reenviado; se puede repetir",
-            )
-            parser.add_argument(
-                "--payload",
-                metavar="JSON",
-                help="cuerpo completo reenviado, como objeto JSON",
-            )
-            _add_identity_arguments(parser)
-        _add_json_argument(parser)
-        parser.set_defaults(handler=_forward, capability=capability)
 
 
 def _add_enrichment_arguments(
@@ -585,6 +589,22 @@ def _print_group_help(parser: argparse.ArgumentParser, command: str) -> None:
 
 
 # --- handlers -------------------------------------------------------------
+
+
+def _capability_list(service, config, args) -> int:
+    payload = service.capability_list()
+    lines = [
+        f"{item.get('name', '(sin nombre)')} "
+        f"[{item.get('provenance', 'forwarded')}]"
+        for item in payload["capabilities"]
+    ]
+    if payload.get("error") is not None:
+        error = payload["error"]
+        lines.append(
+            f"catalogo inferior no disponible: {error['type']}: "
+            f"{error['message']}"
+        )
+    return _emit(payload, args.json, text="\n".join(lines))
 
 
 def _prompt_run(service, config, args) -> int:
@@ -768,15 +788,6 @@ def _runtime_migrate(service, config, args) -> int:
     payload = service.runtime_migrate()
     text = " ".join(f"{key}={value}" for key, value in payload.items())
     return _emit(payload, args.json, text=text)
-
-
-def _forward(service, config, args) -> int:
-    capability = args.capability
-    payload = None
-    if capability.method != "GET":
-        payload = _forward_payload(config, args)
-    result = service.forward(capability.name, payload, method=capability.method)
-    return _emit_forward(result, args.json)
 
 
 def _emit_forward(result, json_output: bool) -> int:
