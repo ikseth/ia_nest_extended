@@ -50,6 +50,7 @@ class ExtendedConfig:
     promote_recency_max: float = 0.1
     rag_enabled: bool = True
     rag_top_k: int = 3
+    rag_min_score: float = 0.38
     rag_max_tokens: int = 500
     rag_chunk_tokens: int = 300
     rag_chunk_overlap: float = 0.15
@@ -161,6 +162,10 @@ class ExtendedConfig:
             ),
             "rag_enabled": _env_bool("RAG_ENABLED", defaults.rag_enabled),
             "rag_top_k": _env_int("RAG_TOP_K", defaults.rag_top_k),
+            "rag_min_score": _env_float(
+                "RAG_MIN_SCORE",
+                defaults.rag_min_score,
+            ),
             "rag_max_tokens": _env_int(
                 "RAG_MAX_TOKENS",
                 defaults.rag_max_tokens,
@@ -214,6 +219,7 @@ class ExtendedConfig:
             "confidence_threshold",
             "auto_domain_min_confidence",
             "rag_suggest_min_confidence",
+            "rag_min_score",
         ):
             value = getattr(self, name)
             if not 0.0 <= value <= 1.0:

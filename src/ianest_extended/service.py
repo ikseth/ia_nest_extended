@@ -795,6 +795,7 @@ class ExtendedService:
                     prompt,
                     domain=identity.domain_tag,
                     top_k=config.rag_top_k,
+                    min_score=config.rag_min_score,
                 )
             )
         bundle = enricher.recall(
