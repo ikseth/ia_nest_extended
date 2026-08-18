@@ -137,9 +137,9 @@ quien opere la pila a mano.
 
 1. **El corpus del laboratorio es de juguete**: dos dominios con un fragmento cada
    uno. Decir "RAG operativo" con propiedad exige crecerlo, y eso es CONTENIDO, no
-   codigo. Al crecerlo hay que **recalibrar el suelo de relevancia**: 0.38 se midio
-   con seis sondas y el margen entre la banda de ruido y la de acierto era de
-   0.056.
+   codigo. Al crecerlo hay que **recalibrar el suelo de relevancia**: se midio con
+   un corpus pequeno y el margen entre la banda de ruido y la de acierto era
+   estrecho. Ya se comprobo que ese umbral escala con la anchura del corpus.
 2. **Sin tag en el core no hay tag aqui.** La linea v0.4 del core vive en su rama
    principal sin cortar, asi que `docs/DEPENDENCIAS.md` no puede declarar
    honestamente su rango, y sin eso no se corta el primer tag de esta capa. Es
