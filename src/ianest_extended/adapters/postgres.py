@@ -704,6 +704,13 @@ class PostgresMemoryStore:
         memory_types: tuple[MemoryType, ...],
         query: RecallQuery,
     ) -> list[RecallItem]:
+        """Recupera tipos `RANKED` (dialog/episodic/semantic).
+
+        Filtro de dominio (D2, PLAN.md): una memoria sin `domain_tag` es
+        SIEMPRE candidata (neutra, no incompatible); el filtro excluye solo
+        las de un dominio DISTINTO del pedido. Sin dominio pedido, no hay
+        filtro (comportamiento sin cambios).
+        """
         scope_clauses: list[str] = []
         parameters: list[Any] = []
         for memory_type in memory_types:
@@ -747,7 +754,11 @@ class PostgresMemoryStore:
             JOIN memory_types mt ON mt.name = e.type_name
             WHERE e.status = 'active'
               AND ({" OR ".join(scope_clauses)})
-              AND (%s::text IS NULL OR e.domain_tag = %s)
+              AND (
+                  %s::text IS NULL
+                  OR e.domain_tag IS NULL
+                  OR e.domain_tag = %s
+              )
               AND (%s::uuid IS NULL OR %s = ANY(e.entity_refs))
             ORDER BY relevance DESC, e.created_at DESC
             LIMIT %s
@@ -778,6 +789,16 @@ class PostgresMemoryStore:
         memory_types: tuple[MemoryType, ...],
         query: RecallQuery,
     ) -> list[RecallItem]:
+        """Recupera tipos `ALWAYS_INJECT` (identity/principles/safety).
+
+        D2 (PLAN.md) NO toca este filtro a proposito: los delegados ya se
+        inyectan de forma incondicional porque quien los recupera
+        (`MemoryEnricher.recall`, DELEGATED_TYPES) nunca pasa `domain_tag` en
+        la query, con o sin `--domain` en la peticion. La forma estricta
+        `e.domain_tag = %s` se conserva sin efecto observable hoy; si algun
+        dia un llamador pasara `domain_tag` para un tipo delegado, revisar si
+        la semantica neutra de D2 debe extenderse aqui tambien.
+        """
         clauses: list[str] = []
         parameters: list[Any] = []
         for memory_type in memory_types:

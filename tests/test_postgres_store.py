@@ -160,6 +160,58 @@ def test_gates_filter_domain_and_entity_reference(postgres_store):
     assert [item.engram.content for item in recalled] == ["hecho linux"]
 
 
+def test_d2_domain_filter_treats_memory_without_domain_as_neutral(postgres_store):
+    """D2: pedido=X incluye X y sin-dominio; excluye solo un dominio distinto.
+
+    docs/PLAN.md D2 / docs/handoff/deudas_d1_d2_brief.md: una memoria sin
+    `domain_tag` no es incompatible con el dominio pedido, es neutra, y debe
+    seguir siendo candidata (a diferencia del filtro estricto anterior).
+    """
+    unique_user = f"u-{uuid4()}"
+    postgres_store.write(
+        Principal.EXTENDED,
+        EngramWrite(
+            type_name="episodic",
+            content="hecho del dominio pedido",
+            identity=MemoryIdentity(unique_user, "A"),
+            namespace="facts",
+            domain_tag="linux",
+        ),
+    )
+    postgres_store.write(
+        Principal.EXTENDED,
+        EngramWrite(
+            type_name="episodic",
+            content="hecho sin dominio, neutro",
+            identity=MemoryIdentity(unique_user, "A"),
+            namespace="facts",
+        ),
+    )
+    postgres_store.write(
+        Principal.EXTENDED,
+        EngramWrite(
+            type_name="episodic",
+            content="hecho de otro dominio",
+            identity=MemoryIdentity(unique_user, "A"),
+            namespace="facts",
+            domain_tag="matematicas",
+        ),
+    )
+
+    recalled = postgres_store.recall(
+        RecallQuery(
+            type_names=("episodic",),
+            identity=MemoryIdentity(unique_user, "B"),
+            namespace="facts",
+            domain_tag="linux",
+        )
+    )
+
+    contents = {item.engram.content for item in recalled}
+    assert contents == {"hecho del dominio pedido", "hecho sin dominio, neutro"}
+    assert "hecho de otro dominio" not in contents
+
+
 def test_a5_archive_preserves_row(postgres_store):
     stored = postgres_store.write(
         Principal.EXTENDED,

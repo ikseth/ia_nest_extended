@@ -135,8 +135,16 @@ class RagStore(Protocol):
         *,
         domain: str | None = None,
         top_k: int = 3,
+        min_score: float = 0.0,
     ) -> Sequence[RagChunk]:
-        """Recupera chunks activos por similitud y gate opcional de dominio."""
+        """Recupera chunks activos por similitud y gate opcional de dominio.
+
+        `min_score` es el suelo de similitud (D1): un chunk por debajo no se
+        devuelve aunque quede sitio en `top_k`. El default `0.0` es solo para
+        llamadas que deliberadamente no quieren suelo (p. ej. pruebas); los
+        caminos de produccion deben pasar el valor de
+        `ExtendedConfig.rag_min_score` de forma explicita.
+        """
 
     def confirmed_corpus_counts(self, domains: Sequence[str]) -> dict[str, int]:
         """Cuenta corpus activos con vinculo confirmado por dominio."""

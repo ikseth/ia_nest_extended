@@ -214,6 +214,7 @@ class PostgresRagStore:
         *,
         domain: str | None = None,
         top_k: int = 3,
+        min_score: float = 0.0,
     ) -> tuple[RagChunk, ...]:
         if not query_text.strip():
             raise InvalidRagInputError("query_text no puede estar vacio")
@@ -248,12 +249,13 @@ class PostgresRagStore:
                             AND gate.confirmed
                       )
                   )
+                  AND (1 - (chunk.embedding <=> %s::vector)) >= %s
                 ORDER BY chunk.embedding <=> %s::vector,
                          chunk.created_at,
                          chunk.id
                 LIMIT %s
                 """,
-                (vector, domain, domain, vector, top_k),
+                (vector, domain, domain, vector, min_score, vector, top_k),
             ).fetchall()
         return tuple(
             RagChunk(

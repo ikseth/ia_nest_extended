@@ -400,6 +400,7 @@ class MemoryEnricher:
                     prompt,
                     domain=identity.domain_tag,
                     top_k=self._config.rag_top_k,
+                    min_score=self._config.rag_min_score,
                 )
             )
         except Exception:

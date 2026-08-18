@@ -5,6 +5,37 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+### Corregido
+- Cierre de D1 y D2 (`docs/PLAN.md`, seccion "Deuda de diseno declarada";
+  `docs/handoff/deudas_d1_d2_brief.md`).
+  D1: la recuperacion RAG aplica un suelo de similitud configurable
+  (`IANEST_EXTENDED_RAG_MIN_SCORE`, default `0.38`) en `RagStore.retrieve`; un
+  chunk por debajo no se devuelve aunque quede sitio en `rag_top_k` ni en el
+  presupuesto de tokens. El valor de configuracion llega explicitamente a los
+  DOS caminos que recuperan RAG -`prompt.run`/`reasoning.run` via
+  `MemoryEnricher.enrich` y `task.run` por subtarea via
+  `MemoryEnricher.retrieve_rag`- ademas de `memory.recall`; ninguno depende de
+  un default en la firma del almacen. Cero chunks recuperados sigue siendo un
+  resultado valido, visible en `rag.retrieve` con `k_returned` en cero, sin
+  excepcion ni aviso. El default `0.38` esta MEDIDO en laboratorio el
+  2026-08-18 contra un corpus de dos dominios (linux/matematicas): elimina el
+  ruido observado (0.271-0.350) y conserva los dos aciertos (0.406/0.557); el
+  margen entre 0.350 y 0.406 es estrecho y la calibracion se hizo con dos
+  corpus y seis sondas, asi que es un punto de partida afinable en laboratorio
+  (`docs/POLITICA_WRITEBACK.md`), no una constante.
+  D2: el filtro de dominio de los tipos `RANKED` (`dialog`/`episodic`/
+  `semantic`, adaptador PostgreSQL) deja de excluir las memorias SIN
+  `domain_tag`: una memoria sin dominio es SIEMPRE candidata (neutra, no
+  incompatible con la regla anti-colision de `docs/FORMA_ENRIQUECIMIENTO.md`);
+  el filtro excluye solo las de un dominio DISTINTO del pedido. Sin dominio
+  pedido, el comportamiento no cambia. Los tipos `ALWAYS_INJECT` delegados
+  (`identity`/`principles`/`safety`) quedan sin tocar a proposito: nunca
+  reciben `domain_tag` desde `MemoryEnricher.recall`, con o sin `--domain`, asi
+  que su inyeccion incondicional no cambia.
+  Impacto de version: ninguno, porque aun no hay contrato publicado ni primer
+  tag (seria PATCH de haberlo: campo de configuracion aditivo mas correccion
+  de comportamiento, sin romper superficie existente).
+
 ### Anadido
 - Implementacion de la Fase 7b: `reasoning.run` sobreescrito con el mismo
   vertical upfront de `prompt.run`, y `task.run` enriquecido por subtarea via

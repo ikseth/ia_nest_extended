@@ -243,6 +243,8 @@ disparador para que no se pierdan ni se cuelen sin decidir.
 
 ### D1. Suelo de relevancia en la recuperacion RAG
 
+Estado: CERRADA (implementada 2026-08-18, `docs/handoff/deudas_d1_d2_brief.md`).
+
 Hoy la recuperacion devuelve `rag_top_k` chunks SIEMPRE, por poco que se parezcan
 al prompt: hay top-k y presupuesto de tokens, pero ningun umbral minimo de
 similitud. Observado en laboratorio (2026-08-14): a un "que recuerdas de mi?" sin
@@ -253,7 +255,18 @@ Distinto es saber que una pregunta NO necesita conocimiento: eso si es juicio, y
 es de conscience. Disparador: antes de crecer el corpus, porque el ruido escala
 con el.
 
+Cierre: suelo configurable `rag_min_score` (default `0.38`, medido en
+laboratorio el 2026-08-18 contra dos dominios; ver CHANGELOG), aplicado en
+`RagStore.retrieve` y hecho llegar explicitamente desde `ExtendedConfig` a los
+dos caminos que recuperan RAG (`prompt.run`/`reasoning.run` via
+`MemoryEnricher.enrich` y `task.run` per-subtarea via
+`MemoryEnricher.retrieve_rag`), y tambien a `memory.recall`. Margen declarado
+entre 0.350 (ruido) y 0.406 (acierto): punto de partida afinable en laboratorio,
+no una constante (`docs/POLITICA_WRITEBACK.md`).
+
 ### D2. El filtro de dominio excluye las memorias sin dominio
+
+Estado: CERRADA (implementada 2026-08-18, `docs/handoff/deudas_d1_d2_brief.md`).
 
 Con `--domain` se filtran tambien los tiers experienciales (`semantic`,
 `episodic`), de modo que una memoria SIN `domain_tag` queda fuera. Efecto
@@ -267,6 +280,14 @@ candidatas y el filtro excluya solo las de un dominio distinto. Toca ranking y
 recall, fuera del alcance de la Fase 7. Nota: los tipos delegados
 (`identity`, `principles`, `safety`) ya se inyectan de forma incondicional y no
 estan afectados.
+
+Cierre: reconciliado por el usuario en los terminos de arriba (una memoria sin
+`domain_tag` es SIEMPRE candidata; el filtro excluye solo un dominio DISTINTO).
+Implementado en el filtro de tipos `RANKED` (`dialog`/`episodic`/`semantic`) del
+adaptador PostgreSQL. El filtro de los tipos `ALWAYS_INJECT` (delegados) queda
+sin tocar a proposito: nunca recibe `domain_tag` desde `MemoryEnricher.recall`,
+con o sin `--domain` en la peticion, asi que su inyeccion incondicional no
+cambia.
 
 ### D3. La identidad como fuente conmutable
 

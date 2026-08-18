@@ -227,6 +227,34 @@ def test_task_rag_is_gated_and_bounded_per_subtask(tmp_path):
     assert result.subtasks_enriched == 2
 
 
+def test_task_rag_floor_drops_low_score_subtasks(tmp_path):
+    """D1: el suelo de similitud gobierna tambien el camino de task.run."""
+    chunks = (
+        _chunk("linux", "LOW_LINUX " + "x" * 35, 0.2),
+        _chunk("codigo", "LOW_CODIGO " + "y" * 35, 0.2),
+    )
+    service, core, _, rag = _service(
+        tmp_path,
+        rag_store=InMemoryRagStore(chunks),
+        rag_top_k=4,
+    )
+
+    result = service.task_run(
+        "tarea original",
+        _identity(),
+        use_memory=False,
+        use_rag=True,
+        write_back=False,
+    )
+
+    sent_plan = _task_call(core)[3]["plan"]
+    assert "LOW_LINUX" not in sent_plan[0]["prompt"]
+    assert "LOW_CODIGO" not in sent_plan[1]["prompt"]
+    assert sent_plan[0]["prompt"] == core.plan_payload["plan"][0]["prompt"]
+    assert sent_plan[1]["prompt"] == core.plan_payload["plan"][1]["prompt"]
+    assert result.subtasks_enriched == 0
+
+
 def test_task_passthrough_does_not_plan_or_supply_a_plan(tmp_path):
     """Criterio 7: --no-enrich conserva el camino replanificable del core."""
     service, core, _, _ = _service(tmp_path)
