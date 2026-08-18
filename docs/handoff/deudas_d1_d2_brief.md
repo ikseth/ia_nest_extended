@@ -39,16 +39,12 @@ existentes (`config.py`).
 2026-08-18 contra el corpus de dos dominios, con el embebedor y la metrica que la
 capa ya usa:
 
-    RELEVANTE   0.557 (consulta linux)   0.406 (consulta matematicas)
-    RUIDO       0.271  0.291  0.301  0.323  0.325  0.350
-    CRUZADO     0.325  (consulta de linux gateada al dominio matematicas)
-
-0.38 cae en el hueco entre las dos bandas: elimina todo el ruido observado y
-conserva los dos aciertos.
+0.38 cae en el hueco entre la banda del ruido y la de los aciertos: elimina todo
+el ruido observado y conserva los relevantes. Las puntuaciones concretas son dato
+de laboratorio y no se versionan.
 
 **Declara la limitacion en el codigo o en el CHANGELOG, no la esconda:** el margen
-entre 0.350 y 0.406 es estrecho y la calibracion se hizo con dos corpus y seis
-sondas. Es un punto de partida afinable en laboratorio
+entre las dos bandas es estrecho y la calibracion se hizo con un corpus pequeno. Es un punto de partida afinable en laboratorio
 (`docs/POLITICA_WRITEBACK.md`: el lab es el banco de finetuning de estos numeros),
 no una constante. Ante la duda, el sesgo correcto es CONSERVADOR: es peor
 silenciar un chunk relevante que admitir uno mediocre.
