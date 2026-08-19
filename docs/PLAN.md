@@ -326,6 +326,8 @@ cambia.
 
 ### D4. La memoria no tiene suelo de relevancia
 
+Estado: CERRADA (implementada 2026-08-19, `docs/handoff/deuda_d4_brief.md`).
+
 D1 puso un suelo de similitud al RAG y NO a los tiers de memoria. El efecto se
 observo en laboratorio (2026-08-18): a una pregunta sobre guardado de semillas se
 le inyecto un engrama con el color favorito del interlocutor.
@@ -338,6 +340,19 @@ tipos delegados (`identity`, `principles`, `safety`) se inyectan de forma
 incondicional por diseno, y un suelo no debe alcanzarlos. Disparador: antes de que
 `conscience` escriba en los delegados, porque a partir de ahi el contexto
 permanente crece y el ruido con el.
+
+Implementado con `IANEST_EXTENDED_MEMORY_MIN_SIMILARITY`: gatea la similitud
+solo de `episodic`; la relevancia compuesta conserva su funcion de orden.
+`semantic`, `dialog` y los delegados quedan fuera del mecanismo. Reconciliado
+2026-08-19: el brief original tambien aplicaba el suelo a `semantic`; se
+descarto porque la promocion `episodic -> semantic` ya es un filtro, y es un
+filtro por JUICIO en vez de por distancia coseno -usar el gradiente que ya
+existe es mejor que un umbral que no distingue una alergia de un color
+favorito-. Consecuencia declarada: hoy la Fase 4 apenas consolida, asi que a
+corto plazo esto se parece a no tener suelo; no invalida la decision, senala que
+el trabajo siguiente esta en la consolidacion. El default 0.10 es PROVISIONAL y
+sin medida; su calibracion se hara junto a D5 cuando existan corpus y uso
+reales.
 
 ### D5. Un umbral global puede no separar ruido de acierto
 

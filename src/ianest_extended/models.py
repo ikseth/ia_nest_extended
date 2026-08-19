@@ -170,6 +170,7 @@ class RecallQuery:
     domain_tag: str | None = None
     entity_ref: UUID | None = None
     entity_id: UUID | None = None
+    min_similarity: float | None = None
     top_k: int = 10
     now: datetime | None = None
 

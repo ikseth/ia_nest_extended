@@ -360,3 +360,52 @@ def postgres_rag_store(postgres_store):
     store = PostgresRagStore(postgres_store._dsn, postgres_store._embedder)
     store.migrate()
     return store
+
+
+_POSTGRES_DATA_TABLES = (
+    "engrams",
+    "entities",
+    "memory_links",
+    "rag_chunks",
+    "rag_corpus_domains",
+    "rag_corpora",
+)
+
+
+def _truncate_postgres_data(store) -> None:
+    """Vacia las tablas de DATOS; `memory_types` (esquema) no se toca."""
+    with store._connect() as connection:
+        existing = [
+            table
+            for table in _POSTGRES_DATA_TABLES
+            if connection.execute(
+                "SELECT to_regclass(%s) AS relation", (table,)
+            ).fetchone()["relation"]
+            is not None
+        ]
+        if existing:
+            connection.execute(
+                "TRUNCATE TABLE "
+                + ", ".join(existing)
+                + " RESTART IDENTITY CASCADE"
+            )
+
+
+@pytest.fixture(autouse=True)
+def _reset_postgres_state(request):
+    """D4: banco de pruebas de PostgreSQL idempotente.
+
+    `postgres_store` es de sesion (una migracion, muchas pruebas) y no se
+    limpiaba entre pruebas ni entre ejecuciones: acumulaba filas y el
+    resultado dependia de la historia (llego a superar cien engramas de
+    pasadas anteriores). Se vacian las tablas de datos antes de cada prueba
+    que use `postgres_store`, directa o indirectamente (`postgres_rag_store`
+    depende de el). Asi, dos ejecuciones seguidas de la suite dan el mismo
+    resultado, y una prueba aislada da lo mismo que dentro de la suite.
+    """
+    if "postgres_store" not in request.fixturenames:
+        yield
+        return
+    store = request.getfixturevalue("postgres_store")
+    _truncate_postgres_data(store)
+    yield
