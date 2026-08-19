@@ -1,7 +1,10 @@
 """Criterios falsables del catalogo propio y fusionado (extended ADR 0012)."""
 
 import argparse
+import json
 from pathlib import Path
+
+import pytest
 
 from ianest_extended import (
     CoreConnectionError,
@@ -12,7 +15,7 @@ from ianest_extended import (
     LOCAL_CAPABILITIES,
 )
 from ianest_extended import cli
-from ianest_extended.cli import _build_parser
+from ianest_extended.cli import _build_parser, _catalog_payload
 
 
 class CatalogCore:
@@ -55,6 +58,7 @@ def _service(tmp_path, core):
         core_url="http://127.0.0.1:1",
         telemetry_dir=tmp_path,
         session_state_path=tmp_path / "session_id",
+        catalog_cache_path=tmp_path / "catalog_cache.json",
         embedding_dimension=2,
     )
     return ExtendedService(ExtendedComposition(config, core=core))
@@ -113,6 +117,28 @@ def test_overridden_capability_appears_once_with_extended_declaration(tmp_path):
     assert prompts[0]["summary"] == "ejecuta un prompt enriquecido"
 
 
+def test_capability_list_writes_the_catalog_cache(tmp_path):
+    """Retrabajo, criterio 5: capability list deja la cache local actualizada.
+
+    Es la UNICA via de refresco (docs/handoff/herencia_parametros_retrabajo.md):
+    el parser nunca consulta la red, asi que sin este efecto la cache jamas
+    reflejaria un catalogo remoto que cambio.
+    """
+    service = _service(tmp_path, CatalogCore())
+    cache_path = tmp_path / "catalog_cache.json"
+
+    result = service.capability_list()
+
+    assert cache_path.is_file()
+    document = json.loads(cache_path.read_text(encoding="utf-8"))
+    assert document["core_url"] == "http://127.0.0.1:1"
+    assert document["core_version"] == result["core_version"] == "0.4.0"
+    assert {item["name"] for item in document["capabilities"]} == {
+        "prompt.run",
+        "future.inspect",
+    }
+
+
 def test_offline_core_returns_local_catalog_and_typed_error(tmp_path):
     """Criterio 9: degradacion honesta, no catalogo parcial fingido."""
     result = _service(tmp_path, OfflineCore()).capability_list()
@@ -166,6 +192,33 @@ def test_building_cli_parser_does_not_construct_or_call_core(monkeypatch):
     parser = _build_parser()
 
     assert parser.prog == "ianest-extended"
+
+
+def test_forwarded_parameters_are_flags_with_type_default_and_choices():
+    """Criterios 1-4 y 7: una declaracion ajena basta para construir la piel."""
+    catalog = [{
+        "name": "future.inspect",
+        "summary": "capacidad futura",
+        "identity": False,
+        "streaming": False,
+        "provenance": "forwarded",
+        "params": [
+            {"name": "count", "type": "integer", "required": False,
+             "choices": None, "default": 2, "summary": "numero", "metavar": "N"},
+            {"name": "mode", "type": "string", "required": True,
+             "choices": ["fast", "safe"], "default": None, "summary": "modo", "metavar": "MODO"},
+        ],
+        "cli": {"group": "future", "action": "inspect", "description": "futura"},
+    }]
+    parser = _build_parser(catalog=catalog)
+
+    args = parser.parse_args(["future", "inspect", "--mode", "fast"])
+
+    payload = _catalog_payload(object(), args, catalog[0])
+    assert payload["count"] == 2
+    assert isinstance(payload["count"], int)
+    with pytest.raises(SystemExit):
+        parser.parse_args(["future", "inspect", "--mode", "invalid"])
 
 
 def test_unknown_action_in_local_group_remains_invocable_without_catalog(

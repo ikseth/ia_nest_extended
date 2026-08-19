@@ -18,7 +18,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .capabilities import LOCAL_CAPABILITIES
+from .capabilities import CapabilityParam, LOCAL_CAPABILITIES, local_catalog, merge_forwarded
+from .catalog_cache import read_catalog_cache
 from .config import ExtendedConfig
 from .errors import ExtendedError
 from .identity import resolve_identity
@@ -32,6 +33,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     if _is_general_help(tokens):
         parser = _build_general_help_parser(tokens)
+    elif _first_positional(tokens) is not None:
+        parser = _build_runtime_catalog_parser(tokens, parser)
     group = _first_positional(tokens)
     if group is not None:
         action = _second_positional(tokens, group)
@@ -108,18 +111,55 @@ def _is_general_help(tokens: list[str]) -> bool:
 
 def _build_general_help_parser(tokens: list[str]) -> argparse.ArgumentParser:
     """Enriquece solo la ayuda general; construir el parser sigue siendo local."""
+    env_file = _env_file_from_tokens(tokens)
+    try:
+        config = ExtendedConfig.from_env(env_file=env_file)
+        catalog = _cached_catalog(config)
+    except (ExtendedError, AttributeError):
+        catalog = None
+    return _build_parser(catalog=catalog)
+
+
+def _build_runtime_catalog_parser(
+    tokens: list[str], fallback: argparse.ArgumentParser
+) -> argparse.ArgumentParser:
+    """Anade la declaracion ajena SI esta cacheada; invocar no depende de ella.
+
+    Construir el parser es una operacion puramente local (defecto 2 del
+    retrabajo de herencia de parametros): nunca consulta al core. Sin cache
+    -o con una cache de otro core- esta capa degrada a `fallback`, que ya
+    conserva las banderas propias y resuelve lo ajeno por `--param`.
+    """
+    try:
+        config = ExtendedConfig.from_env(env_file=_env_file_from_tokens(tokens))
+        catalog = _cached_catalog(config)
+    except (ExtendedError, AttributeError):
+        return fallback
+    if catalog is None:
+        return fallback
+    return _build_parser(catalog=catalog)
+
+
+def _cached_catalog(config: ExtendedConfig) -> list[dict[str, Any]] | None:
+    """Catalogo fusionado desde la cache local del catalogo remoto.
+
+    `None` si no hay cache o si es de un core distinto del configurado: en
+    ambos casos quien llama degrada como si no existiera, nunca falla.
+    """
+    cached = read_catalog_cache(config.catalog_cache_path, core_url=config.core_url)
+    if cached is None:
+        return None
+    return merge_forwarded(local_catalog(), cached["capabilities"])
+
+
+def _env_file_from_tokens(tokens: list[str]) -> str:
     env_file = ".env"
     for index, token in enumerate(tokens):
         if token == "--env-file" and index + 1 < len(tokens):
             env_file = tokens[index + 1]
         elif token.startswith("--env-file="):
             env_file = token.partition("=")[2]
-    try:
-        config = ExtendedConfig.from_env(env_file=env_file)
-        catalog = ExtendedService.from_config(config).capability_list()["capabilities"]
-    except ExtendedError:
-        catalog = None
-    return _build_parser(catalog=catalog)
+    return env_file
 
 
 def _run_unknown_capability(group: str, tokens: list[str]) -> int:
@@ -329,12 +369,9 @@ def _build_parser(
         "Planifica en el core y enriquece cada subtarea por su dominio resuelto.",
     )
     task_run = _add_local_parser(task_group, "task.run")
-    task_run.add_argument("--prompt", required=True, metavar="TEXTO")
-    task_run.add_argument(
-        "--effort",
-        choices=("low", "medium", "high"),
-        metavar="NIVEL",
-    )
+    _add_local_parameter(task_run, "task.run", "prompt")
+    _add_local_parameter(task_run, "task.run", "effort")
+    _add_cli_inputs(task_run, _local_capability("task.run").cli.inputs)
     _add_enrichment_arguments(task_run, include_auto_domain=False)
     _add_identity_arguments(task_run, task_domain=True)
     _add_json_argument(task_run)
@@ -425,7 +462,7 @@ def _build_parser(
 
 
 def _add_local_parser(actions, name: str) -> argparse.ArgumentParser:
-    capability = next(item for item in LOCAL_CAPABILITIES if item.name == name)
+    capability = _local_capability(name)
     projection = capability.cli
     assert projection is not None and projection.action is not None
     return actions.add_parser(
@@ -436,43 +473,103 @@ def _add_local_parser(actions, name: str) -> argparse.ArgumentParser:
     )
 
 
+def _local_capability(name: str):
+    return next(item for item in LOCAL_CAPABILITIES if item.name == name)
+
+
 def _add_local_parameter(
     parser: argparse.ArgumentParser,
     capability_name: str,
     parameter_name: str,
 ) -> None:
-    capability = next(
-        item for item in LOCAL_CAPABILITIES if item.name == capability_name
-    )
+    capability = _local_capability(capability_name)
     parameter = next(
         item for item in capability.params if item.name == parameter_name
     )
-    option = f"--{parameter.name.replace('_', '-')}"
+    _add_catalog_parameter(parser, parameter)
+
+
+def _option_registered(parser: argparse.ArgumentParser, option: str) -> bool:
+    return option in parser._option_string_actions
+
+
+def _add_catalog_parameter(
+    parser, parameter: CapabilityParam | dict[str, Any], *, suppress_default: bool = False
+) -> bool:
+    """Construye una bandera desde una declaracion, sin conocer capacidades.
+
+    Regla de colision, UNA sola y derivada del dato (no una lista de casos):
+    si el parser YA tiene esa bandera -porque la capa la posee de antemano,
+    identidad, enriquecimiento o salida-, la bandera propia gana y el
+    parametro del catalogo no se vuelve a declarar. Devuelve `False` en ese
+    caso para que quien llama pueda explicarlo en la ayuda; `True` si se
+    anadio.
+    """
+    value = _catalog_value(parameter, "name")
+    assert isinstance(value, str)
+    option = f"--{value.replace('_', '-')}"
+    if _option_registered(parser, option):
+        return False
     kwargs: dict[str, Any] = {
-        "required": parameter.required,
-        "help": parameter.summary,
+        "required": bool(_catalog_value(parameter, "required", False)),
+        "help": str(_catalog_value(parameter, "summary", "")),
     }
-    if parameter.metavar is not None:
-        kwargs["metavar"] = parameter.metavar
-    if parameter.choices is not None:
-        kwargs["choices"] = parameter.choices
-    if parameter.type == "boolean":
+    metavar = _catalog_value(parameter, "metavar")
+    if isinstance(metavar, str):
+        kwargs["metavar"] = metavar
+    choices = _catalog_value(parameter, "choices")
+    if choices is not None:
+        kwargs["choices"] = choices
+    param_type = _catalog_value(parameter, "type")
+    default = _catalog_value(parameter, "default")
+    if param_type == "boolean":
         kwargs["action"] = (
             "store_true"
-            if parameter.default is False
+            if default is False
             else argparse.BooleanOptionalAction
         )
-        kwargs["default"] = parameter.default
-    elif parameter.type == "array":
+        kwargs["default"] = argparse.SUPPRESS if suppress_default else default
+    elif param_type == "array":
         kwargs["action"] = "append"
-        kwargs["default"] = list(parameter.default or ())
+        kwargs["default"] = argparse.SUPPRESS if suppress_default else list(default or ())
+    elif param_type == "integer":
+        kwargs["type"] = int
+        kwargs["default"] = argparse.SUPPRESS if suppress_default else default
     else:
-        kwargs["default"] = parameter.default
+        kwargs["default"] = argparse.SUPPRESS if suppress_default else default
     parser.add_argument(option, **kwargs)
+    return True
+
+
+def _catalog_value(item, name: str, default=None):
+    return getattr(item, name, item.get(name, default) if isinstance(item, dict) else default)
+
+
+def _add_cli_inputs(parser, inputs) -> None:
+    """Misma regla de colision que `_add_catalog_parameter`, para entradas."""
+    for input_spec in inputs:
+        name = _catalog_value(input_spec, "name")
+        if not isinstance(name, str):
+            continue
+        option = f"--{name.replace('_', '-')}"
+        if _option_registered(parser, option):
+            continue
+        parser.add_argument(
+            option,
+            dest=name,
+            metavar=_catalog_value(input_spec, "metavar"),
+            help=_catalog_value(input_spec, "summary", ""),
+        )
 
 
 def _add_catalog_help(group, catalog: list[dict[str, Any]]) -> None:
-    """Anade ayuda ajena usando solo los campos conocidos de la proyeccion."""
+    """Anade ayuda ajena usando solo los campos conocidos de la proyeccion.
+
+    Las banderas propias de la capa -identidad, `--param` y `--json`- se
+    declaran ANTES de recorrer los parametros del catalogo, para que la
+    regla de colision (`_add_catalog_parameter`) las encuentre ya puestas y
+    ceda ante ellas en lugar de intentar redeclararlas.
+    """
     for capability in catalog:
         if capability.get("provenance") != "forwarded":
             continue
@@ -490,13 +587,42 @@ def _add_catalog_help(group, catalog: list[dict[str, Any]]) -> None:
         )
         if action in actions.choices:
             continue
-        actions.add_parser(
+        parser = actions.add_parser(
             action,
             help=str(capability.get("summary", "capacidad reenviada")),
             description=str(
                 projection.get("description", "Capacidad reenviada al core.")
             ),
             epilog=projection.get("epilog"),
+        )
+        parser.add_argument(
+            "--param",
+            action="append",
+            default=[],
+            metavar="CLAVE=VALOR",
+            help="campo no declarado del cuerpo reenviado; se puede repetir",
+        )
+        _add_identity_arguments(parser)
+        _add_json_argument(parser)
+        governed: list[str] = []
+        for parameter in capability.get("params", []):
+            if not isinstance(parameter, dict) or parameter.get("cli") is False:
+                continue
+            name = parameter.get("name")
+            if _add_catalog_parameter(parser, parameter, suppress_default=True):
+                continue
+            if isinstance(name, str):
+                governed.append(name)
+        _add_cli_inputs(parser, projection.get("inputs", ()))
+        if governed:
+            note = (
+                "Parametros que gobierna la bandera propia de la capa, no "
+                "el catalogo: " + ", ".join(f"--{n.replace('_', '-')}" for n in sorted(governed))
+            )
+            parser.epilog = f"{parser.epilog}\n\n{note}" if parser.epilog else note
+        parser.set_defaults(
+            handler=_catalog_forward,
+            catalog_capability=capability,
         )
 
 
@@ -671,6 +797,12 @@ def _reasoning_run(service, config, args) -> int:
 
 
 def _task_run(service, config, args) -> int:
+    plan_payload = _input_payload(args, _local_capability("task.run"))
+    if plan_payload is not None and args.effort is not None:
+        raise ExtendedError(
+            "--plan-file y --effort rellenan ambos 'effort'",
+            "effort",
+        )
     result = service.task_run(
         args.prompt,
         _identity(config, args, include_domain=False),
@@ -680,12 +812,103 @@ def _task_run(service, config, args) -> int:
         write_back=args.write_back,
         domain=getattr(args, "domain", None),
         effort=args.effort,
+        plan_payload=plan_payload,
     )
     if args.json:
         _print_json(result.payload)
     else:
         print(result.response)
     return 0
+
+
+def _catalog_forward(service, config, args) -> int:
+    """Reenvio de una declaracion descubierta, construido solo del catalogo."""
+    capability = args.catalog_capability
+    payload = _catalog_payload(config, args, capability)
+    return _emit_forward(service.forward(capability["name"], payload), args.json)
+
+
+def _catalog_payload(config, args, capability: dict[str, Any]) -> dict[str, Any] | None:
+    params = {
+        item["name"]
+        for item in capability.get("params", [])
+        if isinstance(item, dict) and isinstance(item.get("name"), str)
+    }
+    payload = _input_payload(args, capability) or {}
+    for parameter in capability.get("params", []):
+        if not isinstance(parameter, dict) or parameter.get("cli") is False:
+            continue
+        name = parameter.get("name")
+        if not isinstance(name, str):
+            continue
+        if hasattr(args, name):
+            value = getattr(args, name)
+            if name in payload:
+                raise ExtendedError(
+                    f"entrada de fichero y bandera rellenan ambos '{name}'", name
+                )
+            if value is not None:
+                payload[name] = value
+        elif parameter.get("default") is not None:
+            payload[name] = parameter["default"]
+    for item in args.param:
+        key, separator, raw = item.partition("=")
+        if not separator or not key.strip():
+            raise ExtendedError(f"--param espera CLAVE=VALOR; recibido '{item}'", "param")
+        key = key.strip()
+        if key in params:
+            raise ExtendedError(
+                f"--param no puede rellenar el parametro declarado '{key}'",
+                key,
+            )
+        try:
+            payload[key] = json.loads(raw)
+        except json.JSONDecodeError:
+            payload[key] = raw
+    if capability.get("identity") and "identity" not in payload:
+        payload["identity"] = _identity(config, args).to_core_dict()
+    return payload or None
+
+
+def _input_payload(args, capability) -> dict[str, Any] | None:
+    """Lee entradas declaradas y reparte su JSON; las colisiones son errores."""
+    projection = _catalog_value(capability, "cli")
+    if projection is None:
+        return None
+    payload: dict[str, Any] = {}
+    used = False
+    for input_spec in _catalog_value(projection, "inputs", ()):
+        input_name = _catalog_value(input_spec, "name")
+        if not isinstance(input_name, str):
+            continue
+        path = getattr(args, input_name, None)
+        if path is None:
+            continue
+        used = True
+        if _catalog_value(input_spec, "source") != "json_file":
+            raise ExtendedError("entrada CLI no soportada", input_name)
+        try:
+            document = json.loads(Path(path).read_text(encoding="utf-8"))
+        except OSError as exc:
+            raise ExtendedError(f"no se pudo leer '{path}': {exc}", input_name)
+        except json.JSONDecodeError as exc:
+            raise ExtendedError(f"'{path}' no contiene JSON valido: {exc}", input_name)
+        if not isinstance(document, dict):
+            raise ExtendedError("la entrada JSON debe ser un objeto", input_name)
+        targets = _catalog_value(input_spec, "targets", ())
+        for target in targets:
+            if target not in document:
+                raise ExtendedError(
+                    f"la entrada '{input_name}' no contiene '{target}'",
+                    input_name,
+                )
+            if target in payload:
+                raise ExtendedError(
+                    f"dos entradas CLI rellenan '{target}'",
+                    target,
+                )
+            payload[target] = document[target]
+    return payload if used else None
 
 
 def _memory_recall(service, config, args) -> int:

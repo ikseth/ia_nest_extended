@@ -192,6 +192,46 @@ def test_task_plan_is_copied_faithfully_except_params(tmp_path):
             assert enriched[key] == original[key]
 
 
+def test_task_run_uses_operator_plan_and_enriches_its_subtasks(tmp_path):
+    """Criterio 9: el fichero evita task.plan y conserva sus campos hermanos."""
+    service, core, _, _ = _service(tmp_path)
+    supplied = {
+        "plan": [
+            {"index": 0, "prompt": "operador linux", "domain": "linux", "depends_on": []},
+            {"index": 1, "prompt": "operador codigo", "domain": "codigo", "depends_on": [0]},
+        ],
+        "requirements": [{"id": "r1", "statement": "cumplir", "covered_by": [0]}],
+        "effort": "high",
+        "future_sibling": {"kept": True},
+    }
+
+    service.task_run(
+        "tarea original", _identity(), use_memory=False, use_rag=False,
+        write_back=False, plan_payload=supplied,
+    )
+
+    assert not [call for call in core.calls if call[0] == "task.plan"]
+    sent = _task_call(core)[3]
+    assert sent["requirements"] == supplied["requirements"]
+    assert sent["effort"] == "high"
+    assert sent["future_sibling"] == {"kept": True}
+
+
+def test_task_run_no_enrich_sends_operator_prompts_unchanged(tmp_path):
+    """Criterio 10: --no-enrich no modifica el plan que suministro el operador."""
+    service, core, _, _ = _service(tmp_path)
+    supplied = {
+        "plan": [{"index": 0, "prompt": "texto exacto\n", "domain": "linux", "depends_on": []}],
+        "requirements": [],
+        "effort": "low",
+    }
+
+    service.task_run("tarea", _identity(), enrich=False, plan_payload=supplied)
+
+    assert not [call for call in core.calls if call[0] == "task.plan"]
+    assert _task_call(core)[3]["plan"][0]["prompt"] == "texto exacto\n"
+
+
 def test_task_rag_is_gated_and_bounded_per_subtask(tmp_path):
     """Criterios 4-5: dominio propio y rag_max_tokens por cada subtarea."""
     chunks = (

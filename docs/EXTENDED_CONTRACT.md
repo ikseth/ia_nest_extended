@@ -46,6 +46,19 @@ Si el core no esta disponible, la respuesta conserva el catalogo local, deja
 sirve para explicar, nunca para habilitar una invocacion: ninguna capacidad deja
 de ser alcanzable por no poder descubrirla.
 
+La CLI deriva banderas tipadas de los parametros que el catalogo declara para
+cada capacidad. Un parametro cuyo nombre colisiona con una bandera que la capa
+ya posee -identidad, enriquecimiento o salida- NO se redeclara: la gobierna la
+bandera propia, y su ayuda lo dice. Regla unica derivada del dato, nunca una
+lista de casos por nombre.
+
+Construir la piel es SIEMPRE una operacion local: nunca consulta al core, ni
+siquiera alcanzable. Para eso, el catalogo remoto que alimenta esas banderas se
+cachea como estado local (no versionado); `capability.list` es quien la
+refresca, como efecto de consultar el core en vivo. Sin cache, o con una cache
+de un core distinto del configurado, la capa degrada: lo propio conserva sus
+banderas y lo ajeno se sigue invocando por `--param`.
+
 ### Garantia de transparencia
 
 Esta capa reexpone el contrato del core del rango declarado en
@@ -62,6 +75,10 @@ No hay reintento automatico sin plan: seria no determinista y duplicaria coste.
 `task.stream` se reenvia SIN enriquecer. Es un hueco conocido: el core no acepta
 `plan` ni `requirements` suministrados en esa capacidad. `prompt.stream` tambien
 sigue reenviado sin enriquecer.
+
+La presentacion de las capacidades reenviadas es JSON mientras `extended
+CR-0004` siga sin resolver. No se inventa render local para respuestas que la
+capa no puede describir desde el catalogo.
 
 El catalogo del core NO se re-declara aqui: su hogar es `core
 docs/CORE_CONTRACT.md` (convencion transversal 6, meta ADR 0008). Un consumidor

@@ -25,7 +25,9 @@ from .capabilities import (
     OWN_CAPABILITIES,
     extended_version,
     local_catalog,
+    merge_forwarded,
 )
+from .catalog_cache import write_catalog_cache
 from .clients import ForwardedJson, ForwardedStream
 from .composition import ExtendedComposition
 from .config import ExtendedConfig
@@ -181,9 +183,12 @@ class ExtendedService:
         sobreescritura y se anade `provenance`. Si el core no responde, el
         catalogo local sigue disponible junto al error tipado que explica la
         degradacion.
+
+        Efecto secundario, y es el punto: deja la cache local del catalogo
+        remoto actualizada. Es la unica via de refresco -el parser SOLO la
+        lee, nunca consulta la red (docs/handoff/herencia_parametros_retrabajo.md).
         """
         local = local_catalog()
-        local_names = {item["name"] for item in local}
         try:
             downstream = self._composition.core().list_capabilities()
         except ExtendedError as exc:
@@ -194,19 +199,16 @@ class ExtendedService:
                 "error": exc.to_dict(),
             }
 
-        merged = list(local)
-        for declared in downstream["capabilities"]:
-            name = declared.get("name")
-            if name in local_names:
-                continue
-            forwarded = dict(declared)
-            forwarded["provenance"] = "forwarded"
-            merged.append(forwarded)
-        merged.sort(key=lambda item: str(item.get("name", "")))
+        write_catalog_cache(
+            self.config.catalog_cache_path,
+            core_url=self.config.core_url,
+            core_version=downstream["core_version"],
+            capabilities=downstream["capabilities"],
+        )
         return {
             "extended_version": extended_version(),
             "core_version": downstream["core_version"],
-            "capabilities": merged,
+            "capabilities": merge_forwarded(local, downstream["capabilities"]),
         }
 
     def prompt_run(
@@ -381,6 +383,7 @@ class ExtendedService:
         write_back: bool | None = None,
         domain: str | None = None,
         effort: str | None = None,
+        plan_payload: dict[str, object] | None = None,
     ) -> TaskRunResult:
         plan = self.plan_enrichment(
             enrich=enrich,
@@ -401,7 +404,8 @@ class ExtendedService:
                 core_result = self._composition.core().task_run(
                     prompt,
                     identity,
-                    effort=effort,
+                    plan_payload=plan_payload,
+                    effort=None if plan_payload is not None else effort,
                 )
             except Exception:
                 self._record_task_run(
@@ -442,15 +446,30 @@ class ExtendedService:
         )
         subtasks_enriched = 0
         try:
-            planned = self._composition.core().task_plan(
-                prompt,
-                identity,
-                effort=effort,
-            )
-            plan_payload = dict(planned.payload)
-            plan_payload.pop("params", None)
+            if plan_payload is None:
+                planned = self._composition.core().task_plan(
+                    prompt,
+                    identity,
+                    effort=effort,
+                )
+                supplied_plan = dict(planned.payload)
+            else:
+                supplied_plan = dict(plan_payload)
+            supplied_plan.pop("params", None)
+            plan_payload = supplied_plan
             enriched_plan = []
-            for original in planned.plan:
+            raw_plan = plan_payload.get("plan")
+            if not isinstance(raw_plan, list):
+                raise EnrichmentParameterError(
+                    "el plan suministrado debe contener una lista 'plan'",
+                    "plan",
+                )
+            for original in raw_plan:
+                if not isinstance(original, dict):
+                    raise EnrichmentParameterError(
+                        "el plan suministrado contiene una subtarea invalida",
+                        "plan",
+                    )
                 item = dict(original)
                 if plan.use_rag:
                     subtask_domain = item["domain"]

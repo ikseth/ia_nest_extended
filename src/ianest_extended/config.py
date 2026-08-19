@@ -17,6 +17,17 @@ def default_session_state_path() -> Path:
     return Path(base).expanduser() / "ianest_extended" / "session_id"
 
 
+def default_catalog_cache_path() -> Path:
+    """Ruta local de la cache del catalogo remoto (estado, no configuracion).
+
+    Vive junto al resto del estado local que ya persiste la capa (convencion
+    XDG). No se versiona: la escribe `capability.list` como efecto de
+    consultar el core, y el parser SOLO la lee, nunca la red.
+    """
+    base = os.environ.get("XDG_STATE_HOME") or "~/.local/state"
+    return Path(base).expanduser() / "ianest_extended" / "catalog_cache.json"
+
+
 @dataclass(frozen=True, slots=True)
 class ExtendedConfig:
     core_url: str = "http://127.0.0.1:8000"
@@ -29,6 +40,7 @@ class ExtendedConfig:
     extraction_model: str = "qwen_tech"
     telemetry_dir: Path = Path("telemetry")
     session_state_path: Path = field(default_factory=default_session_state_path)
+    catalog_cache_path: Path = field(default_factory=default_catalog_cache_path)
     default_user_id: str = "local_operator"
     default_service: str = "local_cli"
     default_namespace: str = ""
@@ -89,6 +101,9 @@ class ExtendedConfig:
             ),
             "session_state_path": Path(
                 _env("SESSION_STATE_PATH", str(defaults.session_state_path))
+            ).expanduser(),
+            "catalog_cache_path": Path(
+                _env("CATALOG_CACHE_PATH", str(defaults.catalog_cache_path))
             ).expanduser(),
             "default_user_id": _env("DEFAULT_USER_ID", defaults.default_user_id),
             "default_service": _env("DEFAULT_SERVICE", defaults.default_service),

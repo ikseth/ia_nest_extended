@@ -398,7 +398,20 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
             _DOMAIN,
         ),
         None,
-        _cli("task", "run", "Planifica en el core y enriquece cada subtarea por su dominio resuelto."),
+        _cli(
+            "task",
+            "run",
+            "Planifica en el core y enriquece cada subtarea por su dominio resuelto.",
+            inputs=(
+                CliInput(
+                    "plan_file",
+                    "json_file",
+                    ("plan", "requirements", "effort"),
+                    "RUTA",
+                    "plan JSON editado por el operador",
+                ),
+            ),
+        ),
         None,
         "overridden",
     ),
@@ -416,6 +429,28 @@ OWN_CAPABILITIES: tuple[str, ...] = tuple(
 def local_catalog() -> list[dict[str, Any]]:
     """Serializa declaraciones locales con la misma forma publica del core."""
     return [asdict(capability) for capability in LOCAL_CAPABILITIES]
+
+
+def merge_forwarded(
+    local: list[dict[str, Any]], downstream: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Fusiona el catalogo local con uno del core, en vivo o cacheado.
+
+    Una capacidad ya declarada localmente (propia o sobreescrita) gana; el
+    resto se preserva intacto salvo por `provenance`. Mismo mecanismo tanto
+    si `downstream` viene de una respuesta fresca como de la cache local.
+    """
+    local_names = {item["name"] for item in local}
+    merged = list(local)
+    for declared in downstream:
+        name = declared.get("name")
+        if name in local_names:
+            continue
+        forwarded = dict(declared)
+        forwarded["provenance"] = "forwarded"
+        merged.append(forwarded)
+    merged.sort(key=lambda item: str(item.get("name", "")))
+    return merged
 
 
 def extended_version() -> str:
