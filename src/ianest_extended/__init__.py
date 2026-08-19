@@ -12,7 +12,9 @@ from .capabilities import (
     RestProjection,
     extended_version,
     local_catalog,
+    merge_forwarded,
 )
+from .catalog_cache import read_catalog_cache, write_catalog_cache
 from .clients import (
     CoreClient,
     CoreResult,
@@ -188,4 +190,7 @@ __all__ = [
     "seed_memory_types",
     "extended_version",
     "local_catalog",
+    "merge_forwarded",
+    "read_catalog_cache",
+    "write_catalog_cache",
 ]

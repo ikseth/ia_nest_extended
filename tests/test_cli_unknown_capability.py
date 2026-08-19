@@ -28,6 +28,10 @@ def _cli_env(monkeypatch, tmp_path, local_service_stub):
         "IANEST_EXTENDED_SESSION_STATE_PATH",
         str(tmp_path / "session_id"),
     )
+    monkeypatch.setenv(
+        "IANEST_EXTENDED_CATALOG_CACHE_PATH",
+        str(tmp_path / "catalog_cache.json"),
+    )
     monkeypatch.setenv("IANEST_EXTENDED_EMBEDDING_DIMENSION", "2")
     return ["--env-file", str(tmp_path / "ausente.env")]
 

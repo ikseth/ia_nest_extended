@@ -60,6 +60,27 @@ rellenan el mismo parametro, es error tipado, no precedencia silenciosa. Es la
 misma regla que ya gobierna las banderas de enriquecimiento
 (`docs/PLAN.md`, fase 7a).
 
+**Que hace `--plan-file` en una capacidad SOBREESCRITA (decidido, no inferible).**
+`task.run` esta sobreescrita, asi que hay que decir que ocurre con un plan
+suministrado cuando el enriquecimiento sigue activo:
+
+- Con enriquecimiento ACTIVO -el defecto-, el plan del fichero sustituye a la
+  llamada a `task.plan`, y **sus subtareas se enriquecen igual** que si el plan lo
+  hubiera derivado el core. Todo lo demas es identico: `requirements` y `effort`
+  salen del fichero y viajan intactos, `params` no se devuelve, y solo se edita
+  `plan[i].prompt`.
+- Con `--no-enrich`, el plan viaja al core TAL CUAL, sin tocar un solo prompt.
+
+Motivo, para que no se reabra: en el flujo normal planifica el core y esta capa
+enriquece despues; con `--plan-file` el OPERADOR ocupa el papel del planificador.
+Cambia de donde viene el plan, no que hace esta capa con el. Origen del plan y
+enriquecimiento son ejes independientes, y acoplarlos obligaria a renunciar a
+memoria y RAG por el mero hecho de editar un plan.
+
+Consecuencia declarada: si el operador edita las subtareas y rompe los indices de
+`covered_by`, el core lo reporta como cobertura incompleta. No se corrige ni se
+oculta: se ve.
+
 ### 3. `--param` sobrevive, como escape
 
 Se conserva para lo que el catalogo no declare -una capacidad de un core mas
@@ -101,7 +122,12 @@ Un `--param` que pise un parametro ya declarado como bandera es error tipado.
 8. **Sin catalogo tampoco se rompe.** Con el core inalcanzable, las capacidades
    propias conservan sus banderas -salen del catalogo local- y un `GRUPO ACCION`
    desconocido se sigue resolviendo con `--param`.
-9. **Sin regresion.** La suite sigue en verde mas las pruebas nuevas.
+9. **`--plan-file` con enriquecimiento activo.** El plan del fichero sustituye a
+   la llamada a `task.plan`, sus subtareas se enriquecen, y `requirements` y
+   `effort` llegan al core tal como venian en el fichero.
+10. **`--plan-file` con `--no-enrich`.** El plan llega al core con los prompts
+    identicos a los del fichero, byte a byte.
+11. **Sin regresion.** La suite sigue en verde mas las pruebas nuevas.
 
 ## Entrega
 

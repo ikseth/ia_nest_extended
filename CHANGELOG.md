@@ -6,6 +6,27 @@ Sin acentos por convencion.
 ## [No publicado]
 
 ### Anadido
+- Retrabajo de la herencia de parametros (hallado al ejercer la implementacion
+  contra un core real, antes de publicar contrato): un parametro del catalogo
+  cuyo nombre colisiona con una bandera que la capa ya posee -identidad,
+  enriquecimiento o salida- ya NO rompe la construccion del parser; la
+  bandera propia gana y no se redeclara, y su ayuda dice que la gobierna la
+  capa. Regla unica derivada del dato, no una lista de excepciones. Ademas, el
+  catalogo remoto que el parser usa para ofrecer banderas ahora se CACHEA como
+  estado local (no versionado): `capability.list` lo refresca como efecto de
+  consultar el core en vivo, y construir el parser es siempre una operacion
+  local -nunca toca la red, ni siquiera con el core alcanzable-. Sin cache o
+  con una cache de un core distinto del configurado, la capa degrada: lo
+  propio conserva sus banderas y lo ajeno se invoca por `--param`. Impacto de
+  version: ninguno, mismo contrato aun sin publicar.
+- La CLI deriva las banderas de los parametros declarados por el catalogo,
+  incluidos tipo, elecciones, defecto y metavar. Las entradas CLI declaradas
+  leen un unico JSON y reparten sus campos; colisionar con una bandera explicita
+  es error tipado. `task run --plan-file` acepta un plan del operador: con
+  enriquecimiento activo enriquece sus subtareas sin llamar a `task.plan`, y con
+  `--no-enrich` lo reenvia intacto. `--verbose` y `--quiet` de `task run`, y el
+  render de lo reenviado, siguen fuera de alcance. Impacto de version: ninguno,
+  porque aun no hay contrato publicado ni primer tag.
 - Catalogo declarativo propio y `capability.list` sobreescrita: la capa obtiene
   el catalogo del core en ejecucion y lo fusiona sin copiarlo, sustituye las
   capacidades sobreescritas, preserva intactas las reenviadas y anade
