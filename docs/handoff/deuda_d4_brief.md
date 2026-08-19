@@ -97,8 +97,9 @@ que el ente parezca que no te conoce.
 
 ## Entrega
 
-Deja el trabajo STAGED sobre `main`, con `git add` por ruta explicita. **No crees
-rama, no commitees, no hagas push.**
+Deja el trabajo en el ARBOL DE TRABAJO, sobre la rama que ya esta activa. **No
+cambies de rama, no crees rama, no commitees, no hagas push.** La rama y el commit
+los hace el revisor; tu sandbox tampoco puede escribir en `.git`.
 
 Marca D4 como cerrada en `docs/PLAN.md` sin borrar su diagnostico, y actualiza
 `CHANGELOG.md` bajo `[No publicado]` declarando que el umbral es provisional y
