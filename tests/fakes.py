@@ -14,6 +14,7 @@ from ianest_extended import (
 class InMemoryStore:
     def __init__(self):
         self.engrams = []
+        self.recall_queries = []
         self.migrated = False
         self.verified = 0
 
@@ -45,6 +46,7 @@ class InMemoryStore:
         return engram
 
     def recall(self, query):
+        self.recall_queries.append(query)
         items = []
         for engram in reversed(self.engrams):
             if engram.type_name not in query.type_names:

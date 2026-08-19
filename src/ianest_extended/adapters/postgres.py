@@ -732,6 +732,16 @@ class PostgresMemoryStore:
 
         query_embedding = self._require_embedder().embed(query.text)
         now = query.now or datetime.now(UTC)
+        # D4: el suelo de similitud gatea SOLO `episodic` (ruido reciente de
+        # alto volumen). `semantic` ya paso un juicio de promocion y `dialog`
+        # es continuidad, no pertinencia tematica; ninguno de los dos se
+        # gatea aqui aunque la query traiga un `min_similarity`. Ver
+        # docs/PLAN.md D4 y docs/handoff/deuda_d4_brief.md.
+        gated_type_names = tuple(
+            memory_type.name
+            for memory_type in memory_types
+            if memory_type.name == "episodic"
+        )
         sql = f"""
             SELECT e.*,
                    (
@@ -759,6 +769,11 @@ class PostgresMemoryStore:
                   OR e.domain_tag IS NULL
                   OR e.domain_tag = %s
               )
+              AND (
+                  %s::float IS NULL
+                  OR e.type_name <> ALL(%s::text[])
+                  OR (1 - (e.embedding <=> %s::vector)) >= %s
+              )
               AND (%s::uuid IS NULL OR %s = ANY(e.entity_refs))
             ORDER BY relevance DESC, e.created_at DESC
             LIMIT %s
@@ -769,6 +784,10 @@ class PostgresMemoryStore:
             *parameters,
             query.domain_tag,
             query.domain_tag,
+            query.min_similarity,
+            list(gated_type_names),
+            _vector_literal(query_embedding),
+            query.min_similarity,
             query.entity_ref,
             query.entity_ref,
             query.top_k,

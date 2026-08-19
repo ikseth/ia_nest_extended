@@ -51,6 +51,11 @@ class ExtendedConfig:
     dialog_top_k: int = 6
     episodic_top_k: int = 4
     semantic_top_k: int = 3
+    # D4: suelo de similitud aplicado SOLO a `episodic` (no a `semantic`,
+    # `dialog` ni a los delegados). Provisional y sin medida: conserva
+    # memorias posiblemente pertinentes hasta calibrar D5 con corpus y uso
+    # reales.
+    memory_min_similarity: float = 0.10
     dedup_threshold: float = 0.92
     confidence_threshold: float = 0.7
     connect_timeout_seconds: float = 30.0
@@ -138,6 +143,10 @@ class ExtendedConfig:
             "semantic_top_k": _env_int(
                 "SEMANTIC_TOP_K",
                 defaults.semantic_top_k,
+            ),
+            "memory_min_similarity": _env_float(
+                "MEMORY_MIN_SIMILARITY",
+                defaults.memory_min_similarity,
             ),
             "dedup_threshold": _env_float(
                 "DEDUP_THRESHOLD",
@@ -232,6 +241,7 @@ class ExtendedConfig:
         for name in (
             "dedup_threshold",
             "confidence_threshold",
+            "memory_min_similarity",
             "auto_domain_min_confidence",
             "rag_suggest_min_confidence",
             "rag_min_score",

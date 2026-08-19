@@ -33,6 +33,31 @@ def _enricher(postgres_store, local_service_stub, tmp_path):
     )
 
 
+def _pin_episodic_similarity(store, *, user, content, query_text):
+    """Fija a mano la similitud entre un engrama episodic y una consulta.
+
+    `FakeEmbedder` deriva el vector de un hash del texto: la similitud entre
+    "the user prefers blue" (el hecho escrito por write-back) y "smalltalk"
+    (la consulta de la sesion B) es practicamente aleatoria, y en la
+    practica cae por debajo del suelo D4 -no por un conflicto de diseno, sino
+    porque esta prueba no controla la similitud (docs/handoff/
+    deuda_d4_brief.md)-. Esta prueba es de CONTINUIDAD entre sesiones, no del
+    suelo, asi que se fija el embedding del engrama ya escrito para que su
+    similitud con la consulta de la sesion B sea 1.0, y el suelo deja de
+    interferir con lo que la prueba en realidad verifica.
+    """
+    target_vector = store._embedder.embed(query_text)
+    literal = "[" + ",".join(str(value) for value in target_vector) + "]"
+    with store._connect() as connection:
+        connection.execute(
+            """
+            UPDATE engrams SET embedding = %s::vector
+            WHERE user_id = %s AND type_name = 'episodic' AND content = %s
+            """,
+            (literal, user, content),
+        )
+
+
 def test_phase3_a_continuity_across_sessions(
     postgres_store,
     local_service_stub,
@@ -42,6 +67,12 @@ def test_phase3_a_continuity_across_sessions(
     enricher = _enricher(postgres_store, local_service_stub, tmp_path)
 
     enricher.enrich(_identity(user, "A"), "remember-blue")
+    _pin_episodic_similarity(
+        postgres_store,
+        user=user,
+        content="the user prefers blue",
+        query_text="smalltalk",
+    )
     result = enricher.enrich(_identity(user, "B"), "smalltalk")
 
     assert "the user prefers blue" in result.context

@@ -3,7 +3,9 @@ import json
 from ianest_extended import (
     CoreClient,
     ExtendedConfig,
+    EngramWrite,
     MemoryEnricher,
+    Principal,
     TelemetryWriter,
 )
 from ianest_extended.enrichment import (
@@ -62,6 +64,67 @@ def test_vertical_continuity_antinoise_and_telemetry(
     assert events[0]["request_id"] == events[1]["request_id"]
     assert events[0]["downstream_request_id"] == events[1]["downstream_request_id"]
     assert events[3]["counters"]["items_written"] == 0
+
+
+def test_d4_floor_only_reaches_episodic(tmp_path):
+    """D4: MemoryEnricher solo pasa el suelo a `episodic`.
+
+    `semantic`, `dialog` y los delegados no reciben `min_similarity` desde
+    esta capa (criterios 3, 4 y 5 del brief). Esta prueba verifica el
+    cableado -que RecallQuery recibe cada tipo-, no el gateo en si: eso lo
+    cubren las pruebas de PostgreSQL con similitud controlada, porque
+    `InMemoryStore` (el fake de estas pruebas) ignora `min_similarity`.
+    """
+    store = InMemoryStore()
+    enricher = MemoryEnricher(
+        store=store,
+        core=CoreClient("http://127.0.0.1:1"),
+        telemetry=TelemetryWriter(tmp_path),
+        config=ExtendedConfig(telemetry_dir=tmp_path, embedding_dimension=2),
+    )
+    identity_value = identity()
+    for type_name, namespace in (
+        ("identity", "persona"),
+        ("principles", "principles"),
+        ("safety", "safety"),
+    ):
+        store.write(
+            Principal.CONSCIENCE,
+            EngramWrite(
+                type_name=type_name,
+                content=f"{type_name} con similitud arbitrariamente baja",
+                identity=identity_value,
+                namespace=namespace,
+            ),
+        )
+    store.write(
+        Principal.EXTENDED,
+        EngramWrite(
+            type_name="dialog",
+            content="turno previo poco similar",
+            identity=identity_value,
+        ),
+    )
+
+    bundle = enricher.recall(identity_value, "consulta sin relacion")
+    floor_by_type = {
+        query.type_names[0]: query.min_similarity
+        for query in store.recall_queries
+    }
+
+    assert {item.type_name for item in bundle.delegated} == {
+        "identity",
+        "principles",
+        "safety",
+    }
+    assert bundle.dialog
+    assert floor_by_type["episodic"] == 0.10
+    assert floor_by_type["semantic"] is None
+    assert floor_by_type["dialog"] is None
+    assert all(
+        floor_by_type[type_name] is None
+        for type_name in ("identity", "principles", "safety")
+    )
 
 
 def test_write_back_reinforces_duplicate(tmp_path, local_service_stub):

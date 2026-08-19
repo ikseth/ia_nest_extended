@@ -6,6 +6,19 @@ Sin acentos por convencion.
 ## [No publicado]
 
 ### Anadido
+- D4: `IANEST_EXTENDED_MEMORY_MIN_SIMILARITY` gatea por similitud la
+  recuperacion de memoria, y SOLO en `episodic` (ruido reciente, alto volumen
+  y vida corta). `semantic` queda fuera a proposito -lo consolidado ya paso un
+  juicio de promocion episodic -> semantic, que es un filtro mejor que un
+  umbral de distancia coseno-, igual que `dialog` (continuidad de la
+  conversacion, no pertinencia tematica) y los delegados `identity`,
+  `principles` y `safety` (inyeccion incondicional por diseno, ADR 0002). El
+  suelo gatea la similitud, nunca la relevancia compuesta -que sigue
+  ordenando-: son las mismas dos preguntas que separo D1 para el RAG. Su
+  default conservador `0.10` es PROVISIONAL y sin medida: se eligio para no
+  silenciar una memoria pertinente; su calibracion se hara junto a D5 cuando
+  haya corpus y uso reales. Impacto de version: adicion compatible (minor al
+  publicar el contrato).
 - Retrabajo de la herencia de parametros (hallado al ejercer la implementacion
   contra un core real, antes de publicar contrato): un parametro del catalogo
   cuyo nombre colisiona con una bandera que la capa ya posee -identidad,
@@ -36,6 +49,18 @@ Sin acentos por convencion.
   parser sigue sin red. REST y MCP permanecen nulos y las capacidades previstas
   no se anuncian. Impacto de version: ninguno, porque aun no hay contrato
   publicado ni primer tag.
+
+### Corregido
+- Defecto preexistente en el banco de pruebas de PostgreSQL, hallado al
+  verificar D4: la base de pruebas no se limpiaba entre ejecuciones ni entre
+  pruebas y acumulaba filas (llego a superar cien engramas de pasadas
+  anteriores), asi que el resultado dependia de la historia de ejecuciones.
+  `tests/conftest.py` ahora vacia las tablas de datos (`engrams`, `entities`,
+  `memory_links` y, si estan migradas, las de RAG) antes de cada prueba que usa
+  `postgres_store`; `memory_types` no se toca porque es esquema, no datos.
+  Ejecutar la suite dos veces seguidas da el mismo resultado, y una prueba
+  aislada da lo mismo que dentro de la suite. Impacto de version: ninguno, solo
+  pruebas.
 
 ### Cambiado
 - El suelo de relevancia del RAG (`rag_min_score`) pasa de 0.38 a **0.50**. El

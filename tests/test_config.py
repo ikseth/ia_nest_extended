@@ -6,6 +6,7 @@ from ianest_extended import ExtendedConfig, ExtendedConfigError
 def test_config_reads_prefixed_environment(monkeypatch):
     monkeypatch.setenv("IANEST_EXTENDED_CORE_URL", "http://127.0.0.1:9000")
     monkeypatch.setenv("IANEST_EXTENDED_DIALOG_TOP_K", "9")
+    monkeypatch.setenv("IANEST_EXTENDED_MEMORY_MIN_SIMILARITY", "0.15")
     monkeypatch.setenv("IANEST_EXTENDED_DEDUP_THRESHOLD", "0.88")
     monkeypatch.setenv("IANEST_EXTENDED_DIALOG_HOT_WINDOW", "7200")
     monkeypatch.setenv("IANEST_EXTENDED_PROMOTE_MIN_STABILITY", "4")
@@ -21,6 +22,7 @@ def test_config_reads_prefixed_environment(monkeypatch):
 
     assert config.core_url == "http://127.0.0.1:9000"
     assert config.dialog_top_k == 9
+    assert config.memory_min_similarity == 0.15
     assert config.dedup_threshold == 0.88
     assert config.dialog_hot_window_seconds == 7200
     assert config.promote_min_stability == 4
@@ -63,6 +65,19 @@ def test_config_rag_min_score_defaults_to_the_measured_floor():
 
 def test_config_rejects_out_of_range_rag_min_score(monkeypatch):
     monkeypatch.setenv("IANEST_EXTENDED_RAG_MIN_SCORE", "1.5")
+
+    with pytest.raises(ExtendedConfigError):
+        ExtendedConfig.from_env(env_file=None)
+
+
+def test_config_memory_min_similarity_defaults_to_provisional_floor():
+    config = ExtendedConfig.from_env(env_file=None)
+
+    assert config.memory_min_similarity == 0.10
+
+
+def test_config_rejects_out_of_range_memory_min_similarity(monkeypatch):
+    monkeypatch.setenv("IANEST_EXTENDED_MEMORY_MIN_SIMILARITY", "1.5")
 
     with pytest.raises(ExtendedConfigError):
         ExtendedConfig.from_env(env_file=None)

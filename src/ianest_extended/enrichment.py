@@ -305,6 +305,10 @@ class MemoryEnricher:
                 self._config.semantic_top_k,
                 identity,
                 prompt,
+                # D4: el suelo de similitud NO alcanza a `semantic` (lo
+                # consolidado ya paso un juicio de promocion; ver
+                # docs/PLAN.md D4 y docs/handoff/deuda_d4_brief.md).
+                min_similarity=None,
             )
             episodic = self._recall_ranked_namespaces(
                 "episodic",
@@ -312,6 +316,7 @@ class MemoryEnricher:
                 self._config.episodic_top_k,
                 identity,
                 prompt,
+                min_similarity=self._config.memory_min_similarity,
             )
             dialog = tuple(
                 self._store.recall(
@@ -479,6 +484,8 @@ class MemoryEnricher:
         top_k: int,
         identity: MemoryIdentity,
         prompt: str,
+        *,
+        min_similarity: float | None,
     ) -> tuple[RecallItem, ...]:
         items: list[RecallItem] = []
         for namespace in namespaces:
@@ -490,6 +497,7 @@ class MemoryEnricher:
                         text=prompt,
                         namespace=namespace,
                         domain_tag=identity.domain_tag,
+                        min_similarity=min_similarity,
                         top_k=top_k,
                     )
                 )
