@@ -236,6 +236,41 @@ capa sin saber cuantas hay debajo.
 Requisitos en `docs/VERSIONADO.md`. Criterio: contrato versionado y consumible
 por los tres consumos de arriba.
 
+## Fase 8: Despliegue reproducible de la capa
+
+Esta capa NO tiene instalador de despliegue. Tiene `install.sh`, que prepara un
+entorno de DESARROLLO -venv, PostgreSQL en docker, pytest- y eso es otra cosa.
+
+Consecuencia comprobada al desplegarla por primera vez en un laboratorio real
+(2026-08-18/19): el venv, la configuracion, el almacen en otro anfitrion, el
+corpus y la disponibilidad de los comandos se resolvieron A MANO. Nada de eso lo
+reproduce un comando, de modo que la capa funciona en la maquina donde se monto y
+no se sabe desplegar en otra.
+
+El core si lo tiene, y marca la forma: layout declarativo (`config/`, `state/`,
+`repositories/`), servicios, y verificacion al terminar.
+
+Alcance:
+
+1. Instalador hermano del del core, con el MISMO layout. La configuracion vive
+   fuera del repositorio; hoy el `.env` de esta capa vivia dentro.
+2. Los comandos quedan disponibles para el OPERADOR, no solo para los servicios.
+   Hoy ninguna de las dos capas deja su CLI en el PATH: hay que activar un venv y
+   recordar rutas, y el tabulador no ayuda porque el binario no esta donde mira.
+3. Permisos utilizables: la configuracion que la CLI necesita debe poder leerla
+   el usuario que la ejecuta.
+4. El almacen de esta capa como parte declarada del despliegue, no como paso
+   manual previo.
+
+Criterio de salida (falsable): un despliegue desde cero en una maquina limpia,
+con un solo comando y su fichero de parametros, deja la capa utilizable por un
+operador que no haya visto el repositorio; y el mismo comando repetido no rompe
+lo ya instalado.
+
+Nota de frontera: la fase 7c (REST y MCP) anade servicios que este instalador
+tendra que levantar. Conviene que 8 llegue despues de 7c, o que se disene
+sabiendo que llegan.
+
 ## Deuda de diseno declarada
 
 Hallazgos reconciliados que NO son de la fase en curso. Se registran con su
@@ -289,6 +324,36 @@ sin tocar a proposito: nunca recibe `domain_tag` desde `MemoryEnricher.recall`,
 con o sin `--domain` en la peticion, asi que su inyeccion incondicional no
 cambia.
 
+### D4. La memoria no tiene suelo de relevancia
+
+D1 puso un suelo de similitud al RAG y NO a los tiers de memoria. El efecto se
+observo en laboratorio (2026-08-18): a una pregunta sobre guardado de semillas se
+le inyecto un engrama con el color favorito del interlocutor.
+
+Es el mismo defecto que D1 -recuperar no es volcar- en el otro lado del
+enriquecimiento. Hay top-k y presupuesto, pero ningun umbral minimo.
+
+Matiz que lo separa de D1, y por el que no se resuelve copiando la solucion: los
+tipos delegados (`identity`, `principles`, `safety`) se inyectan de forma
+incondicional por diseno, y un suelo no debe alcanzarlos. Disparador: antes de que
+`conscience` escriba en los delegados, porque a partir de ahi el contexto
+permanente crece y el ruido con el.
+
+### D5. Un umbral global puede no separar ruido de acierto
+
+Al calibrar el suelo del RAG con preguntas formuladas como las hace una persona
+-y no reformulando el texto del corpus, que fue el error de la primera
+calibracion- las dos bandas casi se tocan: el ruido llega mas arriba y el acierto
+empieza mas abajo de lo que sugerian las primeras medidas.
+
+Mientras las bandas se solapen, ningun valor unico las separa: subirlo silencia
+respuestas correctas y bajarlo admite ruido. Eso deja de ser calibrar y pasa a ser
+diseno -umbral por dominio, umbral relativo al mejor resultado, o reordenacion
+posterior-. No se elige aqui: se declara que la eleccion existe.
+
+Disparador: al crecer el corpus con conocimiento real, que es cuando el solape se
+puede medir con muestra suficiente.
+
 ### D3. La identidad como fuente conmutable
 
 Las fuentes de enriquecimiento son declaradas por la capa y desactivables por
@@ -303,6 +368,11 @@ escriba en los tipos delegados y haya algo que conmutar.
 
 ## Fuera de este plan
 
+- **La seleccion de capacidad.** Hoy nadie decide si una peticion es atomica
+  (`prompt.run`) o descomponible (`task.run`): el core no lo hace por diseno y
+  esta capa reexpone ambas sin elegir, de modo que el operador tiene que saberlo.
+  Observado en uso real. No es un fallo de ninguna de las dos capas: es una
+  funcion sin dueno, candidata a capa nueva.
 - Cambios en el core.
 - Accion sobre sistemas externos (tool_contracts / external_*).
 - Personalidad/etica (conscience); regulacion tecnica (pulse); GUI (web).

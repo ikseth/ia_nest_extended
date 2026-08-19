@@ -10,6 +10,13 @@ pila. No es un plan ni una promesa.
 Es una instantanea con fecha, no un documento vivo. Cuando caduque, se escribe
 otra; no se parchea esta.
 
+**Que ha cambiado desde que se escribio** (no se parchea el resto; esta es la
+unica nota): `capability.list` ya NO es un bug -se sobreescribio y compone, ADR
+0012-. Y aparecieron tres carencias que no estaban: la memoria sin suelo de
+relevancia, el solape entre ruido y acierto al calibrar, y que esta capa no tiene
+instalador de despliegue. Las tres viven ya en `docs/PLAN.md` (fase 8, deudas D4 y
+D5), que es donde se sigue el trabajo pendiente.
+
 Cada carencia esta clasificada en uno de tres cajones, y esa clasificacion es lo
 que se pide reconciliar:
 
