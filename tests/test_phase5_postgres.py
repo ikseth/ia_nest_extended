@@ -1,8 +1,8 @@
-from pathlib import Path
 from uuid import uuid4
 
 from ianest_extended import FakeEmbedder, RagChunkWrite
 from ianest_extended.adapters import PostgresRagStore
+from ianest_extended.migrations import migration_resource
 
 
 def _write(content):
@@ -137,9 +137,7 @@ def test_phase5b_migrates_legacy_domain_without_losing_retrieval(
     parameters["options"] = f"-c search_path={schema},public"
     isolated_dsn = make_conninfo(**parameters)
     dimension = postgres_rag_store._embedder.dimension
-    migration = (
-        Path(__file__).resolve().parents[1] / "db" / "migrations" / "0002_rag.sql"
-    ).read_text(encoding="ascii").replace(
+    migration = migration_resource("0002_rag.sql").read_text(encoding="ascii").replace(
         "{{embedding_dimension}}",
         str(dimension),
     )
