@@ -14,10 +14,17 @@ dependencies = [
 
 [project.scripts]
 ianest-extended = "ianest_extended.cli:main"
+ianest-extended-rest = "ianest_extended.rest:main"
 
 [project.optional-dependencies]
 test = [
     "pytest>=9,<10",
+    "httpx>=0.28,<1",
+    "starlette>=1.0,<2",
+]
+rest = [
+    "starlette>=1.0,<2",
+    "uvicorn>=0.31,<1",
 ]
 
 [tool.setuptools.packages.find]

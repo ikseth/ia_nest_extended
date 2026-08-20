@@ -72,7 +72,7 @@ def test_own_catalog_declares_all_implemented_capabilities_and_explicit_gaps():
     assert "knowledge.ingest" in by_name
     assert "knowledge.retrieve" not in by_name
     assert "knowledge.corpus.list" not in by_name
-    assert all(item.rest is None and item.mcp is None for item in by_name.values())
+    assert all(item.rest is not None and item.mcp is None for item in by_name.values())
 
 
 def test_fusion_passes_unknown_core_capability_and_preserves_it(tmp_path):

@@ -5,6 +5,8 @@ from ianest_extended import ExtendedConfig, ExtendedConfigError
 
 def test_config_reads_prefixed_environment(monkeypatch):
     monkeypatch.setenv("IANEST_EXTENDED_CORE_URL", "http://127.0.0.1:9000")
+    monkeypatch.setenv("IANEST_EXTENDED_REST_HOST", "127.0.0.2")
+    monkeypatch.setenv("IANEST_EXTENDED_REST_PORT", "18001")
     monkeypatch.setenv("IANEST_EXTENDED_DIALOG_TOP_K", "9")
     monkeypatch.setenv("IANEST_EXTENDED_MEMORY_MIN_SIMILARITY", "0.15")
     monkeypatch.setenv("IANEST_EXTENDED_DEDUP_THRESHOLD", "0.88")
@@ -21,6 +23,8 @@ def test_config_reads_prefixed_environment(monkeypatch):
     config = ExtendedConfig.from_env(env_file=None)
 
     assert config.core_url == "http://127.0.0.1:9000"
+    assert config.rest_host == "127.0.0.2"
+    assert config.rest_port == 18001
     assert config.dialog_top_k == 9
     assert config.memory_min_similarity == 0.15
     assert config.dedup_threshold == 0.88
@@ -38,6 +42,17 @@ def test_config_reads_prefixed_environment(monkeypatch):
 def test_config_rejects_invalid_values(monkeypatch):
     monkeypatch.setenv("IANEST_EXTENDED_CONFIDENCE_THRESHOLD", "1.5")
 
+    with pytest.raises(ExtendedConfigError):
+        ExtendedConfig.from_env(env_file=None)
+
+
+def test_rest_config_defaults_to_loopback_and_rejects_invalid_port(monkeypatch):
+    config = ExtendedConfig.from_env(env_file=None)
+
+    assert config.rest_host == "127.0.0.1"
+    assert config.rest_port == 8001
+
+    monkeypatch.setenv("IANEST_EXTENDED_REST_PORT", "70000")
     with pytest.raises(ExtendedConfigError):
         ExtendedConfig.from_env(env_file=None)
 

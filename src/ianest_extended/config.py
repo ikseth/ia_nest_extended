@@ -31,6 +31,8 @@ def default_catalog_cache_path() -> Path:
 @dataclass(frozen=True, slots=True)
 class ExtendedConfig:
     core_url: str = "http://127.0.0.1:8000"
+    rest_host: str = "127.0.0.1"
+    rest_port: int = 8001
     ollama_url: str = "http://127.0.0.1:11434"
     database_dsn: str = (
         "postgresql://ianest:ianest_local@127.0.0.1:55432/ianest_extended"
@@ -87,6 +89,8 @@ class ExtendedConfig:
         defaults = cls()
         values = {
             "core_url": _env("CORE_URL", defaults.core_url),
+            "rest_host": _env("REST_HOST", defaults.rest_host),
+            "rest_port": _env_int("REST_PORT", defaults.rest_port),
             "ollama_url": _env("OLLAMA_URL", defaults.ollama_url),
             "database_dsn": _env("DATABASE_DSN", defaults.database_dsn),
             "embedding_model": _env(
@@ -226,6 +230,7 @@ class ExtendedConfig:
     def validate(self) -> None:
         for name in (
             "embedding_dimension",
+            "rest_port",
             "memory_budget_tokens",
             "dialog_top_k",
             "episodic_top_k",
@@ -238,6 +243,11 @@ class ExtendedConfig:
         ):
             if getattr(self, name) <= 0:
                 raise ExtendedConfigError(f"{name} debe ser mayor que cero")
+        if self.rest_port > 65535:
+            raise ExtendedConfigError(
+                "rest_port debe ser menor o igual que 65535",
+                "rest_port",
+            )
         for name in (
             "dedup_threshold",
             "confidence_threshold",
@@ -270,6 +280,7 @@ class ExtendedConfig:
             )
         for name in (
             "core_url",
+            "rest_host",
             "ollama_url",
             "database_dsn",
             "embedding_model",

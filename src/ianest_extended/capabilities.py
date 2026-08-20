@@ -112,6 +112,10 @@ def _cli(
     )
 
 
+def _rest(name: str, method: str = "POST") -> RestProjection:
+    return RestProjection("/" + name.replace(".", "/"), method)
+
+
 _PROMPT = _param(
     "prompt",
     "string",
@@ -148,7 +152,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
         False,
         False,
         (),
-        None,
+        _rest("capability.list", "GET"),
         _cli(
             "capability",
             "list",
@@ -178,7 +182,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
                 metavar="DOMINIO",
             ),
         ),
-        None,
+        _rest("knowledge.confirm"),
         _cli(
             "knowledge",
             "confirm",
@@ -222,7 +226,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
                 cli=False,
             ),
         ),
-        None,
+        _rest("knowledge.ingest"),
         _cli(
             "knowledge",
             "ingest",
@@ -249,7 +253,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
             _param("corpus", "string", "nombre del corpus", required=True, metavar="CORPUS"),
             _param("domain", "string", "dominio del core", required=True, metavar="DOMINIO"),
         ),
-        None,
+        _rest("knowledge.reject"),
         _cli("knowledge", "reject", "Retira una propuesta automatica no confirmada."),
         None,
         "own",
@@ -260,7 +264,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
         False,
         False,
         (),
-        None,
+        _rest("knowledge.status", "GET"),
         _cli("knowledge", "status", "Compara los dominios del core con los corpus confirmados."),
         None,
         "own",
@@ -271,7 +275,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
         False,
         False,
         (_param("corpus", "string", "nombre del corpus", required=True, metavar="CORPUS"),),
-        None,
+        _rest("knowledge.suggest"),
         _cli("knowledge", "suggest", "Propone vinculos via domain.route, sin confirmarlos."),
         None,
         "own",
@@ -282,7 +286,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
         False,
         False,
         (_param("event", "object", "evento de consolidacion", required=True, cli=False),),
-        None,
+        _rest("memory.consolidate"),
         None,
         None,
         "own",
@@ -293,7 +297,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
         False,
         False,
         (_param("dry_run", "boolean", "muestra el resumen sin mutar", default=False),),
-        None,
+        _rest("memory.maintain"),
         _cli(
             "memory",
             "maintain",
@@ -308,7 +312,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
         True,
         False,
         (_PROMPT, _USE_MEMORY, _USE_RAG),
-        None,
+        _rest("memory.recall"),
         _cli("memory", "recall", "Ejecuta memory.recall sin llamar a la inferencia del core."),
         None,
         "own",
@@ -322,7 +326,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
             _param("principal", "string", "principal que solicita la escritura", required=True, choices=("extended", "conscience"), cli=False),
             _param("request", "object", "engrama que se desea escribir", required=True, cli=False),
         ),
-        None,
+        _rest("memory.write"),
         None,
         None,
         "own",
@@ -333,7 +337,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
         False,
         False,
         (),
-        None,
+        _rest("memory_type.list", "GET"),
         _cli("memory_type", "list", "Namespaces, tier, scopes y writer_principal declarados."),
         None,
         "own",
@@ -344,7 +348,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
         False,
         False,
         (_param("memory_type", "object", "declaracion que se valida", required=True, cli=False),),
-        None,
+        _rest("memory_type.validate"),
         None,
         None,
         "own",
@@ -355,7 +359,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
         True,
         False,
         (_PROMPT, _MODEL, _ENRICH, _USE_MEMORY, _USE_RAG, _WRITE_BACK, _DOMAIN, _AUTO_DOMAIN, _param("dry_run", "boolean", "compone sin llamar al core", default=False)),
-        None,
+        _rest("prompt.run"),
         _cli(
             "prompt",
             "run",
@@ -372,7 +376,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
         True,
         False,
         (_PROMPT, _MODEL, _ENRICH, _USE_MEMORY, _USE_RAG, _WRITE_BACK, _DOMAIN, _AUTO_DOMAIN, _param("dry_run", "boolean", "compone sin llamar al core", default=False)),
-        None,
+        _rest("reasoning.run"),
         _cli(
             "reasoning",
             "run",
@@ -397,7 +401,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
             _WRITE_BACK,
             _DOMAIN,
         ),
-        None,
+        _rest("task.run"),
         _cli(
             "task",
             "run",
@@ -466,7 +470,7 @@ def _assert_catalog_invariants() -> None:
     assert len(names) == len(set(names))
     assert "knowledge.retrieve" not in names
     assert "knowledge.corpus.list" not in names
-    assert all(item.rest is None and item.mcp is None for item in LOCAL_CAPABILITIES)
+    assert all(item.rest is not None and item.mcp is None for item in LOCAL_CAPABILITIES)
 
 
 _assert_catalog_invariants()

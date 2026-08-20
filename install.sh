@@ -483,7 +483,7 @@ prepare_venv() {
         fail ".venv usa Python ${venv_version}; elimina o renombra .venv y repite con Python 3.13"
 
     log "Instalando el paquete editable y dependencias de prueba."
-    "${script_dir}/.venv/bin/python" -m pip install -e "${script_dir}[test]"
+    "${script_dir}/.venv/bin/python" -m pip install -e "${script_dir}[test,rest]"
 }
 
 migrate_schema() {

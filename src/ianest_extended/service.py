@@ -18,7 +18,7 @@ import time
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from .capabilities import (
     OVERRIDDEN_CAPABILITIES,
@@ -31,8 +31,9 @@ from .catalog_cache import write_catalog_cache
 from .clients import ForwardedJson, ForwardedStream
 from .composition import ExtendedComposition
 from .config import ExtendedConfig
-from .errors import EnrichmentParameterError, ExtendedError
+from .errors import EnrichmentParameterError, ExtendedError, ExtendedRequestError
 from .enrichment import compose_prompt
+from .identity import resolve_identity
 from .ingest import ingest_path
 from .knowledge import (
     confirm_domain,
@@ -43,10 +44,14 @@ from .knowledge import (
 from .maintain import run_maintenance
 from .models import (
     ConsolidationEvent,
+    ConsolidationTrigger,
     EngramWrite,
+    MemoryClass,
     MemoryIdentity,
     MemoryType,
     Principal,
+    RetrievalMode,
+    Scope,
 )
 from .registry import MemoryTypeRegistry
 
@@ -151,7 +156,7 @@ class ExtendedService:
     def forward(
         self,
         capability: str,
-        payload: dict[str, Any] | None = None,
+        payload: Any = None,
         *,
         method: str | None = None,
     ) -> ForwardedJson | ForwardedStream:
@@ -173,6 +178,130 @@ class ExtendedService:
                 "capability",
             )
         return self._composition.core().forward(name, payload, method=method)
+
+    def invoke(
+        self,
+        capability: str,
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Invoca una capacidad local desde cualquier piel.
+
+        La traduccion del payload publico a los modelos del servicio vive aqui,
+        no en REST. La CLI llama a los mismos metodos de esta fachada.
+        """
+        body = {} if payload is None else payload
+        if not isinstance(body, dict):
+            raise ExtendedRequestError(
+                "el cuerpo de la peticion debe ser un objeto JSON",
+                "body",
+            )
+        if capability == "capability.list":
+            return self.capability_list()
+        if capability == "prompt.run":
+            result = self.prompt_run(
+                _required_text(body, "prompt"),
+                self._request_identity(body),
+                enrich=_optional_bool(body, "enrich"),
+                use_memory=_optional_bool(body, "use_memory"),
+                use_rag=_optional_bool(body, "use_rag"),
+                write_back=_optional_bool(body, "write_back"),
+                domain=_optional_text(body, "domain"),
+                auto_domain=_optional_bool(body, "auto_domain"),
+                model=_optional_text(body, "model"),
+                dry_run=_bool(body, "dry_run", False),
+            )
+            return _run_payload(result)
+        if capability == "reasoning.run":
+            result = self.reasoning_run(
+                _required_text(body, "prompt"),
+                self._request_identity(body),
+                enrich=_optional_bool(body, "enrich"),
+                use_memory=_optional_bool(body, "use_memory"),
+                use_rag=_optional_bool(body, "use_rag"),
+                write_back=_optional_bool(body, "write_back"),
+                domain=_optional_text(body, "domain"),
+                auto_domain=_optional_bool(body, "auto_domain"),
+                model=_optional_text(body, "model"),
+                dry_run=_bool(body, "dry_run", False),
+            )
+            return _run_payload(result)
+        if capability == "task.run":
+            result = self.task_run(
+                _required_text(body, "prompt"),
+                self._request_identity(body),
+                enrich=_optional_bool(body, "enrich"),
+                use_memory=_optional_bool(body, "use_memory"),
+                use_rag=_optional_bool(body, "use_rag"),
+                write_back=_optional_bool(body, "write_back"),
+                domain=_optional_text(body, "domain"),
+                effort=_optional_text(body, "effort"),
+                plan_payload=_task_plan_payload(body),
+            )
+            return result.payload
+        if capability == "memory_type.list":
+            return self.memory_type_list()
+        if capability == "memory_type.validate":
+            return self.memory_type_validate(
+                _memory_type(_required_object(body, "memory_type"))
+            )
+        if capability == "memory.recall":
+            return self.memory_recall(
+                self._request_identity(body),
+                _required_text(body, "prompt"),
+                use_memory=_optional_bool(body, "use_memory"),
+                use_rag=_optional_bool(body, "use_rag"),
+            )
+        if capability == "memory.write":
+            return self.memory_write(
+                _principal(_required_text(body, "principal")),
+                _engram_write(_required_object(body, "request")),
+            )
+        if capability == "memory.consolidate":
+            return self.memory_consolidate(
+                _consolidation_event(_required_object(body, "event"))
+            )
+        if capability == "memory.maintain":
+            return self.memory_maintain(dry_run=_bool(body, "dry_run", False))
+        if capability == "knowledge.ingest":
+            return self.knowledge_ingest(
+                path=Path(_required_text(body, "path")),
+                corpus_name=_required_text(body, "corpus"),
+                domains=_text_tuple(body.get("domain", ()), "domain"),
+                source_ref=_optional_text(body, "source_ref"),
+            )
+        if capability == "knowledge.status":
+            return self.knowledge_status()
+        if capability == "knowledge.suggest":
+            return self.knowledge_suggest(_required_text(body, "corpus"))
+        if capability == "knowledge.confirm":
+            return self.knowledge_confirm(
+                _required_text(body, "corpus"),
+                _required_text(body, "domain"),
+            )
+        if capability == "knowledge.reject":
+            return self.knowledge_reject(
+                _required_text(body, "corpus"),
+                _required_text(body, "domain"),
+            )
+        raise ExtendedRequestError(
+            f"la capacidad local '{capability}' no esta implementada",
+            "capability",
+        )
+
+    def _request_identity(self, body: dict[str, Any]) -> MemoryIdentity:
+        raw = body.get("identity", {})
+        if raw is None:
+            raw = {}
+        if not isinstance(raw, dict):
+            raise ExtendedRequestError("identity debe ser un objeto", "identity")
+        return resolve_identity(
+            self.config,
+            user_id=_identity_text(raw, "user_id"),
+            session_id=_identity_text(raw, "session_id"),
+            service=_identity_text(raw, "service"),
+            namespace=_identity_text(raw, "namespace"),
+            domain=_identity_text(raw, "domain_tag"),
+        )
 
     # --- capacidad sobreescrita -------------------------------------------
 
@@ -1022,4 +1151,187 @@ def _memory_type_dict(memory_type: MemoryType) -> dict[str, Any]:
         "namespaces": list(memory_type.namespaces),
         "status": memory_type.status,
         "version": memory_type.version,
+    }
+
+
+def _run_payload(result: PromptRunResult | ReasoningRunResult) -> dict[str, Any]:
+    if not result.dry_run:
+        return result.payload
+    return {
+        "request_id": result.request_id,
+        "enriched_prompt": result.enriched_prompt,
+        "context": result.context,
+        "dry_run": True,
+    }
+
+
+def _required_object(body: dict[str, Any], name: str) -> dict[str, Any]:
+    value = body.get(name)
+    if not isinstance(value, dict):
+        raise ExtendedRequestError(f"'{name}' debe ser un objeto", name)
+    return value
+
+
+def _required_text(body: dict[str, Any], name: str) -> str:
+    value = body.get(name)
+    if not isinstance(value, str) or not value.strip():
+        raise ExtendedRequestError(f"'{name}' debe ser texto no vacio", name)
+    return value
+
+
+def _optional_text(body: dict[str, Any], name: str) -> str | None:
+    value = body.get(name)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ExtendedRequestError(f"'{name}' debe ser texto", name)
+    return value
+
+
+def _identity_text(body: dict[str, Any], name: str) -> str | None:
+    return _optional_text(body, name)
+
+
+def _optional_bool(body: dict[str, Any], name: str) -> bool | None:
+    if name not in body or body[name] is None:
+        return None
+    return _bool(body, name, False)
+
+
+def _bool(body: dict[str, Any], name: str, default: bool) -> bool:
+    value = body.get(name, default)
+    if not isinstance(value, bool):
+        raise ExtendedRequestError(f"'{name}' debe ser booleano", name)
+    return value
+
+
+def _text_tuple(value: Any, name: str) -> tuple[str, ...]:
+    if isinstance(value, str):
+        return (value,)
+    if not isinstance(value, (list, tuple)) or not all(
+        isinstance(item, str) for item in value
+    ):
+        raise ExtendedRequestError(
+            f"'{name}' debe ser texto o una lista de textos",
+            name,
+        )
+    return tuple(value)
+
+
+def _enum(enum_type, value: Any, name: str):
+    try:
+        return enum_type(value)
+    except (TypeError, ValueError) as exc:
+        raise ExtendedRequestError(f"'{name}' tiene un valor invalido", name) from exc
+
+
+def _principal(value: str) -> Principal:
+    return _enum(Principal, value, "principal")
+
+
+def _uuid_tuple(value: Any, name: str) -> tuple[UUID, ...]:
+    raw = _text_tuple(value, name)
+    try:
+        return tuple(UUID(item) for item in raw)
+    except ValueError as exc:
+        raise ExtendedRequestError(f"'{name}' contiene un UUID invalido", name) from exc
+
+
+def _memory_identity(raw: Any) -> MemoryIdentity:
+    if raw is None:
+        return MemoryIdentity()
+    if not isinstance(raw, dict):
+        raise ExtendedRequestError("'identity' debe ser un objeto", "identity")
+    return MemoryIdentity(
+        user_id=_identity_text(raw, "user_id"),
+        session_id=_identity_text(raw, "session_id"),
+        service=_identity_text(raw, "service"),
+        domain_tag=_identity_text(raw, "domain_tag"),
+        namespace=_identity_text(raw, "namespace"),
+    )
+
+
+def _memory_type(raw: dict[str, Any]) -> MemoryType:
+    try:
+        return MemoryType(
+            name=_required_text(raw, "name"),
+            memory_class=_enum(MemoryClass, raw.get("memory_class"), "memory_class"),
+            writer_principal=_enum(Principal, raw.get("writer_principal"), "writer_principal"),
+            retrieval_mode=_enum(RetrievalMode, raw.get("retrieval_mode"), "retrieval_mode"),
+            scope=_enum(Scope, raw.get("scope"), "scope"),
+            namespaces=_text_tuple(raw.get("namespaces", ()), "namespaces"),
+            w_recency=raw.get("w_recency"),
+            w_similarity=raw.get("w_similarity"),
+            w_stability=raw.get("w_stability"),
+            w_score=raw.get("w_score"),
+            half_life_seconds=raw.get("half_life_seconds"),
+            status=raw.get("status", "active"),
+            version=raw.get("version", 1),
+        )
+    except TypeError as exc:
+        raise ExtendedRequestError("declaracion memory_type invalida", "memory_type") from exc
+
+
+def _engram_write(raw: dict[str, Any]) -> EngramWrite:
+    try:
+        return EngramWrite(
+            type_name=_required_text(raw, "type_name"),
+            content=_required_text(raw, "content"),
+            identity=_memory_identity(raw.get("identity")),
+            namespace=_optional_text(raw, "namespace"),
+            score=raw.get("score", 0.0),
+            stability=raw.get("stability", 0),
+            service=_optional_text(raw, "service"),
+            domain_tag=_optional_text(raw, "domain_tag"),
+            entity_refs=_uuid_tuple(raw.get("entity_refs", ()), "entity_refs"),
+            unresolved_mentions=_text_tuple(
+                raw.get("unresolved_mentions", ()), "unresolved_mentions"
+            ),
+            source_trace_id=_optional_text(raw, "source_trace_id"),
+            entity_id=(
+                None
+                if raw.get("entity_id") is None
+                else UUID(_required_text(raw, "entity_id"))
+            ),
+        )
+    except (TypeError, ValueError) as exc:
+        raise ExtendedRequestError("peticion memory.write invalida", "request") from exc
+
+
+def _consolidation_event(raw: dict[str, Any]) -> ConsolidationEvent:
+    try:
+        return ConsolidationEvent(
+            trigger=_enum(ConsolidationTrigger, raw.get("trigger"), "trigger"),
+            principal=_enum(Principal, raw.get("principal"), "principal"),
+            source_ids=_uuid_tuple(raw.get("source_ids", ()), "source_ids"),
+            target_type=_optional_text(raw, "target_type"),
+            content=_optional_text(raw, "content"),
+            target_namespace=_optional_text(raw, "target_namespace"),
+            reason=_required_text(raw, "reason"),
+        )
+    except TypeError as exc:
+        raise ExtendedRequestError(
+            "evento memory.consolidate invalido",
+            "event",
+        ) from exc
+
+
+def _task_plan_payload(body: dict[str, Any]) -> dict[str, Any] | None:
+    if "plan" not in body:
+        return None
+    extension_fields = {
+        "prompt",
+        "identity",
+        "enrich",
+        "use_memory",
+        "use_rag",
+        "write_back",
+        "domain",
+    }
+    # El objeto de task.plan es opaco salvo por plan[].prompt: conserva tambien
+    # campos hermanos que una version futura del core pueda anadir.
+    return {
+        name: value
+        for name, value in body.items()
+        if name not in extension_fields
     }
