@@ -72,8 +72,14 @@ def test_own_catalog_declares_all_implemented_capabilities_and_explicit_gaps():
     assert "knowledge.ingest" in by_name
     assert "knowledge.retrieve" not in by_name
     assert "knowledge.corpus.list" not in by_name
-    assert all(item.rest is not None and item.mcp is not None for item in by_name.values())
-    assert all(item.mcp.tool == item.name for item in by_name.values())
+    assert all(item.rest is not None for item in by_name.values())
+    assert by_name["prompt.stream"].mcp is None
+    assert by_name["reasoning.stream"].mcp is None
+    assert all(
+        item.mcp is not None
+        for item in by_name.values()
+        if not item.streaming
+    )
 
 
 def test_fusion_passes_unknown_core_capability_and_preserves_it(tmp_path):

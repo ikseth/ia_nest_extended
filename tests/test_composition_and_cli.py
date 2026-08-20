@@ -230,7 +230,7 @@ def test_general_help_uses_the_merged_catalog(
     assert "future" in captured.out
 
 
-def test_cli_streams_forwarded_events(
+def test_cli_streams_passthrough_events(
     monkeypatch,
     tmp_path,
     capsys,
@@ -238,7 +238,9 @@ def test_cli_streams_forwarded_events(
 ):
     argv = _cli_env(monkeypatch, tmp_path, local_service_stub)
 
-    code = cli.main([*argv, "prompt", "stream", "--prompt", "hola"])
+    code = cli.main(
+        [*argv, "prompt", "stream", "--prompt", "hola", "--no-enrich"]
+    )
 
     captured = capsys.readouterr()
     assert code == 0

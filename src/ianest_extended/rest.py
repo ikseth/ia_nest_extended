@@ -46,7 +46,10 @@ def create_app(
             if request.method != expected_method:
                 return Response(status_code=405, headers={"allow": expected_method})
             payload = await _request_payload(request)
-            return JSONResponse(active_service.invoke(capability_name, payload))
+            result = active_service.invoke(capability_name, payload)
+            if isinstance(result, dict):
+                return JSONResponse(result)
+            return _forwarded_response(result)
 
         return endpoint
 

@@ -340,6 +340,14 @@ def _build_parser(
     _add_json_argument(run_parser)
     run_parser.set_defaults(handler=_prompt_run)
 
+    prompt_stream = _add_local_parser(prompt_group, "prompt.stream")
+    prompt_stream.add_argument("--prompt", required=True, metavar="TEXTO")
+    prompt_stream.add_argument("--model", metavar="MODELO")
+    _add_enrichment_arguments(prompt_stream)
+    _add_identity_arguments(prompt_stream)
+    _add_json_argument(prompt_stream)
+    prompt_stream.set_defaults(handler=_prompt_stream)
+
     reasoning_group = group(
         "reasoning",
         "ejecuta razonamiento iterativo",
@@ -362,6 +370,16 @@ def _build_parser(
     _add_identity_arguments(reasoning_run)
     _add_json_argument(reasoning_run)
     reasoning_run.set_defaults(handler=_reasoning_run)
+
+    reasoning_stream = _add_local_parser(
+        reasoning_group, "reasoning.stream"
+    )
+    reasoning_stream.add_argument("--prompt", required=True, metavar="TEXTO")
+    reasoning_stream.add_argument("--model", metavar="MODELO")
+    _add_enrichment_arguments(reasoning_stream)
+    _add_identity_arguments(reasoning_stream)
+    _add_json_argument(reasoning_stream)
+    reasoning_stream.set_defaults(handler=_reasoning_stream)
 
     task_group = group(
         "task",
@@ -765,6 +783,21 @@ def _prompt_run(service, config, args) -> int:
     return 0
 
 
+def _prompt_stream(service, config, args) -> int:
+    stream = service.prompt_stream(
+        args.prompt,
+        _identity(config, args),
+        enrich=args.enrich,
+        use_memory=args.use_memory,
+        use_rag=args.use_rag,
+        write_back=args.write_back,
+        domain=getattr(args, "domain", None),
+        auto_domain=args.auto_domain,
+        model=args.model,
+    )
+    return _emit_forward(stream, args.json)
+
+
 def _reasoning_run(service, config, args) -> int:
     result = service.reasoning_run(
         args.prompt,
@@ -794,6 +827,21 @@ def _reasoning_run(service, config, args) -> int:
         print()
     print(result.output)
     return 0
+
+
+def _reasoning_stream(service, config, args) -> int:
+    stream = service.reasoning_stream(
+        args.prompt,
+        _identity(config, args),
+        enrich=args.enrich,
+        use_memory=args.use_memory,
+        use_rag=args.use_rag,
+        write_back=args.write_back,
+        domain=getattr(args, "domain", None),
+        auto_domain=args.auto_domain,
+        model=args.model,
+    )
+    return _emit_forward(stream, args.json)
 
 
 def _task_run(service, config, args) -> int:

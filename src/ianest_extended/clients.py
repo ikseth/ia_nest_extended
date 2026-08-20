@@ -287,6 +287,83 @@ class CoreClient:
         data = self._post_json("/reasoning/run", payload)
         return _typed_core_result(data, text_field="output")
 
+    def prompt_stream(
+        self,
+        prompt: str,
+        identity: MemoryIdentity,
+        model: str | None = None,
+        domain: str | None = None,
+    ) -> ForwardedStream:
+        """Abre `prompt.stream` con una entrada ya compuesta por la capa."""
+        return self._inference_stream(
+            "/prompt/stream",
+            prompt,
+            identity,
+            model=model,
+            domain=domain,
+        )
+
+    def reasoning_stream(
+        self,
+        prompt: str,
+        identity: MemoryIdentity,
+        model: str | None = None,
+        domain: str | None = None,
+    ) -> ForwardedStream:
+        """Abre `reasoning.stream` con una entrada ya compuesta por la capa."""
+        return self._inference_stream(
+            "/reasoning/stream",
+            prompt,
+            identity,
+            model=model,
+            domain=domain,
+        )
+
+    def _inference_stream(
+        self,
+        route: str,
+        prompt: str,
+        identity: MemoryIdentity,
+        *,
+        model: str | None,
+        domain: str | None,
+    ) -> ForwardedStream:
+        payload: dict[str, Any] = {
+            "prompt": prompt,
+            "identity": identity.to_core_dict(),
+        }
+        if model is not None:
+            payload["model"] = model
+        if domain is not None:
+            payload["domain"] = domain
+        connection, response = _open(
+            f"{self._base_url}{route}",
+            "POST",
+            payload,
+            self._timeouts,
+            connection_error=CoreConnectionError,
+        )
+        try:
+            _raise_for_status(
+                response,
+                f"{self._base_url}{route}",
+                downstream_origin=CORE_ORIGIN,
+            )
+            content_type = response.headers.get("Content-Type", "")
+            if "text/event-stream" not in content_type:
+                raise CoreResponseError(
+                    f"{self._base_url}{route} no devolvio text/event-stream"
+                )
+            return ForwardedStream(
+                _iter_sse(connection, response),
+                connection.close,
+                content_type=content_type,
+                status_code=response.status,
+            )
+        except BaseException:
+            connection.close()
+            raise
+
     def task_plan(
         self,
         prompt: str,

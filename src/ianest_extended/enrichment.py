@@ -31,6 +31,7 @@ DELEGATED_TYPES = (
 SEMANTIC_NAMESPACES = ("facts", "preferences")
 EPISODIC_NAMESPACES = ("facts", "tasks", "preferences")
 CONTEXT_WRAPPER_CHARS = len("<enrichment_context>\n\n</enrichment_context>\n\n")
+_CORE_RESULT_TRACE = object()
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +53,18 @@ class EnrichResult:
     payload: dict[str, Any] = field(default_factory=dict)
     enriched_prompt: str = ""
     downstream_request_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedEnrichment:
+    """Resultado comun de recuperar y componer antes de llamar al core."""
+
+    identity: MemoryIdentity
+    prompt: str
+    bundle: RecallBundle
+    enriched_prompt: str
+    request_id: str
+    recall_latency_ms: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,13 +163,89 @@ class MemoryEnricher:
         request_id: str | None,
         core_run,
     ) -> EnrichResult:
+        write_back_on = (
+            self._config.write_back_enabled if write_back is None else write_back
+        )
+        prepared = self.prepare(
+            identity,
+            prompt,
+            use_memory=use_memory,
+            use_rag=use_rag,
+            auto_domain=auto_domain,
+            request_id=request_id,
+        )
+
+        if dry_run:
+            self.record_recall(prepared, status="dry_run")
+            return EnrichResult(
+                response="",
+                trace={},
+                context=prepared.bundle.context,
+                request_id=prepared.request_id,
+                payload={},
+                enriched_prompt=prepared.enriched_prompt,
+                downstream_request_id=None,
+            )
+
+        try:
+            core_result = core_run(
+                prepared.enriched_prompt,
+                prepared.identity,
+                model=model,
+                domain=prepared.identity.domain_tag,
+            )
+        except Exception:
+            self.record_recall(prepared, status="error")
+            raise
+
+        self.record_recall(
+            prepared,
+            downstream_request_id=core_result.request_id,
+            status="ok",
+        )
+
+        if not write_back_on:
+            return EnrichResult(
+                response=core_result.response,
+                trace=core_result.trace,
+                context=prepared.bundle.context,
+                request_id=prepared.request_id,
+                payload=core_result.payload,
+                enriched_prompt=prepared.enriched_prompt,
+                downstream_request_id=core_result.request_id,
+            )
+
+        self.write_back(
+            request_id=prepared.request_id,
+            identity=prepared.identity,
+            prompt=prompt,
+            core_result=core_result,
+        )
+        return EnrichResult(
+            response=core_result.response,
+            trace=core_result.trace,
+            context=prepared.bundle.context,
+            request_id=prepared.request_id,
+            payload=core_result.payload,
+            enriched_prompt=prepared.enriched_prompt,
+            downstream_request_id=core_result.request_id,
+        )
+
+    def prepare(
+        self,
+        identity: MemoryIdentity,
+        prompt: str,
+        *,
+        use_memory: bool | None = None,
+        use_rag: bool | None = None,
+        auto_domain: bool | None = None,
+        request_id: str | None = None,
+    ) -> PreparedEnrichment:
+        """Reusa el preambulo de `prompt.run` para llamadas bloqueantes o SSE."""
         memory_on = (
             self._config.memory_enabled if use_memory is None else use_memory
         )
         rag_on = self._config.rag_enabled if use_rag is None else use_rag
-        write_back_on = (
-            self._config.write_back_enabled if write_back is None else write_back
-        )
         auto_domain_on = (
             self._config.auto_domain if auto_domain is None else auto_domain
         )
@@ -193,83 +282,30 @@ class MemoryEnricher:
                 status="error",
             )
             raise
-        recall_latency = _latency_ms(recall_started)
-        enriched_prompt = compose_prompt(bundle.context, prompt)
-
-        if dry_run:
-            self._telemetry.record(
-                event="enrich.recall",
-                request_id=request_id,
-                downstream_request_id=None,
-                identity=resolved_identity,
-                counters=self._recall_counters(bundle),
-                latency_ms=recall_latency,
-                status="dry_run",
-            )
-            return EnrichResult(
-                response="",
-                trace={},
-                context=bundle.context,
-                request_id=request_id,
-                payload={},
-                enriched_prompt=enriched_prompt,
-                downstream_request_id=None,
-            )
-
-        try:
-            core_result = core_run(
-                enriched_prompt,
-                resolved_identity,
-                model=model,
-                domain=resolved_identity.domain_tag,
-            )
-        except Exception:
-            self._telemetry.record(
-                event="enrich.recall",
-                request_id=request_id,
-                downstream_request_id=None,
-                identity=resolved_identity,
-                counters=self._recall_counters(bundle),
-                latency_ms=recall_latency,
-                status="error",
-            )
-            raise
-
-        self._telemetry.record(
-            event="enrich.recall",
-            request_id=request_id,
-            downstream_request_id=core_result.request_id,
-            identity=resolved_identity,
-            counters=self._recall_counters(bundle),
-            latency_ms=recall_latency,
-            status="ok",
-        )
-
-        if not write_back_on:
-            return EnrichResult(
-                response=core_result.response,
-                trace=core_result.trace,
-                context=bundle.context,
-                request_id=request_id,
-                payload=core_result.payload,
-                enriched_prompt=enriched_prompt,
-                downstream_request_id=core_result.request_id,
-            )
-
-        self.write_back(
-            request_id=request_id,
+        return PreparedEnrichment(
             identity=resolved_identity,
             prompt=prompt,
-            core_result=core_result,
-        )
-        return EnrichResult(
-            response=core_result.response,
-            trace=core_result.trace,
-            context=bundle.context,
+            bundle=bundle,
+            enriched_prompt=compose_prompt(bundle.context, prompt),
             request_id=request_id,
-            payload=core_result.payload,
-            enriched_prompt=enriched_prompt,
-            downstream_request_id=core_result.request_id,
+            recall_latency_ms=_latency_ms(recall_started),
+        )
+
+    def record_recall(
+        self,
+        prepared: PreparedEnrichment,
+        *,
+        downstream_request_id: str | None = None,
+        status: str,
+    ) -> None:
+        self._telemetry.record(
+            event="enrich.recall",
+            request_id=prepared.request_id,
+            downstream_request_id=downstream_request_id,
+            identity=prepared.identity,
+            counters=self._recall_counters(prepared.bundle),
+            latency_ms=prepared.recall_latency_ms,
+            status=status,
         )
 
     def recall(
@@ -511,6 +547,7 @@ class MemoryEnricher:
         identity: MemoryIdentity,
         prompt: str,
         core_result: CoreResult,
+        source_trace_id: str | None,
     ) -> tuple[dict[str, int], str]:
         counters = {
             "dialog_written": 0,
@@ -524,7 +561,7 @@ class MemoryEnricher:
             "identity": identity,
             "service": identity.service,
             "domain_tag": identity.domain_tag,
-            "source_trace_id": core_result.request_id,
+            "source_trace_id": source_trace_id,
         }
         for content in (prompt, core_result.response):
             self._store.write(
@@ -589,20 +626,28 @@ class MemoryEnricher:
         identity: MemoryIdentity,
         prompt: str,
         core_result: CoreResult,
+        source_trace_id: str | None | object = _CORE_RESULT_TRACE,
     ) -> tuple[dict[str, int], str]:
         """Aplica la politica comun al par original/final de otra capacidad."""
+        resolved_trace_id = (
+            core_result.request_id
+            if source_trace_id is _CORE_RESULT_TRACE
+            else source_trace_id
+        )
+        assert resolved_trace_id is None or isinstance(resolved_trace_id, str)
         started = time.monotonic()
         try:
             counters, status = self._write_back(
                 identity=identity,
                 prompt=prompt,
                 core_result=core_result,
+                source_trace_id=resolved_trace_id,
             )
         except Exception:
             self._telemetry.record(
                 event="enrich.write_back",
                 request_id=request_id,
-                downstream_request_id=core_result.request_id,
+                downstream_request_id=resolved_trace_id,
                 identity=identity,
                 counters={
                     "dialog_written": 0,
@@ -619,7 +664,7 @@ class MemoryEnricher:
         self._telemetry.record(
             event="enrich.write_back",
             request_id=request_id,
-            downstream_request_id=core_result.request_id,
+            downstream_request_id=resolved_trace_id,
             identity=identity,
             counters=counters,
             latency_ms=_latency_ms(started),
