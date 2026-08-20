@@ -363,11 +363,25 @@ empieza mas abajo de lo que sugerian las primeras medidas.
 
 Mientras las bandas se solapen, ningun valor unico las separa: subirlo silencia
 respuestas correctas y bajarlo admite ruido. Eso deja de ser calibrar y pasa a ser
-diseno -umbral por dominio, umbral relativo al mejor resultado, o reordenacion
-posterior-. No se elige aqui: se declara que la eleccion existe.
+diseno.
 
-Disparador: al crecer el corpus con conocimiento real, que es cuando el solape se
-puede medir con muestra suficiente.
+**MEDIDO el 2026-08-19, con el corpus ya crecido y sondas escritas como preguntas
+reales**: el solape existe. La sonda de ruido mas alta supera al acierto mas bajo,
+de modo que el umbral vigente pierde una consulta legitima para no admitir una
+formula de cortesia. El disparador de esta deuda se ha cumplido y deja de ser un
+riesgo declarado.
+
+Propuesta de diseno, a reconciliar: **dos regimenes en vez de uno**. Todas las
+sondas de ruido se hacen SIN dominio y todas las relevantes CON dominio, asi que
+el umbral esta mezclando dos situaciones distintas:
+
+- con dominio, el gate de conocimiento ya ha reducido los candidatos a un corpus
+  confirmado, y el suelo puede ser laxo;
+- sin dominio, se busca contra todos los corpus a la vez y ahi es donde aparece el
+  mejor-match espurio, de modo que el suelo debe ser estricto.
+
+Alternativas descartables si esa no basta: umbral por dominio, o umbral relativo
+al mejor resultado de cada consulta en vez de absoluto.
 
 ### D3. La identidad como fuente conmutable
 
