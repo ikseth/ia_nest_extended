@@ -376,6 +376,30 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
         "overridden",
     ),
     Capability(
+        "prompt.stream",
+        "emite los fragmentos de un prompt enriquecido",
+        True,
+        True,
+        (
+            _PROMPT,
+            _MODEL,
+            _ENRICH,
+            _USE_MEMORY,
+            _USE_RAG,
+            _WRITE_BACK,
+            _DOMAIN,
+            _AUTO_DOMAIN,
+        ),
+        _rest("prompt.stream"),
+        _cli(
+            "prompt",
+            "stream",
+            "Recupera y compone antes de abrir el flujo; retransmite cada evento del core.",
+        ),
+        None,
+        "overridden",
+    ),
+    Capability(
         "reasoning.run",
         "ejecuta razonamiento iterativo enriquecido",
         True,
@@ -390,6 +414,30 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
             flag_help=(("json", "emite el resultado como JSON"), ("show_context", "imprime el bloque de contexto inyectado")),
         ),
         _mcp("reasoning.run"),
+        "overridden",
+    ),
+    Capability(
+        "reasoning.stream",
+        "emite los eventos del razonamiento enriquecido",
+        True,
+        True,
+        (
+            _PROMPT,
+            _MODEL,
+            _ENRICH,
+            _USE_MEMORY,
+            _USE_RAG,
+            _WRITE_BACK,
+            _DOMAIN,
+            _AUTO_DOMAIN,
+        ),
+        _rest("reasoning.stream"),
+        _cli(
+            "reasoning",
+            "stream",
+            "Recupera y compone antes de abrir el flujo; retransmite cada evento del core.",
+        ),
+        None,
         "overridden",
     ),
     Capability(
@@ -475,12 +523,15 @@ def _assert_catalog_invariants() -> None:
     assert len(names) == len(set(names))
     assert "knowledge.retrieve" not in names
     assert "knowledge.corpus.list" not in names
+    assert all(item.rest is not None for item in LOCAL_CAPABILITIES)
     assert all(
-        item.rest is not None and item.mcp is not None
+        item.mcp is None if item.streaming else item.mcp is not None
         for item in LOCAL_CAPABILITIES
     )
-    assert all(item.mcp.tool == item.name for item in LOCAL_CAPABILITIES)
-    assert all(not item.streaming for item in LOCAL_CAPABILITIES)
+    assert all(
+        item.mcp is None or item.mcp.tool == item.name
+        for item in LOCAL_CAPABILITIES
+    )
 
 
 _assert_catalog_invariants()

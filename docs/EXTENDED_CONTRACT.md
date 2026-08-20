@@ -1,7 +1,7 @@
 # Contrato de ia_nest_extended
 
 Estado: activo
-Version: 1.0 - 2026-08-20
+Version: 1.1 - 2026-08-20
 
 Frontera publica de la capa de enriquecimiento, VIGENTE desde su primer tag
 (Fase 7d). Lo que aqui se declara es promesa, no objetivo. Que cuenta como
@@ -60,7 +60,7 @@ capacidades de flujo quedan fuera de MCP y su proyeccion nula en
 | | capacidades |
 |---|---|
 | **Reenviadas** sin alterar | las del core que esta capa no enriquece; hoy `runtime.health` y `config.validate` responden por el core, no por la pila |
-| **Sobreescritas** (compuestas o enriquecidas) | `capability.list`, `prompt.run`, `reasoning.run`, `task.run` |
+| **Sobreescritas** (compuestas o enriquecidas) | `capability.list`, `prompt.run`, `prompt.stream`, `reasoning.run`, `reasoning.stream`, `task.run` |
 | **Propias** | `memory_type.*`, `memory.*`, `knowledge.*` |
 
 El reenvio es GENERICO: no hay codigo por capacidad. Una capacidad que el core
@@ -107,9 +107,20 @@ pide, el core corta con `replan_unavailable`. Desactivar el enriquecimiento
 recupera el passthrough sin plan y, con el, la capacidad de re-planificacion.
 No hay reintento automatico sin plan: seria no determinista y duplicaria coste.
 
-`task.stream` se reenvia SIN enriquecer. Es un hueco conocido: el core no acepta
-`plan` ni `requirements` suministrados en esa capacidad. `prompt.stream` tambien
-sigue reenviado sin enriquecer.
+`prompt.stream` y `reasoning.stream` recuperan y componen antes de abrir el
+flujo. Desde ese momento retransmiten cada evento del core sin anadir, quitar ni
+reordenar. La respuesta se acumula en paralelo solo para aplicar el write-back
+tras un cierre limpio. Un error o una desconexion del cliente no persiste nada y
+queda declarado en telemetria con estado `error` o `interrupted`.
+
+Los engramas nacidos de `reasoning.stream` conservan el `request_id` que el core
+publica dentro del `trace` de su evento `done`. Los nacidos de `prompt.stream`
+conservan `source_trace_id` nulo: el core no publica su trace en ese flujo y esta
+capa nunca sustituye el dato ausente por su identificador propio.
+
+`task.stream` se reenvia SIN enriquecer. Es un hueco conocido y deliberado: el
+core no acepta `plan` ni `requirements` suministrados en esa capacidad, asi que
+el enriquecimiento por subtarea no tiene una costura de entrada.
 
 La presentacion de las capacidades reenviadas es JSON mientras `extended
 CR-0004` siga sin resolver. No se inventa render local para respuestas que la

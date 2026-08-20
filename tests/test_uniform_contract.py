@@ -71,7 +71,10 @@ def test_stream_is_retransmitted_event_by_event(tmp_path, local_service_stub):
     local_service_stub.stream_gate = gate
     service = _service(tmp_path, local_service_stub)
 
-    stream = service.forward("prompt.stream", {"prompt": "hola"})
+    # `prompt.stream` dejo de reenviarse: ahora esta sobreescrita y enriquecida.
+    # La propiedad que esta prueba defiende -que el REENVIO generico retransmite
+    # sin acumular- se comprueba sobre una capacidad que sigue reenviada.
+    stream = service.forward("flujo.nuevo", {"prompt": "hola"})
     events = iter(stream)
     first = next(events)
     second = next(events)

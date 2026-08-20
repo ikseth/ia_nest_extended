@@ -5,6 +5,24 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+## [0.1.1] - 2026-08-20
+
+### Anadido
+- `prompt.stream` y `reasoning.stream` pasan de reenviadas a sobreescritas con el
+  mismo enriquecimiento upfront de `prompt.run`: recuperan y componen antes de
+  abrir el SSE, retransmiten cada evento del core sin alterar su forma y
+  acumulan la respuesta en paralelo solo para el write-back. El primer evento
+  no espera al cierre del flujo. CLI y REST consumen el mismo servicio; MCP las
+  mantiene fuera por forma del protocolo. `task.stream` sigue reenviada porque
+  el core no acepta un plan suministrado en esa capacidad. Adicion compatible:
+  PATCH en la serie pre-1.0.
+- El write-back de streaming se ejecuta solo tras `done` y cierre limpio. Un
+  error o una desconexion no persiste una respuesta parcial y deja telemetria
+  `error` o `interrupted`. En `reasoning.stream`, `source_trace_id` conserva el
+  `request_id` del core. En `prompt.stream` queda a nulo como limitacion
+  conocida, porque ese flujo no publica su trace; nunca se sustituye por el
+  identificador propio de extended.
+
 ## [0.1.0] - 2026-08-20
 
 Primer contrato publicado de la capa. `docs/EXTENDED_CONTRACT.md` pasa a

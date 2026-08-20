@@ -161,7 +161,9 @@ def test_server_starts_offline_with_own_tools_and_declares_gap(tmp_path):
     assert core.calls == 0
     assert "memory.recall" in server.tools
     assert "prompt.run" in server.tools
-    assert set(server.tools) == {item.name for item in LOCAL_CAPABILITIES}
+    assert set(server.tools) == {
+        item.name for item in LOCAL_CAPABILITIES if item.mcp is not None
+    }
     assert "Catalogo ajeno no cacheado" in server.instructions
     assert "streaming por MCP esta fuera de alcance" in server.instructions
 

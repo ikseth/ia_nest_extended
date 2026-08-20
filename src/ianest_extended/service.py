@@ -4,8 +4,9 @@ Aplica meta ADR 0007 (contrato uniforme):
 
 - REENVIA con un mecanismo GENERICO -uno, no uno por capacidad- lo que esta capa
   no enriquece, en JSON y en `text/event-stream`.
-- SOBREESCRIBE `prompt.run`, `reasoning.run` y `task.run`, conservando la forma
-  de respuesta del core; en tareas, el RAG se aplica por subtarea.
+- SOBREESCRIBE `prompt.run`/`prompt.stream`, `reasoning.run`/
+  `reasoning.stream` y `task.run`, conservando la forma del core; en tareas, el
+  RAG se aplica por subtarea.
 - ANADE las capacidades propias `memory_type.*`, `memory.*` y `knowledge.*`.
 
 Todas las pieles (CLI hoy; REST y MCP en la fase 7c) usan esta superficie y no
@@ -14,7 +15,9 @@ tienen logica propia.
 
 from __future__ import annotations
 
+import json
 import time
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -28,7 +31,7 @@ from .capabilities import (
     merge_forwarded,
 )
 from .catalog_cache import write_catalog_cache
-from .clients import ForwardedJson, ForwardedStream
+from .clients import CoreResult, ForwardedJson, ForwardedStream
 from .composition import ExtendedComposition
 from .config import ExtendedConfig
 from .errors import EnrichmentParameterError, ExtendedError, ExtendedRequestError
@@ -123,6 +126,118 @@ class EnrichmentPlan:
     counters: dict[str, int] = field(default_factory=dict)
 
 
+class _ObservedStream:
+    """Observa un SSE sin cambiar ningun evento ni retrasar su entrega."""
+
+    def __init__(
+        self,
+        downstream: ForwardedStream,
+        *,
+        capability: str,
+        on_complete: Callable[[str, str | None], None],
+        on_finish: Callable[[str, str | None], None],
+    ) -> None:
+        self._downstream = downstream
+        self._capability = capability
+        self._on_complete = on_complete
+        self._on_finish = on_finish
+        self._parts: list[str] = []
+        self._response: str | None = None
+        self._downstream_request_id: str | None = None
+        self._done = False
+        self._error_event = False
+        self._cancelled = False
+        self._finished = False
+        self.content_type = downstream.content_type
+        self.status_code = downstream.status_code
+
+    def __iter__(self) -> Iterator:
+        try:
+            for event in self._downstream:
+                self._observe(event.event, event.data)
+                # El evento se entrega inmediatamente. El write-back ocurre
+                # solo cuando el iterador del core termina despues de `done`.
+                yield event
+            if (
+                self._done
+                and not self._error_event
+                and not self._cancelled
+                and self._response is not None
+            ):
+                try:
+                    self._on_complete(
+                        self._response,
+                        self._downstream_request_id,
+                    )
+                except BaseException:
+                    self._finish("error")
+                    raise
+                self._finish("ok")
+            else:
+                self._finish("error" if self._error_event else "interrupted")
+        except GeneratorExit:
+            self._cancelled = True
+            self._finish("interrupted")
+            raise
+        except BaseException:
+            self._finish("error")
+            raise
+        finally:
+            self._downstream.close()
+
+    def close(self) -> None:
+        # REST llama aqui cuando el cliente se desconecta; si el iterador no
+        # llego al cierre limpio no se ejecuta nunca `on_complete`.
+        self._cancelled = True
+        if not self._finished:
+            self._finish("interrupted")
+        self._downstream.close()
+
+    def _observe(self, event_name: str | None, raw_data: str) -> None:
+        try:
+            envelope = json.loads(raw_data)
+        except (TypeError, json.JSONDecodeError):
+            return
+        if not isinstance(envelope, dict):
+            return
+        event_type = event_name or envelope.get("type")
+        data = envelope.get("data", envelope)
+        if not isinstance(data, dict):
+            return
+        if event_type == "error":
+            self._error_event = True
+            return
+        if self._capability == "prompt.stream" and event_type == "token":
+            text = data.get("text")
+            if isinstance(text, str):
+                self._parts.append(text)
+            return
+        if event_type != "done":
+            return
+        if self._capability == "prompt.stream":
+            text = data.get("text")
+            self._response = text if isinstance(text, str) else "".join(self._parts)
+            # Limitacion conocida: prompt.stream no emite la traza del core.
+            self._downstream_request_id = None
+        else:
+            output = data.get("output")
+            trace = data.get("trace")
+            if not isinstance(output, str) or not isinstance(trace, dict):
+                return
+            request_id = trace.get("request_id")
+            if not isinstance(request_id, str) or not request_id:
+                return
+            self._response = output
+            self._downstream_request_id = request_id
+        self._done = True
+
+    def _finish(self, status: str) -> None:
+        if self._finished:
+            return
+        self._finished = True
+        self._on_finish(status, self._downstream_request_id)
+
+
 class _UnavailableMemoryStore:
     """Sustituto explicito cuando la operacion no toca memoria."""
 
@@ -183,7 +298,7 @@ class ExtendedService:
         self,
         capability: str,
         payload: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
+    ) -> Any:
         """Invoca una capacidad local desde cualquier piel.
 
         La traduccion del payload publico a los modelos del servicio vive aqui,
@@ -211,6 +326,18 @@ class ExtendedService:
                 dry_run=_bool(body, "dry_run", False),
             )
             return _run_payload(result)
+        if capability == "prompt.stream":
+            return self.prompt_stream(
+                _required_text(body, "prompt"),
+                self._request_identity(body),
+                enrich=_optional_bool(body, "enrich"),
+                use_memory=_optional_bool(body, "use_memory"),
+                use_rag=_optional_bool(body, "use_rag"),
+                write_back=_optional_bool(body, "write_back"),
+                domain=_optional_text(body, "domain"),
+                auto_domain=_optional_bool(body, "auto_domain"),
+                model=_optional_text(body, "model"),
+            )
         if capability == "reasoning.run":
             result = self.reasoning_run(
                 _required_text(body, "prompt"),
@@ -225,6 +352,18 @@ class ExtendedService:
                 dry_run=_bool(body, "dry_run", False),
             )
             return _run_payload(result)
+        if capability == "reasoning.stream":
+            return self.reasoning_stream(
+                _required_text(body, "prompt"),
+                self._request_identity(body),
+                enrich=_optional_bool(body, "enrich"),
+                use_memory=_optional_bool(body, "use_memory"),
+                use_rag=_optional_bool(body, "use_rag"),
+                write_back=_optional_bool(body, "write_back"),
+                domain=_optional_text(body, "domain"),
+                auto_domain=_optional_bool(body, "auto_domain"),
+                model=_optional_text(body, "model"),
+            )
         if capability == "task.run":
             result = self.task_run(
                 _required_text(body, "prompt"),
@@ -375,6 +514,181 @@ class ExtendedService:
         if not plan.enrich:
             return self._passthrough(request_identity, prompt, plan, dry_run)
         return self._enriched(request_identity, prompt, plan, dry_run)
+
+    def prompt_stream(
+        self,
+        prompt: str,
+        identity: MemoryIdentity,
+        *,
+        enrich: bool | None = None,
+        use_memory: bool | None = None,
+        use_rag: bool | None = None,
+        write_back: bool | None = None,
+        domain: str | None = None,
+        auto_domain: bool | None = None,
+        model: str | None = None,
+    ) -> _ObservedStream:
+        return self._inference_stream(
+            "prompt.stream",
+            prompt,
+            identity,
+            enrich=enrich,
+            use_memory=use_memory,
+            use_rag=use_rag,
+            write_back=write_back,
+            domain=domain,
+            auto_domain=auto_domain,
+            model=model,
+        )
+
+    def reasoning_stream(
+        self,
+        prompt: str,
+        identity: MemoryIdentity,
+        *,
+        enrich: bool | None = None,
+        use_memory: bool | None = None,
+        use_rag: bool | None = None,
+        write_back: bool | None = None,
+        domain: str | None = None,
+        auto_domain: bool | None = None,
+        model: str | None = None,
+    ) -> _ObservedStream:
+        return self._inference_stream(
+            "reasoning.stream",
+            prompt,
+            identity,
+            enrich=enrich,
+            use_memory=use_memory,
+            use_rag=use_rag,
+            write_back=write_back,
+            domain=domain,
+            auto_domain=auto_domain,
+            model=model,
+        )
+
+    def _inference_stream(
+        self,
+        capability: str,
+        prompt: str,
+        identity: MemoryIdentity,
+        *,
+        enrich: bool | None,
+        use_memory: bool | None,
+        use_rag: bool | None,
+        write_back: bool | None,
+        domain: str | None,
+        auto_domain: bool | None,
+        model: str | None,
+    ) -> _ObservedStream:
+        plan = self.plan_enrichment(
+            enrich=enrich,
+            use_memory=use_memory,
+            use_rag=use_rag,
+            write_back=write_back,
+            domain=domain,
+            auto_domain=auto_domain,
+            model=model,
+        )
+        request_identity = (
+            replace(identity, domain_tag=plan.domain)
+            if plan.domain is not None
+            else identity
+        )
+        request_id = str(uuid4())
+        started = time.monotonic()
+        enricher = None
+        prepared = None
+        try:
+            if plan.enrich:
+                rag_store = self._composition.rag_store() if plan.use_rag else None
+                memory_store = (
+                    self._composition.memory_store()
+                    if plan.use_memory or plan.write_back
+                    else _UnavailableMemoryStore()
+                )
+                enricher = self._composition.enricher(
+                    memory_store=memory_store,
+                    rag_store=rag_store,
+                )
+                prepared = enricher.prepare(
+                    request_identity,
+                    prompt,
+                    use_memory=plan.use_memory,
+                    use_rag=plan.use_rag,
+                    auto_domain=plan.auto_domain,
+                    request_id=request_id,
+                )
+                request_identity = prepared.identity
+                outbound_prompt = prepared.enriched_prompt
+            else:
+                outbound_prompt = prompt
+
+            core = self._composition.core()
+            open_stream = (
+                core.prompt_stream
+                if capability == "prompt.stream"
+                else core.reasoning_stream
+            )
+            downstream = open_stream(
+                outbound_prompt,
+                request_identity,
+                model=plan.model,
+                domain=request_identity.domain_tag,
+            )
+        except Exception:
+            if enricher is not None and prepared is not None:
+                enricher.record_recall(prepared, status="error")
+            self._record_run(
+                event=capability,
+                request_id=request_id,
+                downstream_request_id=None,
+                identity=request_identity,
+                plan=plan,
+                started=started,
+                status="error",
+            )
+            raise
+
+        if enricher is not None and prepared is not None:
+            enricher.record_recall(prepared, status="ok")
+
+        def complete(response: str, downstream_request_id: str | None) -> None:
+            if not plan.write_back:
+                return
+            assert enricher is not None
+            trace = (
+                {"request_id": downstream_request_id}
+                if downstream_request_id is not None
+                else {}
+            )
+            enricher.write_back(
+                request_id=request_id,
+                identity=request_identity,
+                prompt=prompt,
+                core_result=CoreResult(response=response, trace=trace),
+                # prompt.stream no emite trace; el nulo es deliberado y nunca
+                # se sustituye por el request_id propio de esta capa.
+                source_trace_id=downstream_request_id,
+            )
+
+        def finish(status: str, downstream_request_id: str | None) -> None:
+            self._record_run(
+                event=capability,
+                request_id=request_id,
+                downstream_request_id=downstream_request_id,
+                identity=request_identity,
+                plan=plan,
+                started=started,
+                status=status,
+            )
+
+        return _ObservedStream(
+            downstream,
+            capability=capability,
+            on_complete=complete,
+            on_finish=finish,
+        )
 
     def reasoning_run(
         self,
