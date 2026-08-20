@@ -19,8 +19,8 @@ saber cuantas capas hay debajo.
 ## Interfaces publicas
 
 Las mismas capacidades por CLI, REST y MCP, como pieles finas de un unico
-servicio en proceso. Ni la CLI llama a la REST ni al reves. Hoy existen la CLI
-y la REST; MCP llega en la Fase 7c-2.
+servicio en proceso. Ninguna piel llama a otra: las tres llaman al mismo
+`ExtendedService`.
 
 La REST escucha por defecto en `127.0.0.1:8001`, configurable con
 `IANEST_EXTENDED_REST_HOST` e `IANEST_EXTENDED_REST_PORT`. No autentica: la
@@ -36,6 +36,24 @@ Los flujos reenviados conservan `text/event-stream` y se retransmiten evento a
 evento. Las respuestas JSON reenviadas son opacas. Un error ajeno conserva su
 codigo HTTP y sus campos `type` y `origin`; un error propio declara
 `origin=ia_nest_extended` (meta ADR 0009).
+
+MCP expone cada herramienta con el nombre exacto de su capacidad, sin alias, y
+deriva sus parametros (tipo, obligatoriedad y valores admitidos) del mismo
+catalogo declarativo que alimenta las otras pieles. Construir el servidor es
+siempre local: declara las capacidades propias y sobreescritas desde el catalogo
+local, y las reenviadas desde una cache valida del catalogo del core. Nunca
+consulta al core al arrancar.
+
+Sin cache, MCP sirve lo propio y declara que falta el catalogo ajeno en las
+instrucciones del servidor; `capability.list` conserva ademas la degradacion
+tipada si el core sigue inalcanzable cuando se invoca. La cache solo mejora la
+enumeracion: las herramientas reenviadas siguen el camino generico del servicio.
+
+El transporte por defecto es `stdio`. La opcion `sse` escucha en
+`127.0.0.1:8091` por defecto, configurable por los argumentos `--host` y
+`--port` del servidor MCP. Esto no anade streaming a las herramientas: las
+capacidades de flujo quedan fuera de MCP y su proyeccion nula en
+`capability.list` declara el hueco, igual que en el core.
 
 ## El contrato uniforme
 
@@ -61,18 +79,20 @@ Si el core no esta disponible, la respuesta conserva el catalogo local, deja
 sirve para explicar, nunca para habilitar una invocacion: ninguna capacidad deja
 de ser alcanzable por no poder descubrirla.
 
-La CLI deriva banderas tipadas de los parametros que el catalogo declara para
-cada capacidad. Un parametro cuyo nombre colisiona con una bandera que la capa
-ya posee -identidad, enriquecimiento o salida- NO se redeclara: la gobierna la
-bandera propia, y su ayuda lo dice. Regla unica derivada del dato, nunca una
-lista de casos por nombre.
+La CLI deriva banderas tipadas y MCP deriva esquemas de herramienta de los
+parametros que el catalogo declara para cada capacidad. En la CLI, un parametro
+cuyo nombre colisiona con una bandera que la capa ya posee -identidad,
+enriquecimiento o salida- NO se redeclara: la gobierna la bandera propia, y su
+ayuda lo dice. Regla unica derivada del dato, nunca una lista de casos por
+nombre.
 
-Construir la piel es SIEMPRE una operacion local: nunca consulta al core, ni
-siquiera alcanzable. Para eso, el catalogo remoto que alimenta esas banderas se
-cachea como estado local (no versionado); `capability.list` es quien la
-refresca, como efecto de consultar el core en vivo. Sin cache, o con una cache
-de un core distinto del configurado, la capa degrada: lo propio conserva sus
-banderas y lo ajeno se sigue invocando por `--param`.
+Construir la CLI y MCP es SIEMPRE una operacion local: nunca consulta al core,
+ni siquiera alcanzable. Para eso, el catalogo remoto que alimenta las banderas
+y herramientas reenviadas se cachea como estado local (no versionado);
+`capability.list` es quien la refresca, como efecto de consultar al core en
+vivo. Sin cache, o con una cache de un core distinto del configurado, la CLI
+conserva las banderas propias y lo ajeno se sigue invocando por `--param`; MCP
+conserva las herramientas propias y declara el hueco ajeno.
 
 ### Garantia de transparencia
 
@@ -122,7 +142,7 @@ error tipado, no precedencia silenciosa.
 
 ## Capacidades propias
 
-Estado: `implementada` (existe el mecanismo, falta exponerlo como capacidad) o
+Estado: `implementada` (existe el mecanismo y se expone por las tres pieles) o
 `prevista` (nombre reservado, sin implementacion).
 
 ### Memoria

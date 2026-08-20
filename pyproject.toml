@@ -15,6 +15,7 @@ dependencies = [
 [project.scripts]
 ianest-extended = "ianest_extended.cli:main"
 ianest-extended-rest = "ianest_extended.rest:main"
+ianest-extended-mcp = "ianest_extended.mcp_server:main"
 
 [project.optional-dependencies]
 test = [
@@ -25,6 +26,9 @@ test = [
 rest = [
     "starlette>=1.0,<2",
     "uvicorn>=0.31,<1",
+]
+mcp = [
+    "mcp>=1.28.1,<2",
 ]
 
 [tool.setuptools.packages.find]

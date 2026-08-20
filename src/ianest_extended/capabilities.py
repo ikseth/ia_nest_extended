@@ -116,6 +116,11 @@ def _rest(name: str, method: str = "POST") -> RestProjection:
     return RestProjection("/" + name.replace(".", "/"), method)
 
 
+def _mcp(name: str) -> McpProjection:
+    """Proyecta una capacidad bloqueante con su nombre canonico, sin alias."""
+    return McpProjection(name)
+
+
 _PROMPT = _param(
     "prompt",
     "string",
@@ -158,7 +163,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
             "list",
             "Lista las capacidades propias y las obtenidas del core en ejecucion.",
         ),
-        None,
+        _mcp("capability.list"),
         "overridden",
     ),
     Capability(
@@ -188,7 +193,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
             "confirm",
             "Confirma un vinculo y habilita el gate de recuperacion.",
         ),
-        None,
+        _mcp("knowledge.confirm"),
         "own",
     ),
     Capability(
@@ -241,7 +246,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
                 ),
             ),
         ),
-        None,
+        _mcp("knowledge.ingest"),
         "own",
     ),
     Capability(
@@ -255,7 +260,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
         ),
         _rest("knowledge.reject"),
         _cli("knowledge", "reject", "Retira una propuesta automatica no confirmada."),
-        None,
+        _mcp("knowledge.reject"),
         "own",
     ),
     Capability(
@@ -266,7 +271,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
         (),
         _rest("knowledge.status", "GET"),
         _cli("knowledge", "status", "Compara los dominios del core con los corpus confirmados."),
-        None,
+        _mcp("knowledge.status"),
         "own",
     ),
     Capability(
@@ -277,7 +282,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
         (_param("corpus", "string", "nombre del corpus", required=True, metavar="CORPUS"),),
         _rest("knowledge.suggest"),
         _cli("knowledge", "suggest", "Propone vinculos via domain.route, sin confirmarlos."),
-        None,
+        _mcp("knowledge.suggest"),
         "own",
     ),
     Capability(
@@ -288,7 +293,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
         (_param("event", "object", "evento de consolidacion", required=True, cli=False),),
         _rest("memory.consolidate"),
         None,
-        None,
+        _mcp("memory.consolidate"),
         "own",
     ),
     Capability(
@@ -303,7 +308,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
             "maintain",
             "Barrido mecanico: archiva dialog y promociona episodic elegible. No necesita el core ni Ollama.",
         ),
-        None,
+        _mcp("memory.maintain"),
         "own",
     ),
     Capability(
@@ -314,7 +319,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
         (_PROMPT, _USE_MEMORY, _USE_RAG),
         _rest("memory.recall"),
         _cli("memory", "recall", "Ejecuta memory.recall sin llamar a la inferencia del core."),
-        None,
+        _mcp("memory.recall"),
         "own",
     ),
     Capability(
@@ -328,7 +333,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
         ),
         _rest("memory.write"),
         None,
-        None,
+        _mcp("memory.write"),
         "own",
     ),
     Capability(
@@ -339,7 +344,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
         (),
         _rest("memory_type.list", "GET"),
         _cli("memory_type", "list", "Namespaces, tier, scopes y writer_principal declarados."),
-        None,
+        _mcp("memory_type.list"),
         "own",
     ),
     Capability(
@@ -350,7 +355,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
         (_param("memory_type", "object", "declaracion que se valida", required=True, cli=False),),
         _rest("memory_type.validate"),
         None,
-        None,
+        _mcp("memory_type.validate"),
         "own",
     ),
     Capability(
@@ -367,7 +372,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
             flags=("json", "show_context"),
             flag_help=(("json", "emite el resultado como JSON"), ("show_context", "imprime el bloque de contexto inyectado")),
         ),
-        None,
+        _mcp("prompt.run"),
         "overridden",
     ),
     Capability(
@@ -384,7 +389,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
             flags=("json", "show_context"),
             flag_help=(("json", "emite el resultado como JSON"), ("show_context", "imprime el bloque de contexto inyectado")),
         ),
-        None,
+        _mcp("reasoning.run"),
         "overridden",
     ),
     Capability(
@@ -416,7 +421,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
                 ),
             ),
         ),
-        None,
+        _mcp("task.run"),
         "overridden",
     ),
 )
@@ -470,7 +475,12 @@ def _assert_catalog_invariants() -> None:
     assert len(names) == len(set(names))
     assert "knowledge.retrieve" not in names
     assert "knowledge.corpus.list" not in names
-    assert all(item.rest is not None and item.mcp is None for item in LOCAL_CAPABILITIES)
+    assert all(
+        item.rest is not None and item.mcp is not None
+        for item in LOCAL_CAPABILITIES
+    )
+    assert all(item.mcp.tool == item.name for item in LOCAL_CAPABILITIES)
+    assert all(not item.streaming for item in LOCAL_CAPABILITIES)
 
 
 _assert_catalog_invariants()

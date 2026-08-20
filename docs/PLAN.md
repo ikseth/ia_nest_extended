@@ -1,6 +1,6 @@
 # Plan de ia_nest_extended
 
-Estado: fases 0-5c y 7a-7b implementadas; fases 6 y 7c-7d en BORRADOR
+Estado: fases 0-5c y 7a-7c implementadas; fases 6, 7d y 8 pendientes
 Version: 0.1 - 2026-07-18
 
 Misma disciplina que el core: fases con criterio de salida falsable; no se abre
