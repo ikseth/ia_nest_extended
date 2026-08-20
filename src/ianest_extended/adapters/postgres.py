@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import UTC, datetime
-from pathlib import Path
+from importlib.resources.abc import Traversable
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -39,6 +39,7 @@ from ..models import (
     RetrievalMode,
     Scope,
 )
+from ..migrations import migration_resource
 from ..ports import Embedder
 from ..registry import MemoryTypeRegistry, derive_memory_key, seed_memory_types
 
@@ -50,7 +51,7 @@ class PostgresMemoryStore:
         self,
         dsn: str,
         embedder: Embedder | None,
-        migration_path: Path | None = None,
+        migration_path: Traversable | None = None,
     ) -> None:
         if embedder is not None and embedder.dimension <= 0:
             raise InvalidEmbeddingDimensionError(
@@ -912,13 +913,8 @@ class PostgresMemoryStore:
         return self._embedder
 
 
-def _default_migration_path() -> Path:
-    return (
-        Path(__file__).resolve().parents[3]
-        / "db"
-        / "migrations"
-        / "0001_memory_registry.sql"
-    )
+def _default_migration_path() -> Traversable:
+    return migration_resource("0001_memory_registry.sql")
 
 
 def _require_authority(

@@ -1,6 +1,6 @@
 # Plan de ia_nest_extended
 
-Estado: fases 0-5c y 7a-7c implementadas; fases 6, 7d y 8 pendientes
+Estado: fases 0-5c, 7 y 8 completas, con v0.1.0 publicada; fase 6 pendiente
 Version: 0.1 - 2026-07-18
 
 Misma disciplina que el core: fases con criterio de salida falsable; no se abre
@@ -237,6 +237,11 @@ Requisitos en `docs/VERSIONADO.md`. Criterio: contrato versionado y consumible
 por los tres consumos de arriba.
 
 ## Fase 8: Despliegue reproducible de la capa
+
+Estado: CERRADA (verificada el 2026-08-21 instalando en una maquina limpia,
+`rocinante`, desde el snapshot de sistema operativo: un solo comando con su
+fichero de parametros dejo la capa utilizable por un operador desde su
+directorio personal, sin activar venv).
 
 Esta capa NO tiene instalador de despliegue. Tiene `install.sh`, que prepara un
 entorno de DESARROLLO -venv, PostgreSQL en docker, pytest- y eso es otra cosa.

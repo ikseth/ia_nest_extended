@@ -34,6 +34,9 @@ mcp = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+ianest_extended = ["db/migrations/*.sql"]
+
 [tool.pytest.ini_options]
 addopts = "-ra"
 testpaths = ["tests"]

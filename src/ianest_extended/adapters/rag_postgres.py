@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
+from importlib.resources.abc import Traversable
 from uuid import uuid4
 
 import psycopg
@@ -18,6 +18,7 @@ from ..errors import (
     SchemaMigrationRequiredError,
 )
 from ..models import RagChunk, RagChunkWrite, RagIngestResult
+from ..migrations import migration_resource
 from ..ports import Embedder
 
 
@@ -28,7 +29,7 @@ class PostgresRagStore:
         self,
         dsn: str,
         embedder: Embedder,
-        migration_path: Path | None = None,
+        migration_path: Traversable | None = None,
     ) -> None:
         self._dsn = dsn
         self._embedder = embedder
@@ -460,19 +461,9 @@ def _vector_literal(vector) -> str:
     return "[" + ",".join(format(float(value), ".17g") for value in vector) + "]"
 
 
-def _default_migration_path() -> Path:
-    return (
-        Path(__file__).resolve().parents[3]
-        / "db"
-        / "migrations"
-        / "0002_rag.sql"
-    )
+def _default_migration_path() -> Traversable:
+    return migration_resource("0002_rag.sql")
 
 
-def _default_domain_migration_path() -> Path:
-    return (
-        Path(__file__).resolve().parents[3]
-        / "db"
-        / "migrations"
-        / "0003_rag_domains.sql"
-    )
+def _default_domain_migration_path() -> Traversable:
+    return migration_resource("0003_rag_domains.sql")

@@ -5,6 +5,29 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+### Anadido
+- Fase 8, instalador de despliegue reproducible: `deploy/setup.sh` con fichero
+  declarativo, layout externo `config/extended` y `state/extended`, almacen
+  PostgreSQL+pgvector existente (incluido remoto, sin runtime local) o
+  provisionado por Compose, migracion explicita, ingesta de TEXTO con vinculos
+  dominio-corpus confirmados, wrappers de operador, units REST/MCP, espera a los
+  puertos y verificacion ejecutable con codigo de salida. Incluye
+  `docs/DESPLIEGUE.md` y pruebas aisladas de idempotencia, preservacion de
+  configuracion y DSN fallido. Adicion compatible: PATCH; la fase permanece
+  abierta hasta su verificacion en maquina real.
+
+### Corregido
+- Retrabajo de Fase 8 tras la primera instalacion limpia: las tres migraciones
+  SQL tienen una unica copia dentro de `ianest_extended`, viajan como datos del
+  wheel y se resuelven con recursos del paquete tanto en instalaciones editables
+  como reales. Una prueba construye e instala el wheel y falla si no puede leer
+  las migraciones desde el paquete instalado.
+- El PostgreSQL provisionado declara `restart: unless-stopped`, y el instalador
+  comprueba el acceso de red al indice de paquetes antes de invocar la
+  instalacion de `pip`, con un error propio sin volcar sus reintentos. Impacto de
+  version: correccion compatible (PATCH); la fase sigue abierta hasta verificar
+  el despliegue en una maquina real.
+
 ## [0.1.1] - 2026-08-20
 
 ### Anadido
