@@ -6,6 +6,17 @@ Sin acentos por convencion.
 ## [No publicado]
 
 ### Anadido
+- Fase 7c-2: piel MCP del contrato uniforme. Registra herramientas con el nombre
+  exacto de la capacidad y genera sus esquemas desde el catalogo (tipo,
+  obligatoriedad y valores admitidos). Las propias y sobreescritas se enumeran
+  siempre; las reenviadas, solo desde una cache valida del catalogo del core. El
+  arranque no toca la red y, sin cache, sirve lo propio declarando el hueco
+  ajeno. Todas las invocaciones usan `ExtendedService`; el reenvio conserva
+  respuestas JSON opacas y los errores mantienen `type` y `origin`. Streaming
+  queda fuera y se declara mediante la proyeccion MCP nula del catalogo y las
+  instrucciones del servidor. Nuevo comando `ianest-extended-mcp` y extra
+  opcional `ianest-extended[mcp]`. Impacto de version: adicion compatible
+  (patch en la serie pre-1.0; el tag lo decide el usuario).
 - Fase 7c-1: piel REST del contrato uniforme, con rutas declaradas para las
   capacidades propias y sobreescritas sobre el mismo `ExtendedService` de la
   CLI, y reenvio generico de cualquier otra ruta derivando la capacidad del
@@ -14,7 +25,7 @@ Sin acentos por convencion.
   `origin` y codigo HTTP. Escucha configurable mediante
   `IANEST_EXTENDED_REST_HOST`/`REST_PORT`, solo en `127.0.0.1:8001` por defecto,
   sin autenticacion. MCP permanece fuera (Fase 7c-2). Impacto de version:
-  adicion compatible (minor al publicar el contrato).
+  adicion compatible (patch en la serie pre-1.0, docs/VERSIONADO.md).
 - D4: `IANEST_EXTENDED_MEMORY_MIN_SIMILARITY` gatea por similitud la
   recuperacion de memoria, y SOLO en `episodic` (ruido reciente, alto volumen
   y vida corta). `semantic` queda fuera a proposito -lo consolidado ya paso un
@@ -26,8 +37,8 @@ Sin acentos por convencion.
   ordenando-: son las mismas dos preguntas que separo D1 para el RAG. Su
   default conservador `0.10` es PROVISIONAL y sin medida: se eligio para no
   silenciar una memoria pertinente; su calibracion se hara junto a D5 cuando
-  haya corpus y uso reales. Impacto de version: adicion compatible (minor al
-  publicar el contrato).
+  haya corpus y uso reales. Impacto de version: adicion compatible (patch en la serie
+  pre-1.0, docs/VERSIONADO.md).
 - Retrabajo de la herencia de parametros (hallado al ejercer la implementacion
   contra un core real, antes de publicar contrato): un parametro del catalogo
   cuyo nombre colisiona con una bandera que la capa ya posee -identidad,

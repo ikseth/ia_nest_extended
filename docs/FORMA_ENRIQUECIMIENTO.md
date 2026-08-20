@@ -81,6 +81,31 @@ ADR 0008). Principios:
    Fase 5 RAG, Fase 6 web). Los numeros de arranque de la memoria estan en
    `docs/POLITICA_WRITEBACK.md` (composicion del recall).
 
+## Que puede y que no puede el enriquecimiento
+
+Frontera observada al ejercer la capa contra modelos reales (2026-08-19), y que
+conviene tener presente antes de esperar de un corpus lo que un corpus no da:
+
+**El enriquecimiento cubre huecos de CONOCIMIENTO, no de COMPOSICION.**
+
+- Si al modelo le falta un dato -una sintaxis, una cifra, un procedimiento-, el
+  corpus se lo pone delante y lo aplica. Medido: un modelo que inventaba la
+  sintaxis de una herramienta la escribio correcta en cuanto el corpus la
+  contenia.
+- Si al modelo le falta capacidad para ESTRUCTURAR una respuesta -encadenar
+  pasos, ensamblar piezas que dependen unas de otras, sostener un razonamiento-,
+  el corpus no lo suple. Medido: con el mismo corpus delante, un modelo pequeno
+  copio fragmentos correctos y los ensamblo mal.
+
+Consecuencia para el reparto de modelos del ente: un experto pequeno con corpus
+alcanza a uno grande donde el cuello de botella es el conocimiento, y no lo
+alcanza donde el cuello de botella es el razonamiento. No es una limitacion de
+esta capa: es lo que un contexto anadido puede hacer.
+
+Consecuencia para esta capa: cuando una respuesta salga mal, la primera pregunta
+es cual de los dos huecos era. Ampliar el corpus no arregla el segundo, y cambiar
+de modelo no arregla el primero.
+
 ## Que NO se fija aqui (endurecimiento posterior)
 
 - Los nombres de las capacidades (`memory.recall`, `memory.write_back`, ...) son
