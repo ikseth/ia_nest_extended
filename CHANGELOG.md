@@ -5,6 +5,15 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+## [0.1.0] - 2026-08-20
+
+Primer contrato publicado de la capa. `docs/EXTENDED_CONTRACT.md` pasa a
+`activo`: lo que declara es promesa, no objetivo.
+
+Depende de `ia_nest_core >=0.4 <0.5`, re-verificado en vivo contra el tag
+`v0.4.0` con el resultado escrito en `docs/DEPENDENCIAS.md`, como exige el
+deber de re-verificacion del registro de capas.
+
 ### Anadido
 - Fase 7c-2: piel MCP del contrato uniforme. Registra herramientas con el nombre
   exacto de la capacidad y genera sus esquemas desde el catalogo (tipo,

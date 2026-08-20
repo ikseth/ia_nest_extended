@@ -70,7 +70,24 @@ Concreciones de este repo:
 
 ## Primer tag
 
-No se corta hasta la Fase 7d. Requisitos previos: este documento (hecho),
-`docs/EXTENDED_CONTRACT.md` en estado `activo`, y el contrato ejercido por al
-menos un consumidor real. Al cortarlo se actualiza la fila de esta capa en
+Cortado en la Fase 7d como `0.1.0` (2026-08-20). Requisitos, y como se
+cumplieron:
+
+1. Este documento. Hecho desde el 2026-08-14.
+2. `docs/EXTENDED_CONTRACT.md` en estado `activo`. Hecho al cortar.
+3. **El contrato ejercido por al menos un consumidor real.** Lectura explicita,
+   reconciliada con el usuario el 2026-08-20: la intencion del requisito es no
+   congelar un contrato que nadie ha usado -leccion de `core ADR 0035`-, y se
+   cumple porque el contrato se ejercio ENTERO por las tres pieles, contra
+   modelos, corpus y almacen reales. Ejercerlo destapo defectos que ninguna
+   prueba con stub veia: un `task.run` que expiraba con la configuracion de
+   fabrica, una colision de banderas que solo aparecia con el core vivo, y un
+   catalogo que devolvia dieciseis capacidades y ninguna propia.
+
+   **Riesgo residual, declarado y no disimulado:** el ejercicio lo hizo el
+   operador, no otra capa. Cuando `conscience` o `ia_nest_web` lo consuman
+   encontraran cosas que aqui no se vieron. La serie `0.y.z` existe para eso: no
+   promete estabilidad, promete que los cambios se declaran.
+
+Al cortarlo se actualiza la fila de esta capa en
 `ia_nest_meta/docs/REGISTRO_CAPAS.md`.

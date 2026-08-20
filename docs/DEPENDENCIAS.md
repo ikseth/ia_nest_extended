@@ -9,21 +9,42 @@ dependencias; el registro de capas del ente es un indice que lo refleja.
 
 ## Depende de
 
-- `ia_nest_core >=0.2 <0.4`. Verificada EN VIVO en lab contra v0.2.0 y v0.3.0
-  (redespliegue por pull + e2e de continuidad de memoria: sesion A escribe,
-  sesion B recupera). El unico cambio de v0.3 que toca lo que extended consume es
-  `core ADR 0043` (router semantico), que NO altera la peticion/respuesta de
-  `prompt.run` (la rama "sin modelo ni dominio" resuelve al dominio por defecto
-  `general`, como ya ocurria); ADR 0044/0045 tocan `task.run`, que extended no
-  consume aun. El techo `<0.4` se reevalua al entregarse `task.plan` (core v0.4).
+- `ia_nest_core >=0.4 <0.5`. **Re-verificado en vivo contra el TAG `v0.4.0`**
+  (commit `1fbc0e4`) el 2026-08-20, cumpliendo el deber de re-verificacion de
+  `ia_nest_meta/docs/REGISTRO_CAPAS.md`: no basta subir el techo, hay que poder
+  responder por que.
+
+  **Que se comprobo y como.** Laboratorio pineado al tag y servicios REINICIADOS
+  -actualizar el arbol no reinicia un proceso, y eso ya nos costo una tarde-, con
+  el core declarando `core_version: 0.4.0`. Ejercidas por la CLI de esta capa las
+  nueve comprobaciones que cubren todo lo que consume, 9 de 9 en verde:
+  `capability.list` fusionada (27 capacidades), `prompt.run` enriquecido con
+  recuperacion RAG real, reenvio generico, `task.plan` publicando `degradations`,
+  `task.run` enriquecido por subtarea con `plan_attempts: 0`, y las capacidades
+  propias.
+
+  **Las tres rupturas de v0.4.0, y por que ninguna nos afecta.**
+  `task.run` deja de ser SSE y devuelve JSON por `POST /task/run`: es la forma que
+  esta capa ya consume desde la fase 7b, verificada de nuevo aqui. `tags` se
+  retira de `domain.route`: esta capa nunca lo envio. `routing_rules` sale del
+  esquema de configuracion del core: esta capa no lo conoce.
+
+  **El cambio de significado, comprobado aparte.** Con `requirements` vacio,
+  `requirements_covered` pasa de `true` a `false`. No afecta: esta capa NO
+  interpreta ese campo -lo copia intacto junto al resto del plan, `core ADR
+  0048`-, y se verifico que no aparece en su codigo. Observado en laboratorio con
+  la degradacion `requirements_unavailable`; conviene no leerla al reves, porque
+  el gate del core usa esa senal para detectar una capa que pierde campos: aqui es
+  varianza del planificador, que en esa pasada no declaro requisitos, y en otras
+  del mismo dia declaro tres con su `covered_by`.
+
   Contratos consumidos (core `CORE_CONTRACT.md`):
-  - `prompt.run` (inferencia enriquecida); `task.run` cuando se consuma,
-  - `domain.route` (semantico desde v0.3, `core ADR 0043`) para el gate de dominio
-    del RAG (Fase 5),
-  - `task.plan` (futuro, core v0.4, `core ADR 0040`) para el RAG per-subtarea,
+  - `prompt.run` y `reasoning.run` (inferencia enriquecida),
+  - `task.plan` y `task.run` con plan suministrado (RAG por subtarea),
+  - `domain.route` y `domain.list` (gate de dominio del conocimiento),
+  - `capability.list` (catalogo que esta capa fusiona con el suyo),
   - contexto de identidad del request (clave de indexacion de memoria),
-  - telemetria CSV/JSONL (incluye `finish_reason`, core ficha v0.2/0002),
-  - `config.validate`, `runtime.health` segun necesidad.
+  - telemetria CSV/JSONL, `config.validate` y `runtime.health` segun necesidad.
 
 ## Es dependencia de
 

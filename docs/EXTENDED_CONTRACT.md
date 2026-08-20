@@ -1,11 +1,11 @@
 # Contrato de ia_nest_extended
 
-Estado: propuesta
-Version: 0.1 - 2026-08-14
+Estado: activo
+Version: 1.0 - 2026-08-20
 
-Frontera publica de la capa de enriquecimiento. Pasa a `activo` al cortarse su
-primer tag (Fase 7d); hasta entonces describe el objetivo, no una promesa
-vigente. Que cuenta como contrato y que lo rompe: `docs/VERSIONADO.md`.
+Frontera publica de la capa de enriquecimiento, VIGENTE desde su primer tag
+(Fase 7d). Lo que aqui se declara es promesa, no objetivo. Que cuenta como
+contrato y que lo rompe: `docs/VERSIONADO.md`.
 
 Forma de la composicion entre capas: `ia_nest_meta/docs/ARQUITECTURA_DE_CAPAS.md`
 (meta ADR 0007). Este documento la aplica; no la repite.
