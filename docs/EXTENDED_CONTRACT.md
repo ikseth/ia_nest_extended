@@ -19,8 +19,23 @@ saber cuantas capas hay debajo.
 ## Interfaces publicas
 
 Las mismas capacidades por CLI, REST y MCP, como pieles finas de un unico
-servicio en proceso. Ni la CLI llama a la REST ni al reves. Hoy existe la CLI;
-REST y MCP llegan en la Fase 7c.
+servicio en proceso. Ni la CLI llama a la REST ni al reves. Hoy existen la CLI
+y la REST; MCP llega en la Fase 7c-2.
+
+La REST escucha por defecto en `127.0.0.1:8001`, configurable con
+`IANEST_EXTENDED_REST_HOST` e `IANEST_EXTENDED_REST_PORT`. No autentica: la
+autenticacion sigue fuera de alcance y exponerla fuera de loopback es una
+decision explicita de la instalacion.
+
+Las rutas se derivan del nombre de capacidad (`prompt.run` -> `/prompt/run`).
+Las propias y sobreescritas llaman al servicio unico. Cualquier otra ruta se
+reenvia al core por el mecanismo generico, sin consultar `capability.list` ni
+su cache. El catalogo fusionado describe; nunca habilita una invocacion.
+
+Los flujos reenviados conservan `text/event-stream` y se retransmiten evento a
+evento. Las respuestas JSON reenviadas son opacas. Un error ajeno conserva su
+codigo HTTP y sus campos `type` y `origin`; un error propio declara
+`origin=ia_nest_extended` (meta ADR 0009).
 
 ## El contrato uniforme
 

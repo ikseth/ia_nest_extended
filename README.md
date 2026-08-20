@@ -52,6 +52,21 @@ defecto, defaults de enriquecimiento, presupuesto, top-k y umbrales. El timeout
 unico se parte en dos: `CONNECT_TIMEOUT_SECONDS` (conexion) e
 `INACTIVITY_TIMEOUT_SECONDS` (inactividad entre eventos de un flujo).
 
+## REST
+
+La piel REST instalable expone las mismas capacidades del servicio:
+
+    ianest-extended-rest
+
+Por defecto escucha en `127.0.0.1:8001`. La direccion y el puerto se configuran
+con `IANEST_EXTENDED_REST_HOST` e `IANEST_EXTENDED_REST_PORT`. No hay
+autenticacion; cambiar la direccion para exponer memoria y conocimiento a una
+red es una decision explicita del operador.
+
+Las rutas siguen el nombre de capacidad (`memory.recall` -> `/memory/recall`).
+Una ruta que extended no sirve se reenvia al core directamente, sin consultar
+el catalogo. Los flujos SSE se retransmiten evento a evento.
+
 `IANEST_EXTENDED_EXTRACTION_MODEL` es el ID del modelo declarado en `models[]`
 de la configuracion del core de la instalacion, no necesariamente el tag de
 Ollama. El ID se consulta con `model.list` (`GET /model/list`); por ejemplo, una

@@ -60,8 +60,11 @@ class DownstreamError(ExtendedError):
         self,
         payload: dict[str, Any],
         downstream_origin: str | None = None,
+        *,
+        status_code: int = 400,
     ) -> None:
         self._payload = dict(payload)
+        self.status_code = status_code
         declared = self._payload.get("origin")
         if not declared and downstream_origin:
             self._payload["origin"] = downstream_origin
@@ -147,6 +150,10 @@ class SchemaMigrationRequiredError(ExtendedError):
 
 class EnrichmentParameterError(ExtendedError):
     """Los parametros de enriquecimiento son contradictorios o invalidos."""
+
+
+class ExtendedRequestError(ExtendedError):
+    """La peticion de una piel no satisface el contrato de la capacidad."""
 
 
 class ExternalServiceError(ExtendedError):

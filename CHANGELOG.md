@@ -6,6 +6,15 @@ Sin acentos por convencion.
 ## [No publicado]
 
 ### Anadido
+- Fase 7c-1: piel REST del contrato uniforme, con rutas declaradas para las
+  capacidades propias y sobreescritas sobre el mismo `ExtendedService` de la
+  CLI, y reenvio generico de cualquier otra ruta derivando la capacidad del
+  path SIN consultar el catalogo. El proxy conserva campos JSON desconocidos,
+  retransmite SSE evento a evento y propaga errores ajenos con su `type`,
+  `origin` y codigo HTTP. Escucha configurable mediante
+  `IANEST_EXTENDED_REST_HOST`/`REST_PORT`, solo en `127.0.0.1:8001` por defecto,
+  sin autenticacion. MCP permanece fuera (Fase 7c-2). Impacto de version:
+  adicion compatible (minor al publicar el contrato).
 - D4: `IANEST_EXTENDED_MEMORY_MIN_SIMILARITY` gatea por similitud la
   recuperacion de memoria, y SOLO en `episodic` (ruido reciente, alto volumen
   y vida corta). `semantic` queda fuera a proposito -lo consolidado ya paso un

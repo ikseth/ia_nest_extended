@@ -94,8 +94,9 @@ class SseEvent:
 class ForwardedJson:
     """Respuesta JSON reenviada sin parsear campo a campo."""
 
-    payload: dict[str, Any]
+    payload: Any
     content_type: str = "application/json"
+    status_code: int = 200
 
 
 class ForwardedStream:
@@ -103,9 +104,18 @@ class ForwardedStream:
 
     content_type = "text/event-stream"
 
-    def __init__(self, events: Iterator[SseEvent], close) -> None:
+    def __init__(
+        self,
+        events: Iterator[SseEvent],
+        close,
+        *,
+        content_type: str = "text/event-stream",
+        status_code: int = 200,
+    ) -> None:
         self._events = events
         self._close = close
+        self.content_type = content_type
+        self.status_code = status_code
 
     def __iter__(self) -> Iterator[SseEvent]:
         return self._events
@@ -156,7 +166,7 @@ class CoreClient:
     def forward(
         self,
         capability: str,
-        payload: dict[str, Any] | None = None,
+        payload: Any = None,
         *,
         method: str | None = None,
     ) -> ForwardedJson | ForwardedStream:
@@ -185,8 +195,10 @@ class CoreClient:
                 return ForwardedStream(
                     _iter_sse(connection, response),
                     connection.close,
+                    content_type=content_type,
+                    status_code=response.status,
                 )
-            data = _decode_json(
+            data = _decode_json_value(
                 response.read(),
                 f"{self._base_url}{route}",
                 CoreResponseError,
@@ -195,7 +207,11 @@ class CoreClient:
             connection.close()
             raise
         connection.close()
-        return ForwardedJson(payload=data, content_type=content_type)
+        return ForwardedJson(
+            payload=data,
+            content_type=content_type,
+            status_code=response.status,
+        )
 
     # --- llamadas tipadas (lo que esta capa interpreta) --------------------
 
@@ -516,7 +532,7 @@ class OllamaEmbedder:
 def _open(
     url: str,
     method: str,
-    payload: dict[str, Any] | None,
+    payload: Any,
     timeouts: Timeouts,
     *,
     connection_error,
@@ -592,7 +608,11 @@ def _raise_for_status(
     if error is not None:
         # Un error de una capa inferior se propaga TAL CUAL, completando solo
         # el `origin` ausente (meta ADR 0009, punto 2).
-        raise DownstreamError(error, downstream_origin)
+        raise DownstreamError(
+            error,
+            downstream_origin,
+            status_code=response.status,
+        )
     detail = raw.decode("utf-8", errors="replace")
     factory = response_error or CoreResponseError
     raise factory(f"HTTP {response.status} desde {url}: {detail[:500]}")
@@ -614,12 +634,17 @@ def _core_error_payload(raw: bytes) -> dict[str, Any] | None:
 
 
 def _decode_json(raw: bytes, url: str, response_error) -> dict[str, Any]:
+    data = _decode_json_value(raw, url, response_error)
+    if not isinstance(data, dict):
+        raise response_error(f"{url} no devolvio un objeto JSON")
+    return data
+
+
+def _decode_json_value(raw: bytes, url: str, response_error) -> Any:
     try:
         data = json.loads(raw)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise response_error(f"{url} no devolvio JSON valido") from exc
-    if not isinstance(data, dict):
-        raise response_error(f"{url} no devolvio un objeto JSON")
     return data
 
 
