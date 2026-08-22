@@ -888,6 +888,11 @@ def _extraction_prompt(user_prompt: str, assistant_response: str) -> str:
         "Put each item in the list matching WHERE it was stated: from_user for "
         "what the user stated, from_assistant for what the assistant stated. "
         "Never move an item from one list to the other. "
+        # Sin esto el extractor traduce al ingles lo dicho en espanol, y
+        # entonces el anclaje lexico no reconoce su propio bloque y la
+        # atribucion se pierde. Medido en laboratorio (2026-08-22).
+        "Write each item content in the SAME LANGUAGE it was stated in; "
+        "never translate it. "
         "For each item, namespace must be exactly one of facts, preferences, "
         "or tasks. Confidence must express the actual certainty from 0 to 1. "
         "Smalltalk must produce zero items. Return only one JSON object, with "

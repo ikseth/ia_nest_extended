@@ -58,6 +58,14 @@ el texto de ese bloque. Sin anclaje suficiente, el item se degrada a `unknown`.
 La garantia que se esta construyendo no puede depender de que acierte el mismo
 modelo cuya falibilidad la motiva.
 
+El anclaje obliga a una condicion sobre la extraccion que se descubrio
+ejerciendola (e2e en laboratorio, 2026-08-22): el prompt tiene que PROHIBIR
+traducir. Estando el prompt en ingles, `mistral_nemo` devolvia en ingles items
+de una conversacion en espanol -o con `content` nulo-, el anclaje no reconocia su
+propio bloque y TODA la atribucion caia a `unknown`; con la prohibicion
+explicita, el item sale en su idioma y ancla. Sin esa linea el mecanismo es
+inocuo: nada se atribuye, luego nada se supersede.
+
 ### 3. La procedencia viaja al contexto
 
 El recall marca la fuente en la linea inyectada: `(fuente: usuario)`,

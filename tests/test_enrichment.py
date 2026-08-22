@@ -176,6 +176,19 @@ def test_extraction_prompt_separates_the_two_emitters():
     assert "Never move an item from one list to the other." in prompt
 
 
+def test_extraction_prompt_forbids_translating_the_item():
+    """Si el extractor traduce, el anclaje no reconoce su propio bloque.
+
+    Medido en el lab el 2026-08-22: sin esta linea, mistral-nemo devolvia el
+    item en ingles -o con `content` nulo- ante una conversacion en espanol, y
+    toda la atribucion caia a `unknown`.
+    """
+    prompt = _extraction_prompt("hola", "hola")
+
+    assert "SAME LANGUAGE" in prompt
+    assert "never translate it" in prompt
+
+
 def test_dialog_records_who_said_each_turn(tmp_path, local_service_stub):
     store = InMemoryStore()
     enricher = _enricher(tmp_path, local_service_stub, store)
