@@ -49,23 +49,33 @@ dos listas, `from_user` y `from_assistant`, de items
 - Cada item escrito conserva `source_trace_id` (el request del core que lo
   origino): auditable.
 
-## Dedup con refuerzo, y supersede por correccion
+## Dedup con refuerzo, y anotacion de contradiccion
 
 Tres bandas de similitud contra los engramas del mismo `user_id`+`namespace`:
 
 | Banda | Que significa | Que se hace |
 |---|---|---|
 | `>= dedup_threshold` (0.92) | es el MISMO item | se REFUERZA el existente (`stability + 1`, `last_reinforced_at`) |
-| `[conflict_threshold, dedup_threshold)` (0.75-0.92) | habla de lo mismo y dice otra cosa | si el nuevo es del `user` y el viejo del `model`, el viejo pasa a `superseded` |
+| `[conflict_threshold, dedup_threshold)` (0.70-0.92) | habla de lo mismo | si el nuevo es del `user` y el viejo del `model`, el viejo recibe un enlace `contradicted_by` |
 | `< conflict_threshold` | habla de otro asunto | nada |
 
-La senal E del ranking (ADR 0003) se alimenta del refuerzo. El supersede deja
-lineage en `memory_links` (`superseded_by`) y no borra: el engrama retirado
-sigue siendo direccionable (ADR 0002).
+La senal E del ranking (ADR 0003) se alimenta del refuerzo.
 
-Lo que la banda del medio NO hace: decidir que es verdad. Aplica una precedencia
-por autoridad de la fuente -entre dos candidatos, manda el interlocutor- que es
-mecanismo y no juicio segun el test de frontera del ADR 0007.
+La anotacion **no cambia el estado** del engrama: sigue activo y recuperable.
+Lo que cambia es el recall, que al verlo anotado (a) lo etiqueta -"hay una
+version del usuario sobre esto"- y (b) lo despriorza al recortar por
+presupuesto, de modo que cae antes que sus hermanos no anotados.
+
+Por que anotar y no retirar: la separacion medida entre "contradice" y "comparte
+tema" es de centesimas con el embedder del lab
+(`local/lab/2026-08-22_banda_de_conflicto.md`), y ese margen no sostiene una
+accion destructiva. Con el coste de error asi repartido, el umbral puede ser
+permisivo. Por lo mismo la etiqueta dice solo lo que el mecanismo sabe y nunca
+"esto es falso": marcar de mas es barato, mentir al modelo no.
+
+Lo que la banda del medio NO hace: decidir que es verdad. Senala que hay dos
+versiones y quien dijo cada una; el veredicto es de quien lee el contexto. Eso
+la mantiene en mecanismo y fuera del juicio (test de frontera del ADR 0007).
 
 ## Menciones de entidades
 

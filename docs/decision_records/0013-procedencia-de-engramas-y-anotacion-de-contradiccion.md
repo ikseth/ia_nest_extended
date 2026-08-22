@@ -1,4 +1,4 @@
-# Decision 0013: procedencia de engramas y supersede por correccion
+# Decision 0013: procedencia de engramas y anotacion de contradiccion
 
 Fecha: 2026-08-22
 
@@ -64,7 +64,7 @@ traducir. Estando el prompt en ingles, `mistral_nemo` devolvia en ingles items
 de una conversacion en espanol -o con `content` nulo-, el anclaje no reconocia su
 propio bloque y TODA la atribucion caia a `unknown`; con la prohibicion
 explicita, el item sale en su idioma y ancla. Sin esa linea el mecanismo es
-inocuo: nada se atribuye, luego nada se supersede.
+inocuo: nada se atribuye, luego nada se anota.
 
 ### 3. La procedencia viaja al contexto
 
@@ -72,21 +72,41 @@ El recall marca la fuente en la linea inyectada: `(fuente: usuario)`,
 `(fuente: modelo, sin verificar)`, `(fuente: no registrada)`. Un candidato deja
 de ser indistinguible de un hecho.
 
-### 4. Supersede por correccion: el usuario manda sobre el modelo
+### 4. La version del usuario ANOTA la del modelo; no la retira
 
 Al escribir un item con `stated_by = user`, los engramas del mismo
 `user_id`+`namespace` con `stated_by = model` que caigan en la BANDA DE
-CONFLICTO -similitud entre `conflict_threshold` y `dedup_threshold`- pasan a
-`status = superseded`, con lineage en `memory_links` (`superseded_by`).
+CONFLICTO -similitud entre `conflict_threshold` y `dedup_threshold`- reciben un
+enlace `contradicted_by` en `memory_links`. **Su estado no cambia.** El recall
+lee ese enlace y hace dos cosas: etiqueta la linea y la despriorza al recortar
+por presupuesto.
 
 Banda de conflicto: por encima de `dedup_threshold` el item es el MISMO (se
 refuerza, como hasta ahora); por debajo de `conflict_threshold` no habla del
-mismo asunto. En medio habla de lo mismo y dice otra cosa.
+mismo asunto.
+
+**Por que anotar y no retirar, que era la intencion inicial.** Medido en el lab
+el 2026-08-22 con `bge-m3` (`local/lab/2026-08-22_banda_de_conflicto.md`): con
+frases paralelas la similitud SI separa contradecir (0.7747-0.8303) de compartir
+tema (0.6861-0.7285), pero el hueco es de ~0.046 y la redaccion real lo cruza
+-una correccion autentica midio 0.7242, por debajo del umbral, mientras un par
+pregunta/respuesta del mismo usuario midio 0.8140-. Un margen de centesimas no
+sostiene una accion destructiva sobre la memoria. Anotar y despriorar tiene el
+coste de error correcto: un falso positivo cambia un orden, no retira un
+candidato legitimo.
+
+Por lo mismo, la etiqueta dice solo lo que el mecanismo sabe -"hay una version
+del usuario sobre esto"- y nunca "esto es falso" ni "corregido": con umbral
+permisivo habria casos en que eso seria mentira, y una marca que miente al
+modelo es peor que no marcar.
 
 Esto es MECANISMO y no juicio, por el test de frontera del propio ADR 0007: no
-evalua merito, significado ni etica; aplica una precedencia por autoridad de la
-fuente sobre una banda de similitud. No decide que es verdad: decide a quien se
-cree cuando dos candidatos chocan.
+evalua merito, significado ni etica; senala coincidencia sobre una banda de
+similitud y deja el veredicto al lector del contexto.
+
+Consecuencia honesta: `EngramStatus.SUPERSEDED` SIGUE sin usarse. Es un estado
+que el modelo declara y que ningun flujo de esta capa necesita todavia; su sitio
+natural es la escritura supervisada del guardian, no un barrido mecanico.
 
 ## Alternativas consideradas
 
@@ -113,10 +133,14 @@ cree cuando dos candidatos chocan.
 
 ## Consecuencia
 
-- Migracion `0004_stated_by.sql`: campo `stated_by`, indice, y `superseded_by`
-  en el CHECK de `memory_links.link_kind`.
+- Migracion `0004_stated_by.sql`: campo `stated_by`, sus indices, y
+  `contradicted_by` en el CHECK de `memory_links.link_kind`.
 - `EngramStatus.SUPERSEDED` deja de ser un estado muerto.
-- Config nueva: `conflict_threshold` (arranque 0.75, banco del lab).
+- Config nueva: `conflict_threshold`, calibrado en 0.70 contra `bge-m3` en el
+  banco del lab, no elegido a ojo.
+- `Engram.contradicted`, derivado del enlace en cada recuperacion. No es columna:
+  la unica fuente de verdad es `memory_links`, y asi cambiar el umbral cambia el
+  comportamiento sin migrar dato alguno.
 - Contrato publico: `stated_by` aparece en lo que devuelve `memory.recall` y se
   acepta en `memory.write`. Adicion compatible -> MINOR.
 - La politica de write-back cambia y se actualiza `docs/POLITICA_WRITEBACK.md`.

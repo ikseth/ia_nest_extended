@@ -49,6 +49,16 @@ STATED_BY_LABELS = {
     StatedBy.UNKNOWN: "fuente: no registrada",
 }
 
+# Lo que el mecanismo SABE es que el usuario dijo algo muy proximo, no que esto
+# sea falso: la separacion medida entre contradecir y compartir tema es de
+# centesimas (local/lab, 2026-08-22), asi que la etiqueta no puede afirmar mas
+# de la cuenta. Dice donde mirar; no dicta el veredicto.
+CONTRADICTED_LABEL = "hay una version del usuario sobre esto"
+
+# Penalizacion al recortar por presupuesto: basta con que caiga por detras de
+# cualquier hermano no contradicho, no con anularlo.
+CONTRADICTED_RELEVANCE_PENALTY = 1.0
+
 
 @dataclass(frozen=True, slots=True)
 class RecallBundle:
@@ -572,7 +582,7 @@ class MemoryEnricher:
             "items_reinforced": 0,
             "items_discarded": 0,
             "items_unattributed": 0,
-            "items_superseded": 0,
+            "items_contradicted": 0,
             "invalid_json": 0,
         }
         common = {
@@ -654,13 +664,13 @@ class MemoryEnricher:
             )
             counters["items_written"] += 1
             if stated_by is StatedBy.USER:
-                superseded = self._store.supersede_conflicting(
+                contradicted = self._store.record_contradiction(
                     Principal.EXTENDED,
-                    winner=written,
+                    stated_by_user=written,
                     conflict_threshold=self._config.conflict_threshold,
                     dedup_threshold=self._config.dedup_threshold,
                 )
-                counters["items_superseded"] += len(superseded)
+                counters["items_contradicted"] += len(contradicted)
         return counters, "ok"
 
     def write_back(
@@ -700,7 +710,7 @@ class MemoryEnricher:
                     "items_reinforced": 0,
                     "items_discarded": 0,
                     "items_unattributed": 0,
-                    "items_superseded": 0,
+                    "items_contradicted": 0,
                     "invalid_json": 0,
                 },
                 latency_ms=_latency_ms(started),
@@ -766,9 +776,13 @@ def _lines(
 ) -> list[_ContextLine]:
     result = []
     for item in items:
+        relevance = item.relevance
         if item.engram is not None:
             namespace = item.engram.namespace or "raw"
             label = STATED_BY_LABELS[item.engram.stated_by]
+            if item.engram.contradicted:
+                label = f"{label}; {CONTRADICTED_LABEL}"
+                relevance -= CONTRADICTED_RELEVANCE_PENALTY
             text = (
                 f"[{item.type_name}/{namespace}] ({label}) "
                 f"{item.engram.content}"
@@ -784,7 +798,7 @@ def _lines(
             _ContextLine(
                 tier=tier,
                 text=text,
-                relevance=item.relevance,
+                relevance=relevance,
                 permanent=permanent,
             )
         )

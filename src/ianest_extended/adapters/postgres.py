@@ -471,40 +471,41 @@ class PostgresMemoryStore:
             )
         return _engram_from_row(row)
 
-    def supersede_conflicting(
+    def record_contradiction(
         self,
         principal: Principal,
         *,
-        winner: Engram,
+        stated_by_user: Engram,
         conflict_threshold: float,
         dedup_threshold: float,
     ) -> tuple[Engram, ...]:
-        """Retira los candidatos del modelo que el usuario acaba de corregir.
+        """Anota que el usuario dijo algo distinto sobre lo que el modelo afirmo.
 
         Banda de conflicto (ADR 0013): por encima de `dedup_threshold` es el
         MISMO item -eso lo resuelve el refuerzo-; por debajo de
-        `conflict_threshold` habla de otra cosa. En medio habla de lo mismo y
-        dice lo contrario, y entre dos candidatos manda la fuente: el usuario
-        sobre el modelo.
+        `conflict_threshold` habla de otra cosa. En medio habla de lo mismo.
+
+        NO cambia el estado del engrama anotado. Se limita a dejar el enlace,
+        porque la separacion medida entre "contradice" y "mismo tema" es de
+        centesimas y no da para una accion destructiva: lo que el enlace hace
+        es que el recall lo despriorice y lo etiquete, no que desaparezca.
         """
-        if winner.stated_by is not StatedBy.USER:
+        if stated_by_user.stated_by is not StatedBy.USER:
             raise InvalidEngramError(
-                "solo un engrama del usuario supersede a los del modelo"
+                "solo un engrama del usuario anota contradiccion"
             )
         if not 0.0 <= conflict_threshold <= dedup_threshold <= 1.0:
             raise InvalidEngramError(
                 "se exige 0 <= conflict_threshold <= dedup_threshold <= 1"
             )
-        memory_type = self._get_type(winner.type_name)
+        memory_type = self._get_type(stated_by_user.type_name)
         _require_authority(memory_type, principal)
+        vector = _vector_literal(stated_by_user.embedding)
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                UPDATE engrams
-                SET status = 'superseded',
-                    archived_at = now(),
-                    archived_reason = 'corregido por el usuario (ADR 0013)',
-                    version = version + 1
+                SELECT *
+                FROM engrams
                 WHERE type_name = %s
                   AND user_id = %s
                   AND namespace = %s
@@ -513,16 +514,15 @@ class PostgresMemoryStore:
                   AND id <> %s
                   AND 1 - (embedding <=> %s::vector) >= %s
                   AND 1 - (embedding <=> %s::vector) < %s
-                RETURNING *
                 """,
                 (
-                    winner.type_name,
-                    winner.user_id,
-                    winner.namespace,
-                    winner.id,
-                    _vector_literal(winner.embedding),
+                    stated_by_user.type_name,
+                    stated_by_user.user_id,
+                    stated_by_user.namespace,
+                    stated_by_user.id,
+                    vector,
                     conflict_threshold,
-                    _vector_literal(winner.embedding),
+                    vector,
                     dedup_threshold,
                 ),
             ).fetchall()
@@ -532,9 +532,10 @@ class PostgresMemoryStore:
                     INSERT INTO memory_links (
                         source_kind, source_id, target_engram_id, link_kind
                     )
-                    VALUES ('engram', %s, %s, 'superseded_by')
+                    VALUES ('engram', %s, %s, 'contradicted_by')
+                    ON CONFLICT DO NOTHING
                     """,
-                    (row["id"], winner.id),
+                    (row["id"], stated_by_user.id),
                 )
         return tuple(_engram_from_row(row) for row in rows)
 
@@ -849,6 +850,11 @@ class PostgresMemoryStore:
         )
         sql = f"""
             SELECT e.*,
+                   EXISTS (
+                     SELECT 1 FROM memory_links ml
+                     WHERE ml.source_id = e.id
+                       AND ml.link_kind = 'contradicted_by'
+                   ) AS contradicted,
                    (
                      mt.w_recency *
                        CASE
@@ -1122,6 +1128,7 @@ def _engram_from_row(row: dict[str, Any]) -> Engram:
         created_at=row["created_at"],
         last_reinforced_at=row["last_reinforced_at"],
         stated_by=StatedBy(row.get("stated_by", StatedBy.UNKNOWN)),
+        contradicted=bool(row.get("contradicted", False)),
     )
 
 

@@ -161,6 +161,9 @@ class Engram:
     created_at: datetime
     last_reinforced_at: datetime | None
     stated_by: StatedBy = StatedBy.UNKNOWN
+    # El usuario dijo algo muy proximo a esto. No afirma que sea falso: afirma
+    # que hay otra version, y por eso el recall lo despriorza (ADR 0013).
+    contradicted: bool = False
 
 
 @dataclass(frozen=True, slots=True)

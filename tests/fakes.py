@@ -99,38 +99,36 @@ class InMemoryStore:
             None,
         )
 
-    def supersede_conflicting(
+    def record_contradiction(
         self,
         principal,
         *,
-        winner,
+        stated_by_user,
         conflict_threshold,
         dedup_threshold,
     ):
         """Sin pgvector, la banda se aproxima por solapamiento de palabras."""
-        retired = []
+        marked = []
         for index, engram in enumerate(self.engrams):
-            if engram.id == winner.id or engram.stated_by != StatedBy.MODEL:
+            if (
+                engram.id == stated_by_user.id
+                or engram.stated_by != StatedBy.MODEL
+            ):
                 continue
             if (
-                engram.type_name != winner.type_name
-                or engram.user_id != winner.user_id
-                or engram.namespace != winner.namespace
+                engram.type_name != stated_by_user.type_name
+                or engram.user_id != stated_by_user.user_id
+                or engram.namespace != stated_by_user.namespace
                 or engram.status != EngramStatus.ACTIVE
             ):
                 continue
-            similarity = _word_overlap(engram.content, winner.content)
+            similarity = _word_overlap(engram.content, stated_by_user.content)
             if conflict_threshold <= similarity < dedup_threshold:
-                superseded = replace(
-                    engram,
-                    status=EngramStatus.SUPERSEDED,
-                    archived_at=datetime.now(UTC),
-                    archived_reason="corregido por el usuario (ADR 0013)",
-                    version=engram.version + 1,
-                )
-                self.engrams[index] = superseded
-                retired.append(superseded)
-        return tuple(retired)
+                # El estado NO cambia: solo se anota (ADR 0013).
+                annotated = replace(engram, contradicted=True)
+                self.engrams[index] = annotated
+                marked.append(annotated)
+        return tuple(marked)
 
     def reinforce(self, principal, engram_id):
         for index, engram in enumerate(self.engrams):

@@ -59,9 +59,12 @@ class ExtendedConfig:
     # reales.
     memory_min_similarity: float = 0.10
     dedup_threshold: float = 0.92
-    # Suelo de la banda de conflicto (ADR 0013): por debajo, dos items hablan
-    # de asuntos distintos y no se corrigen entre si.
-    conflict_threshold: float = 0.75
+    # Suelo de la banda de conflicto (ADR 0013). Calibrado con bge-m3 en el lab
+    # (local/lab/2026-08-22_banda_de_conflicto.md): una correccion REAL midio
+    # 0.7242 y los pares de mismo-tema llegaron a 0.7285, asi que no hay umbral
+    # que capture la una sin rozar los otros. Se elige el permisivo PORQUE la
+    # accion no es destructiva: anota y despriorza, no retira.
+    conflict_threshold: float = 0.70
     confidence_threshold: float = 0.7
     connect_timeout_seconds: float = 30.0
     inactivity_timeout_seconds: float = 30.0

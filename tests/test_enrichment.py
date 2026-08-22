@@ -246,11 +246,15 @@ def test_old_single_list_extraction_is_left_unattributed(
     assert episodic[0].stated_by is StatedBy.UNKNOWN
 
 
-def test_user_correction_supersedes_the_model_claim(
+def test_user_version_annotates_the_model_claim_without_retiring_it(
     tmp_path,
     local_service_stub,
 ):
-    """Regresion del envenenamiento medido: las dos versiones coexistian.
+    """Regresion del envenenamiento medido: las dos versiones coexistian mudas.
+
+    Lo que el usuario dice NO retira lo que el modelo afirmo -la separacion
+    medida entre contradecir y compartir tema es de centesimas, y no da para
+    una accion destructiva-: lo anota, y el recall lo despriorza y lo etiqueta.
 
     El umbral se baja respecto al de produccion porque el almacen en memoria
     aproxima la banda por solapamiento de palabras, no por coseno de vectores.
@@ -270,15 +274,50 @@ def test_user_correction_supersedes_the_model_claim(
     )
 
     episodic = [item for item in store.engrams if item.type_name == "episodic"]
-    active = [item for item in episodic if item.status == EngramStatus.ACTIVE]
-    retired = [item for item in episodic if item.status == EngramStatus.SUPERSEDED]
+    from_model = [item for item in episodic if item.stated_by is StatedBy.MODEL]
+    from_user = [item for item in episodic if item.stated_by is StatedBy.USER]
 
-    assert len(active) == 1
-    assert active[0].stated_by is StatedBy.USER
-    assert "si tiene precuela" in active[0].content
-    assert len(retired) == 1
-    assert retired[0].stated_by is StatedBy.MODEL
-    assert _events(tmp_path)[-1]["counters"]["items_superseded"] == 1
+    assert len(from_user) == 1
+    assert "si tiene precuela" in from_user[0].content
+    assert len(from_model) == 1
+    # Sigue vivo y sin archivar; lo unico que cambia es que consta anotado.
+    assert from_model[0].status == EngramStatus.ACTIVE
+    assert from_model[0].contradicted is True
+    assert from_user[0].contradicted is False
+    assert _events(tmp_path)[-1]["counters"]["items_contradicted"] == 1
+
+
+def test_annotated_claim_is_labelled_and_demoted_in_the_context(
+    tmp_path,
+    local_service_stub,
+):
+    store = InMemoryStore()
+    enricher = _enricher(
+        tmp_path,
+        local_service_stub,
+        store,
+        conflict_threshold=0.5,
+    )
+
+    enricher.enrich(identity(session="A"), "carpenter-claim")
+    enricher.enrich(
+        identity(session="A"),
+        "carpenter-correction: la pelicula de carpenter si tiene precuela",
+    )
+    third = enricher.enrich(identity(session="A"), "smalltalk")
+
+    lines = [
+        line
+        for line in third.context.splitlines()
+        if line.startswith("[episodic/facts]")
+    ]
+    annotated = [line for line in lines if "version del usuario" in line]
+
+    assert len(annotated) == 1
+    assert "no tiene precuela" in annotated[0]
+    assert "fuente: modelo, sin verificar" in annotated[0]
+    # Despriorizado: el anotado va por detras del resto de su tier.
+    assert lines[-1] == annotated[0]
 
 
 def test_recall_marks_stated_by_in_the_injected_context(
