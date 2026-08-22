@@ -237,8 +237,66 @@ def local_service_stub():
                             ]
                         }
                     )
+                elif "carpenter-claim" in prompt:
+                    # Lo afirma el asistente, no el usuario.
+                    response = json.dumps(
+                        {
+                            "from_user": [],
+                            "from_assistant": [
+                                {
+                                    "namespace": "facts",
+                                    "content": (
+                                        "la pelicula de carpenter no tiene "
+                                        "precuela"
+                                    ),
+                                    "confidence": 1.0,
+                                    "mentions": [],
+                                }
+                            ],
+                        }
+                    )
+                elif "carpenter-correction" in prompt:
+                    # El usuario corrige lo que el asistente habia afirmado.
+                    response = json.dumps(
+                        {
+                            "from_user": [
+                                {
+                                    "namespace": "facts",
+                                    "content": (
+                                        "la pelicula de carpenter si tiene "
+                                        "precuela"
+                                    ),
+                                    "confidence": 0.9,
+                                    "mentions": [],
+                                }
+                            ],
+                            "from_assistant": [],
+                        }
+                    )
+                elif "misattributed" in prompt:
+                    # Dice venir del usuario y no comparte lexico con su turno.
+                    response = json.dumps(
+                        {
+                            "from_user": [
+                                {
+                                    "namespace": "facts",
+                                    "content": (
+                                        "kubernetes orquesta contenedores "
+                                        "distribuidos"
+                                    ),
+                                    "confidence": 0.9,
+                                    "mentions": [],
+                                }
+                            ],
+                            "from_assistant": [],
+                        }
+                    )
                 else:
                     response = '{"items":[]}'
+            elif "carpenter-claim" in prompt:
+                # La respuesta del asistente contiene lo que luego se extrae de
+                # ella: sin eso, el anclaje lexico rechazaria la atribucion.
+                response = "la pelicula de carpenter no tiene precuela"
             else:
                 response = f"echo:{prompt}"
             self._send(

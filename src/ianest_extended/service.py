@@ -55,6 +55,7 @@ from .models import (
     Principal,
     RetrievalMode,
     Scope,
+    StatedBy,
 )
 from .registry import MemoryTypeRegistry
 
@@ -448,7 +449,7 @@ class ExtendedService:
         """Compone el catalogo local con el obtenido del core en ejecucion.
 
         Las entradas ajenas son opacas: solo se usa su nombre para resolver una
-        sobreescritura y se anade `provenance`. Si el core no responde, el
+        sobreescritura y se anade `stated_by`. Si el core no responde, el
         catalogo local sigue disponible junto al error tipado que explica la
         degradacion.
 
@@ -1329,6 +1330,7 @@ class ExtendedService:
             "type_name": engram.type_name,
             "namespace": engram.namespace,
             "status": str(engram.status),
+            "stated_by": str(engram.stated_by),
         }
 
     def memory_consolidate(self, event: ConsolidationEvent) -> dict[str, Any]:
@@ -1606,6 +1608,11 @@ def _engram_write(raw: dict[str, Any]) -> EngramWrite:
                 None
                 if raw.get("entity_id") is None
                 else UUID(_required_text(raw, "entity_id"))
+            ),
+            stated_by=(
+                StatedBy.UNKNOWN
+                if raw.get("stated_by") is None
+                else _enum(StatedBy, raw.get("stated_by"), "stated_by")
             ),
         )
     except (TypeError, ValueError) as exc:

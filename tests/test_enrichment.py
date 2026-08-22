@@ -2,10 +2,12 @@ import json
 
 from ianest_extended import (
     CoreClient,
+    EngramStatus,
     ExtendedConfig,
     EngramWrite,
     MemoryEnricher,
     Principal,
+    StatedBy,
     TelemetryWriter,
 )
 from ianest_extended.enrichment import (
@@ -17,11 +19,12 @@ from ianest_extended.enrichment import (
 from .fakes import InMemoryStore, identity
 
 
-def _enricher(tmp_path, local_service_stub, store):
+def _enricher(tmp_path, local_service_stub, store, **overrides):
     config = ExtendedConfig(
         telemetry_dir=tmp_path,
         embedding_dimension=2,
         memory_budget_tokens=1500,
+        **overrides,
     )
     return MemoryEnricher(
         store=store,
@@ -161,9 +164,127 @@ def test_extraction_prompt_uses_concrete_values_and_json_only():
 
     assert '"namespace":"preferences"' in prompt
     assert '"confidence":0.9' in prompt
-    assert '{"items":[]}' in prompt
+    assert '{"from_user":[],"from_assistant":[]}' in prompt
     assert "facts|preferences|tasks" not in prompt
     assert "no markdown fences or text outside the JSON" in prompt
+
+
+def test_extraction_prompt_separates_the_two_emitters():
+    prompt = _extraction_prompt("hola", "hola")
+
+    assert "from_user" in prompt and "from_assistant" in prompt
+    assert "Never move an item from one list to the other." in prompt
+
+
+def test_dialog_records_who_said_each_turn(tmp_path, local_service_stub):
+    store = InMemoryStore()
+    enricher = _enricher(tmp_path, local_service_stub, store)
+
+    enricher.enrich(identity(), "smalltalk")
+
+    dialog = [item for item in store.engrams if item.type_name == "dialog"]
+    assert [item.stated_by for item in dialog] == [
+        StatedBy.USER,
+        StatedBy.MODEL,
+    ]
+
+
+def test_model_claim_is_stored_as_model_not_as_user_fact(
+    tmp_path,
+    local_service_stub,
+):
+    """El hallazgo del 2026-08-21: una afirmacion del modelo entraba como hecho."""
+    store = InMemoryStore()
+    enricher = _enricher(tmp_path, local_service_stub, store)
+
+    enricher.enrich(identity(), "carpenter-claim")
+
+    episodic = [item for item in store.engrams if item.type_name == "episodic"]
+    assert len(episodic) == 1
+    assert episodic[0].stated_by is StatedBy.MODEL
+
+
+def test_unanchored_attribution_falls_back_to_unknown(
+    tmp_path,
+    local_service_stub,
+):
+    store = InMemoryStore()
+    enricher = _enricher(tmp_path, local_service_stub, store)
+
+    enricher.enrich(identity(), "misattributed")
+
+    episodic = [item for item in store.engrams if item.type_name == "episodic"]
+    assert len(episodic) == 1
+    assert episodic[0].stated_by is StatedBy.UNKNOWN
+    assert _events(tmp_path)[-1]["counters"]["items_unattributed"] == 1
+
+
+def test_old_single_list_extraction_is_left_unattributed(
+    tmp_path,
+    local_service_stub,
+):
+    """El formato antiguo se tolera, pero no se le inventa emisor."""
+    store = InMemoryStore()
+    enricher = _enricher(tmp_path, local_service_stub, store)
+
+    enricher.enrich(identity(), "remember-blue")
+
+    episodic = [item for item in store.engrams if item.type_name == "episodic"]
+    assert episodic[0].stated_by is StatedBy.UNKNOWN
+
+
+def test_user_correction_supersedes_the_model_claim(
+    tmp_path,
+    local_service_stub,
+):
+    """Regresion del envenenamiento medido: las dos versiones coexistian.
+
+    El umbral se baja respecto al de produccion porque el almacen en memoria
+    aproxima la banda por solapamiento de palabras, no por coseno de vectores.
+    """
+    store = InMemoryStore()
+    enricher = _enricher(
+        tmp_path,
+        local_service_stub,
+        store,
+        conflict_threshold=0.5,
+    )
+
+    enricher.enrich(identity(), "carpenter-claim")
+    enricher.enrich(
+        identity(),
+        "carpenter-correction: la pelicula de carpenter si tiene precuela",
+    )
+
+    episodic = [item for item in store.engrams if item.type_name == "episodic"]
+    active = [item for item in episodic if item.status == EngramStatus.ACTIVE]
+    retired = [item for item in episodic if item.status == EngramStatus.SUPERSEDED]
+
+    assert len(active) == 1
+    assert active[0].stated_by is StatedBy.USER
+    assert "si tiene precuela" in active[0].content
+    assert len(retired) == 1
+    assert retired[0].stated_by is StatedBy.MODEL
+    assert _events(tmp_path)[-1]["counters"]["items_superseded"] == 1
+
+
+def test_recall_marks_stated_by_in_the_injected_context(
+    tmp_path,
+    local_service_stub,
+):
+    store = InMemoryStore()
+    enricher = _enricher(tmp_path, local_service_stub, store)
+
+    enricher.enrich(identity(session="A"), "carpenter-claim")
+    second = enricher.enrich(identity(session="A"), "smalltalk")
+
+    # El episodico que afirmo el modelo viaja marcado como candidato...
+    assert (
+        "[episodic/facts] (fuente: modelo, sin verificar) "
+        "la pelicula de carpenter no tiene precuela"
+    ) in second.context
+    # ...y el turno que dijo el usuario, como suyo.
+    assert "[dialog/raw] (fuente: usuario) carpenter-claim" in second.context
 
 
 def test_parse_extraction_tolerates_real_qwen_output_defects():
@@ -181,9 +302,9 @@ def test_parse_extraction_tolerates_real_qwen_output_defects():
         "```\nTexto colgante."
     )
 
-    low_confidence_item = _parse_extraction(copied_confidence)[0]
-    invalid_namespace_item = _parse_extraction(copied_namespace)[0]
-    fenced_item = _parse_extraction(fenced_with_trailing_text)[0]
+    low_confidence_item = _parse_extraction(copied_confidence)[0][1]
+    invalid_namespace_item = _parse_extraction(copied_namespace)[0][1]
+    fenced_item = _parse_extraction(fenced_with_trailing_text)[0][1]
 
     assert _validate_item(low_confidence_item)["confidence"] == 0.0
     assert _validate_item(invalid_namespace_item) is None

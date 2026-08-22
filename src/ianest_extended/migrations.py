@@ -10,6 +10,7 @@ MIGRATION_NAMES = (
     "0001_memory_registry.sql",
     "0002_rag.sql",
     "0003_rag_domains.sql",
+    "0004_stated_by.sql",
 )
 
 

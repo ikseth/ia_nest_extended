@@ -6,6 +6,16 @@ Sin acentos por convencion.
 ## [No publicado]
 
 ### Anadido
+- Procedencia de los engramas, campo `stated_by` (ADR 0013): cada engrama
+  registra si lo dijo el interlocutor (`user`), lo genero el modelo (`model`) o
+  no consta (`unknown`), y esa marca viaja al contexto inyectado. La extraccion
+  pide dos listas separadas por emisor y la procedencia la fija el codigo, no el
+  modelo, con un anclaje lexico que degrada a `unknown` la atribucion que no se
+  sostiene. Los engramas anteriores quedan en `unknown`: no se les inventa
+  origen. El campo no se llama `provenance` porque ese nombre ya designa el
+  origen de una entrada del catalogo. Migracion `0004_stated_by.sql`;
+  `verify_schema` declara no migrado un esquema sin la columna. Adicion
+  compatible sobre `memory.write` y `memory.recall`: MINOR.
 - Fase 8, instalador de despliegue reproducible: `deploy/setup.sh` con fichero
   declarativo, layout externo `config/extended` y `state/extended`, almacen
   PostgreSQL+pgvector existente (incluido remoto, sin runtime local) o
@@ -17,6 +27,16 @@ Sin acentos por convencion.
   abierta hasta su verificacion en maquina real.
 
 ### Corregido
+- La memoria dejaba coexistir dos versiones contradictorias del mismo hecho y
+  se las inyectaba juntas al modelo, que no podia sino contradecirse; medido en
+  laboratorio el 2026-08-21 sobre una sesion real de cuatro turnos, donde una
+  alucinacion del modelo se persistio como `episodic/facts` con confianza 1 y
+  fue premisa de los turnos siguientes. Causa: el dedup detectaba redundancia
+  (similitud >= 0.92 refuerza) pero no contradiccion, y `EngramStatus.SUPERSEDED`
+  estaba declarado sin usar en ninguna linea del codigo. Ahora una correccion
+  del interlocutor retira el candidato del modelo con el que choca, dentro de
+  una banda de similitud configurable (`conflict_threshold`, arranque 0.75), con
+  lineage en `memory_links` y sin borrado fisico.
 - Retrabajo de Fase 8 tras la primera instalacion limpia: las tres migraciones
   SQL tienen una unica copia dentro de `ianest_extended`, viajan como datos del
   wheel y se resuelven con recursos del paquete tanto en instalaciones editables

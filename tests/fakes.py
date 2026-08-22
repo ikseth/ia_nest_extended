@@ -8,7 +8,17 @@ from ianest_extended import (
     MemoryIdentity,
     RecallItem,
     SchemaMigrationRequiredError,
+    StatedBy,
 )
+
+
+def _word_overlap(left: str, right: str) -> float:
+    left_words = set(left.casefold().split())
+    right_words = set(right.casefold().split())
+    if not left_words or not right_words:
+        return 0.0
+    union = left_words | right_words
+    return len(left_words & right_words) / len(union)
 
 
 class InMemoryStore:
@@ -41,6 +51,7 @@ class InMemoryStore:
             version=1,
             created_at=datetime.now(UTC),
             last_reinforced_at=None,
+            stated_by=request.stated_by,
         )
         self.engrams.append(engram)
         return engram
@@ -87,6 +98,39 @@ class InMemoryStore:
             ),
             None,
         )
+
+    def supersede_conflicting(
+        self,
+        principal,
+        *,
+        winner,
+        conflict_threshold,
+        dedup_threshold,
+    ):
+        """Sin pgvector, la banda se aproxima por solapamiento de palabras."""
+        retired = []
+        for index, engram in enumerate(self.engrams):
+            if engram.id == winner.id or engram.stated_by != StatedBy.MODEL:
+                continue
+            if (
+                engram.type_name != winner.type_name
+                or engram.user_id != winner.user_id
+                or engram.namespace != winner.namespace
+                or engram.status != EngramStatus.ACTIVE
+            ):
+                continue
+            similarity = _word_overlap(engram.content, winner.content)
+            if conflict_threshold <= similarity < dedup_threshold:
+                superseded = replace(
+                    engram,
+                    status=EngramStatus.SUPERSEDED,
+                    archived_at=datetime.now(UTC),
+                    archived_reason="corregido por el usuario (ADR 0013)",
+                    version=engram.version + 1,
+                )
+                self.engrams[index] = superseded
+                retired.append(superseded)
+        return tuple(retired)
 
     def reinforce(self, principal, engram_id):
         for index, engram in enumerate(self.engrams):

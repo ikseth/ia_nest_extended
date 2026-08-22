@@ -38,6 +38,19 @@ class EngramStatus(StrEnum):
     SUPERSEDED = "superseded"
 
 
+class StatedBy(StrEnum):
+    """Quien dijo lo que el engrama guarda (ADR 0013).
+
+    `UNKNOWN` no es un default comodo: es lo que consta de los engramas
+    anteriores al ADR 0013 y de los items sin anclaje verificable. No se
+    inventa procedencia.
+    """
+
+    USER = "user"
+    MODEL = "model"
+    UNKNOWN = "unknown"
+
+
 class ConsolidationTrigger(StrEnum):
     DECAY = "decay"
     MANUAL = "manual"
@@ -122,6 +135,7 @@ class EngramWrite:
     unresolved_mentions: tuple[str, ...] = ()
     source_trace_id: str | None = None
     entity_id: UUID | None = None
+    stated_by: StatedBy = StatedBy.UNKNOWN
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,6 +160,7 @@ class Engram:
     version: int
     created_at: datetime
     last_reinforced_at: datetime | None
+    stated_by: StatedBy = StatedBy.UNKNOWN
 
 
 @dataclass(frozen=True, slots=True)

@@ -87,6 +87,16 @@ class MemoryStore(Protocol):
     ) -> Engram:
         """Refuerza un engrama sin crear un duplicado."""
 
+    def supersede_conflicting(
+        self,
+        principal: Principal,
+        *,
+        winner: Engram,
+        conflict_threshold: float,
+        dedup_threshold: float,
+    ) -> Sequence[Engram]:
+        """Retira los candidatos del modelo que el usuario corrige (ADR 0013)."""
+
     def find_dialogs_to_archive(
         self,
         *,

@@ -88,6 +88,7 @@ from .models import (
     RecallQuery,
     RetrievalMode,
     Scope,
+    StatedBy,
 )
 from .registry import MemoryTypeRegistry, seed_memory_types
 from .ranking import calculate_relevance
@@ -184,6 +185,7 @@ __all__ = [
     "RetrievalMode",
     "Scope",
     "ScopeViolationError",
+    "StatedBy",
     "TelemetryWriter",
     "UnknownMemoryTypeError",
     "UnsupportedWriteError",

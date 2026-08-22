@@ -171,6 +171,13 @@ Estado: `implementada` (existe el mecanismo y se expone por las tres pieles) o
 tiene la autoridad, ejecuta esta capa. La autoridad se aplica en dos niveles,
 principal en codigo y GRANT del motor (ADR 0010).
 
+Todo engrama declara su `stated_by` -`user`, `model` o `unknown`-: quien dijo lo
+que guarda (ADR 0013). `memory.write` lo acepta y lo devuelve; omitirlo deja
+`unknown`, que es tambien lo que consta de los engramas anteriores a ese ADR. Lo
+que `memory.recall` compone lleva la marca en cada linea. No confundir con el
+`provenance` de `capability.list`, que dice de donde sale una CAPACIDAD y no
+quien dijo un contenido.
+
 ### Conocimiento
 
 | capacidad | proposito | estado |
