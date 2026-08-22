@@ -2,6 +2,7 @@ import json
 
 from ianest_extended import (
     CoreClient,
+    CoreResult,
     EngramStatus,
     ExtendedConfig,
     EngramWrite,
@@ -337,6 +338,66 @@ def test_recall_marks_stated_by_in_the_injected_context(
     ) in second.context
     # ...y el turno que dijo el usuario, como suyo.
     assert "[dialog/raw] (fuente: usuario) carpenter-claim" in second.context
+
+
+def test_unconverged_task_does_not_feed_the_memory(tmp_path, local_service_stub):
+    """El core publica `stop_reason`; si no acepto su respuesta, no se memoriza.
+
+    Ese dato ya viaja en la respuesta de `task.run`, asi que no es un cambio de
+    contrato que pedir al core: es informacion que esta capa tenia sin usar.
+    """
+    from ianest_extended.enrichment import _downstream_converged
+
+    assert _downstream_converged({"stop_reason": "task_done"}) is True
+    assert _downstream_converged({"stop_reason": "max_iterations"}) is False
+    assert _downstream_converged({"stop_reason": "replan_unavailable"}) is False
+    # `prompt.run` no declara `stop_reason`: sin informacion en contra, pasa.
+    assert _downstream_converged({}) is True
+
+
+def _core_result(stop_reason):
+    return CoreResult(
+        response="la pelicula de carpenter no tiene precuela",
+        trace={"request_id": "core-x"},
+        payload={"stop_reason": stop_reason},
+    )
+
+
+def test_unconverged_response_does_not_reach_episodic(
+    tmp_path,
+    local_service_stub,
+):
+    store = InMemoryStore()
+    enricher = _enricher(tmp_path, local_service_stub, store)
+
+    counters, status = enricher.write_back(
+        request_id="req-x",
+        identity=identity(),
+        prompt="carpenter-claim",
+        core_result=_core_result("max_iterations"),
+    )
+
+    assert status == "ok"
+    assert not [i for i in store.engrams if i.type_name == "episodic"]
+    assert counters["items_unconverged"] == 1
+    # Los dos turnos siguen en dialog: lo crudo no depende de la convergencia.
+    assert len([i for i in store.engrams if i.type_name == "dialog"]) == 2
+
+
+def test_converged_response_does_reach_episodic(tmp_path, local_service_stub):
+    store = InMemoryStore()
+    enricher = _enricher(tmp_path, local_service_stub, store)
+
+    counters, _ = enricher.write_back(
+        request_id="req-y",
+        identity=identity(),
+        prompt="carpenter-claim",
+        core_result=_core_result("task_done"),
+    )
+
+    episodic = [i for i in store.engrams if i.type_name == "episodic"]
+    assert [item.stated_by for item in episodic] == [StatedBy.MODEL]
+    assert counters["items_unconverged"] == 0
 
 
 def test_parse_extraction_tolerates_real_qwen_output_defects():

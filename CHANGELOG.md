@@ -27,6 +27,12 @@ Sin acentos por convencion.
   abierta hasta su verificacion en maquina real.
 
 ### Corregido
+- Una respuesta de `task.run` que el propio core corto sin aceptar
+  (`stop_reason` distinto de `task_done`) alimentaba la memoria episodica igual
+  que cualquier otra. Ahora no: lo que salga de una tarea no convergida no se
+  destila a `episodic` -lo que dijo el interlocutor si, y `dialog` se conserva
+  entero-. El dato ya viajaba en la respuesta del core desde siempre; esta capa
+  no lo leia. Contabilizado en `items_unconverged`.
 - La memoria dejaba coexistir dos versiones contradictorias del mismo hecho y
   se las inyectaba juntas y mudas al modelo, que no podia sino contradecirse;
   medido en laboratorio el 2026-08-21 sobre una sesion real de cuatro turnos,

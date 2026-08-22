@@ -583,6 +583,7 @@ class MemoryEnricher:
             "items_discarded": 0,
             "items_unattributed": 0,
             "items_contradicted": 0,
+            "items_unconverged": 0,
             "invalid_json": 0,
         }
         common = {
@@ -624,6 +625,7 @@ class MemoryEnricher:
             StatedBy.USER: prompt,
             StatedBy.MODEL: core_result.response,
         }
+        converged = _downstream_converged(core_result.payload)
         for claimed, item in items:
             parsed = _validate_item(item)
             if (
@@ -631,6 +633,12 @@ class MemoryEnricher:
                 or parsed["confidence"] < self._config.confidence_threshold
             ):
                 counters["items_discarded"] += 1
+                continue
+            # Si el core corto sin aceptar su respuesta, lo que salio de ella no
+            # entra en la memoria. Lo que dijo el interlocutor si: su turno no
+            # depende de que la tarea convergiera.
+            if not converged and claimed is not StatedBy.USER:
+                counters["items_unconverged"] += 1
                 continue
             stated_by = claimed
             if claimed is not StatedBy.UNKNOWN and not _is_anchored(
@@ -711,6 +719,7 @@ class MemoryEnricher:
                     "items_discarded": 0,
                     "items_unattributed": 0,
                     "items_contradicted": 0,
+                    "items_unconverged": 0,
                     "invalid_json": 0,
                 },
                 latency_ms=_latency_ms(started),
@@ -917,6 +926,19 @@ def _extraction_prompt(user_prompt: str, assistant_response: str) -> str:
         '{"from_user":[],"from_assistant":[]}.\n\n'
         f"USER:\n{user_prompt}\n\nASSISTANT:\n{assistant_response}"
     )
+
+
+def _downstream_converged(payload: dict[str, Any]) -> bool:
+    """El core dio por buena su propia respuesta?
+
+    `task.run` publica `stop_reason`, y un valor distinto de `task_done` dice
+    que la tarea se corto sin que su evaluador aceptara el resultado. Ese dato
+    ya viaja en la respuesta: no hace falta pedirselo al core, hace falta
+    leerlo. Las capacidades que no lo declaran (`prompt.run`) devuelven `None`,
+    y entonces no hay informacion en contra.
+    """
+    stop_reason = payload.get("stop_reason")
+    return stop_reason is None or stop_reason == "task_done"
 
 
 def _normalize_tokens(text: str) -> set[str]:

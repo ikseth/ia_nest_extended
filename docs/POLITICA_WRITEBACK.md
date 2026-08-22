@@ -34,6 +34,19 @@ permite que una correccion del interlocutor retire lo que el modelo afirmo.
 - La procedencia viaja al contexto inyectado: `(fuente: usuario)`,
   `(fuente: modelo, sin verificar)`, `(fuente: no registrada)`.
 
+## Convergencia de la capacidad de origen
+
+`task.run` publica `stop_reason` en su respuesta. Un valor distinto de
+`task_done` dice que la tarea se corto SIN que el evaluador del core aceptara el
+resultado -por agotar iteraciones o por no poder replanificar-, y entonces lo
+que salio de esa respuesta NO alimenta `episodic`. Lo que dijo el interlocutor
+si: su turno no depende de que la tarea convergiera. `dialog` se escribe entero,
+como siempre, porque es crudo por diseno.
+
+Esto NO necesito pedirselo al core: el dato ya viajaba en la respuesta y esta
+capa no lo leia. Se contabiliza en `items_unconverged`. Las capacidades que no
+declaran `stop_reason` (`prompt.run`) no aportan informacion en contra y pasan.
+
 ## Extraccion estructurada
 
 Segunda llamada a `prompt.run` (modelo de extraccion, ADR 0006) con salida JSON:
