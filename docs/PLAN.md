@@ -1,8 +1,9 @@
 # Plan de ia_nest_extended
 
 Estado: fases 0-5c, 7 y 8 completas, con v0.1.0 publicada; fase 6 APARCADA
-(2026-08-21, con su motivo y su diseno escritos en ella)
-Version: 0.1 - 2026-07-18
+(2026-08-21, con su motivo y su diseno escritos en ella); fase 9 ABIERTA
+(2026-08-22), pendiente de reconciliar su criterio
+Version: 0.2 - 2026-08-22
 
 Misma disciplina que el core: fases con criterio de salida falsable; no se abre
 una fase sin validar la anterior; diseno y prueba de aceptacion antes de
@@ -360,6 +361,65 @@ lo ya instalado.
 Nota de frontera: la fase 7c (REST y MCP) anade servicios que este instalador
 tendra que levantar. Conviene que 8 llegue despues de 7c, o que se disene
 sabiendo que llegan.
+
+## Fase 9: Sintesis de hilo (ADR 0007, enmienda del 2026-08-22)
+
+Estado: ABIERTA (2026-08-22), pendiente de reconciliar su criterio.
+
+Reabre la sintesis de cluster que el ADR 0007 habia diferido con nombre. El
+motivo del diferimiento -"solo aporta con acumulacion de muchos episodicos
+relacionados, que aun no existe"- era correcto para el problema que anticipaba,
+VOLUMEN, y ajeno al que aparecio: COHERENCIA. Medido el 2026-08-21 sobre una
+sesion real, con **cuatro turnos y siete engramas** el contexto ya llevaba dos
+hechos incompatibles del mismo asunto.
+
+La razon es estructural y no de tamano: **un conjunto de engramas atomicos no
+puede expresar que uno reemplaza a otro**, solo coexistir. El ADR 0013 mitiga el
+sintoma -marca procedencia, anota las versiones en conflicto y las despriorza-
+pero no lo resuelve: siguen siendo items sueltos. Lo que da DIRECCION a un hilo
+es una frase con estructura temporal, y eso es sintesis.
+
+### Alcance
+
+1. **Sintesis por hilo**, no por cluster tematico: resumen del hilo de una
+   sesion, generado por ventana temporal.
+2. **Combinado, no sustitucion** (forma reconciliada el 2026-08-22): los
+   engramas del hilo CON sus referencias a los datos, MAS el resumen. El resumen
+   da continuidad barata y con perdida; las referencias mantienen el anclaje
+   auditable que un resumen disuelve -hoy cada item conserva su
+   `source_trace_id`; un resumen de doce, no-.
+3. **Procedencia heredada del ADR 0013**: la sintesis registra `stated_by` de lo
+   que resume, y una sintesis que mezcla emisores no puede presentarse como
+   dicha por ninguno.
+4. Composicion en el recall: cuando el hilo tiene sintesis, esta sustituye en el
+   presupuesto a los engramas que resume, no se suma a ellos.
+
+### Lo que NO entra
+
+Que la sintesis ELIJA que merece recordarse. Eso es juicio y es de conscience
+(ADR 0002; test de frontera del ADR 0007). Aqui la ventana es temporal y
+mecanica: resume lo que hay, no lo que importa.
+
+### Criterio de salida (falsable), propuesto y a reconciliar
+
+Tres lineas, las tres medibles en el banco del laboratorio y con n >= 3, porque
+n = 1 no es veredicto:
+
+1. **Coherencia.** Un hilo de al menos cuatro turnos con una correccion
+   explicita del interlocutor: tras la correccion, el contexto compuesto no
+   presenta las dos versiones como afirmaciones equivalentes, y la respuesta
+   final no reincide en la version corregida. Se mide con la sintesis activada y
+   desactivada sobre el mismo hilo; si el brazo sin sintesis ya cumple, la fase
+   no ha demostrado nada.
+2. **Anclaje.** Toda sintesis conserva enlaces a los engramas que resume, y
+   ninguna de sus afirmaciones carece de origen direccionable. Verificable por
+   consulta, no por lectura.
+3. **Coste.** Para el mismo hilo, el contexto compuesto con sintesis no ocupa
+   mas tokens que sin ella, y un hilo que antes no cabia en el presupuesto cabe.
+
+Riesgo declarado, heredado del ADR 0013: resumir con el mismo modelo que alucina
+produce resumenes de alucinaciones. Por eso el resumen no sustituye a los
+engramas anclados y por eso la linea 2 es criterio de salida y no un deseo.
 
 ## Deuda de diseno declarada
 
