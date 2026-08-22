@@ -73,3 +73,44 @@ del guardian (conscience; operador en dev). Mismo motivo candidato->confiable qu
 `unresolved_mentions`->`entity_refs` y `source`/`confirmed` del conocimiento. La
 inyeccion puede llenar el pozo de candidatos, pero no alcanza lo confiable sin el
 guardian. Endurecido a nivel de recurso en ADR 0010 (least-privilege).
+
+## Enmienda (2026-08-22): el motivo del diferimiento caduca; se reabre la sintesis
+
+La sintesis de cluster se difirio con este motivo, escrito arriba: "los engramas
+episodicos ya son destilados de una linea (...) la sintesis solo aporta con
+acumulacion de muchos episodicos relacionados, que aun no existe. No se optimiza
+un problema que no tenemos."
+
+El razonamiento era correcto para el problema que anticipaba -VOLUMEN- y el
+problema que aparecio es otro: COHERENCIA. Medido el 2026-08-21 sobre una sesion
+real: con **cuatro turnos y siete engramas** el contexto ya llevaba dos hechos
+incompatibles del mismo asunto, y el modelo no podia sino contradecirse. No hizo
+falta acumulacion ninguna.
+
+La razon de fondo es estructural, no de tamano: **un conjunto de engramas
+atomicos no puede expresar que uno reemplaza a otro**. Solo pueden coexistir. Lo
+que da DIRECCION a un hilo -"el interlocutor corrigio esto, la version anterior
+era erronea"- es una frase con estructura temporal, y eso es sintesis, no
+acumulacion. El ADR 0013 mitiga el sintoma marcando procedencia y anotando las
+versiones en conflicto, pero no lo resuelve: sigue habiendo dos items sueltos.
+
+Se reabre, con la forma que el usuario reconcilio el 2026-08-22: **un combinado,
+no una sustitucion.** Engramas conversacionales de un hilo CON referencias a los
+datos, MAS una sumarizacion del hilo. El resumen da continuidad barata y con
+perdida, para hilos largos; las referencias mantienen el anclaje auditable, que
+un resumen disuelve (hoy cada item conserva su `source_trace_id`; un resumen de
+doce, no). Suman, no se sustituyen.
+
+Frontera: un resumen de hilo por ventana temporal, que NO decide que merece
+recordarse, es MECANISMO y cabe en extended por el test de frontera de este
+mismo ADR -similitud y umbrales son mecanismo; merito, significado o etica son
+juicio-. Lo que sigue siendo de conscience es que el resumen ELIJA que es
+importante. La asignacion a conscience que hizo la enmienda del 2026-08-13 se
+matiza aqui: le corresponde la sintesis con juicio, no toda sintesis.
+
+Riesgo declarado: resumir con el mismo modelo que alucina produce resumenes de
+alucinaciones. Por eso el resumen no sustituye a los engramas anclados, y por
+eso hereda de ADR 0013 la obligacion de conservar procedencia.
+
+Pendiente: fase propia en el PLAN, con su criterio de salida falsable. Esta
+enmienda registra la decision de reabrir y por que; no fija la forma.
