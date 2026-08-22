@@ -3,7 +3,7 @@
 Formato basado en Keep a Changelog; SemVer (ver core `docs/VERSIONADO.md`).
 Sin acentos por convencion.
 
-## [No publicado]
+## [0.2.0] - 2026-08-22
 
 ### Anadido
 - Procedencia de los engramas, campo `stated_by` (ADR 0013): cada engrama
