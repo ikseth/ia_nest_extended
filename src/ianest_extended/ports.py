@@ -87,6 +87,20 @@ class MemoryStore(Protocol):
     ) -> Engram:
         """Refuerza un engrama sin crear un duplicado."""
 
+    def record_contradiction(
+        self,
+        principal: Principal,
+        *,
+        stated_by_user: Engram,
+        conflict_threshold: float,
+        dedup_threshold: float,
+    ) -> Sequence[Engram]:
+        """Anota los candidatos del modelo sobre los que el usuario dijo otra cosa.
+
+        No cambia su estado: deja el enlace para que el recall los despriorice
+        y los etiquete (ADR 0013).
+        """
+
     def find_dialogs_to_archive(
         self,
         *,

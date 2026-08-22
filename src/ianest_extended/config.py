@@ -59,6 +59,12 @@ class ExtendedConfig:
     # reales.
     memory_min_similarity: float = 0.10
     dedup_threshold: float = 0.92
+    # Suelo de la banda de conflicto (ADR 0013). Calibrado con bge-m3 en el lab
+    # (local/lab/2026-08-22_banda_de_conflicto.md): una correccion REAL midio
+    # 0.7242 y los pares de mismo-tema llegaron a 0.7285, asi que no hay umbral
+    # que capture la una sin rozar los otros. Se elige el permisivo PORQUE la
+    # accion no es destructiva: anota y despriorza, no retira.
+    conflict_threshold: float = 0.70
     confidence_threshold: float = 0.7
     connect_timeout_seconds: float = 30.0
     inactivity_timeout_seconds: float = 30.0
@@ -156,6 +162,10 @@ class ExtendedConfig:
                 "DEDUP_THRESHOLD",
                 defaults.dedup_threshold,
             ),
+            "conflict_threshold": _env_float(
+                "CONFLICT_THRESHOLD",
+                defaults.conflict_threshold,
+            ),
             "confidence_threshold": _env_float(
                 "CONFIDENCE_THRESHOLD",
                 defaults.confidence_threshold,
@@ -250,6 +260,7 @@ class ExtendedConfig:
             )
         for name in (
             "dedup_threshold",
+            "conflict_threshold",
             "confidence_threshold",
             "memory_min_similarity",
             "auto_domain_min_confidence",
@@ -259,6 +270,12 @@ class ExtendedConfig:
             value = getattr(self, name)
             if not 0.0 <= value <= 1.0:
                 raise ExtendedConfigError(f"{name} debe estar entre 0 y 1")
+        if self.conflict_threshold > self.dedup_threshold:
+            raise ExtendedConfigError(
+                "conflict_threshold no puede superar dedup_threshold: "
+                "la banda de conflicto quedaria vacia",
+                "conflict_threshold",
+            )
         for name in (
             "connect_timeout_seconds",
             "inactivity_timeout_seconds",

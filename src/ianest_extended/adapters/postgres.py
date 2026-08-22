@@ -38,6 +38,7 @@ from ..models import (
     RecallQuery,
     RetrievalMode,
     Scope,
+    StatedBy,
 )
 from ..migrations import migration_resource
 from ..ports import Embedder
@@ -60,6 +61,7 @@ class PostgresMemoryStore:
         self._dsn = dsn
         self._embedder = embedder
         self._migration_path = migration_path or _default_migration_path()
+        self._stated_by_migration_path = _default_stated_by_migration_path()
 
     def verify_schema(self) -> None:
         """Comprueba el esquema SIN mutarlo (migracion explicita, ADR 0011)."""
@@ -76,6 +78,25 @@ class PostgresMemoryStore:
                         "'ianest-extended runtime migrate'",
                         relation,
                     )
+            # Un esquema con 0001 pero sin 0004 aceptaria escrituras y perderia
+            # la procedencia en silencio, que es justo lo que el ADR 0013 viene
+            # a impedir. Se declara no migrado.
+            has_stated_by = connection.execute(
+                """
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_schema = current_schema()
+                  AND table_name = 'engrams'
+                  AND column_name = 'stated_by'
+                """
+            ).fetchone()
+            if has_stated_by is None:
+                raise SchemaMigrationRequiredError(
+                    "el esquema de memoria no esta migrado "
+                    "(falta 'engrams.stated_by'); ejecuta "
+                    "'ianest-extended runtime migrate'",
+                    "engrams.stated_by",
+                )
 
     def migrate(self) -> None:
         embedder = self._require_embedder()
@@ -90,6 +111,9 @@ class PostgresMemoryStore:
             )
         with self._connect() as connection:
             connection.execute(sql)
+            connection.execute(
+                self._stated_by_migration_path.read_text(encoding="ascii")
+            )
             self._ensure_embedding_dimension(connection)
         for memory_type in seed_memory_types():
             self.register_type(memory_type)
@@ -231,11 +255,12 @@ class PostgresMemoryStore:
                 INSERT INTO engrams (
                     id, type_name, user_id, session_id, namespace, content,
                     embedding, score, stability, service, domain_tag,
-                    entity_refs, unresolved_mentions, source_trace_id
+                    entity_refs, unresolved_mentions, source_trace_id,
+                    stated_by
                 )
                 VALUES (
                     %s, %s, %s, %s, %s, %s, %s::vector, %s, %s, %s, %s,
-                    %s, %s, %s
+                    %s, %s, %s, %s
                 )
                 RETURNING *
                 """,
@@ -254,6 +279,7 @@ class PostgresMemoryStore:
                     list(request.entity_refs),
                     list(request.unresolved_mentions),
                     request.source_trace_id,
+                    str(request.stated_by),
                 ),
             ).fetchone()
         return _engram_from_row(row)
@@ -444,6 +470,74 @@ class PostgresMemoryStore:
                 f"engrama activo no encontrado: {engram_id}"
             )
         return _engram_from_row(row)
+
+    def record_contradiction(
+        self,
+        principal: Principal,
+        *,
+        stated_by_user: Engram,
+        conflict_threshold: float,
+        dedup_threshold: float,
+    ) -> tuple[Engram, ...]:
+        """Anota que el usuario dijo algo distinto sobre lo que el modelo afirmo.
+
+        Banda de conflicto (ADR 0013): por encima de `dedup_threshold` es el
+        MISMO item -eso lo resuelve el refuerzo-; por debajo de
+        `conflict_threshold` habla de otra cosa. En medio habla de lo mismo.
+
+        NO cambia el estado del engrama anotado. Se limita a dejar el enlace,
+        porque la separacion medida entre "contradice" y "mismo tema" es de
+        centesimas y no da para una accion destructiva: lo que el enlace hace
+        es que el recall lo despriorice y lo etiquete, no que desaparezca.
+        """
+        if stated_by_user.stated_by is not StatedBy.USER:
+            raise InvalidEngramError(
+                "solo un engrama del usuario anota contradiccion"
+            )
+        if not 0.0 <= conflict_threshold <= dedup_threshold <= 1.0:
+            raise InvalidEngramError(
+                "se exige 0 <= conflict_threshold <= dedup_threshold <= 1"
+            )
+        memory_type = self._get_type(stated_by_user.type_name)
+        _require_authority(memory_type, principal)
+        vector = _vector_literal(stated_by_user.embedding)
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT *
+                FROM engrams
+                WHERE type_name = %s
+                  AND user_id = %s
+                  AND namespace = %s
+                  AND stated_by = 'model'
+                  AND status = 'active'
+                  AND id <> %s
+                  AND 1 - (embedding <=> %s::vector) >= %s
+                  AND 1 - (embedding <=> %s::vector) < %s
+                """,
+                (
+                    stated_by_user.type_name,
+                    stated_by_user.user_id,
+                    stated_by_user.namespace,
+                    stated_by_user.id,
+                    vector,
+                    conflict_threshold,
+                    vector,
+                    dedup_threshold,
+                ),
+            ).fetchall()
+            for row in rows:
+                connection.execute(
+                    """
+                    INSERT INTO memory_links (
+                        source_kind, source_id, target_engram_id, link_kind
+                    )
+                    VALUES ('engram', %s, %s, 'contradicted_by')
+                    ON CONFLICT DO NOTHING
+                    """,
+                    (row["id"], stated_by_user.id),
+                )
+        return tuple(_engram_from_row(row) for row in rows)
 
     def find_dialogs_to_archive(
         self,
@@ -667,16 +761,26 @@ class PostgresMemoryStore:
                 for mention in row["unresolved_mentions"]
             )
         )
+        # La procedencia se hereda solo si TODAS las fuentes coinciden. Un
+        # destino que mezcla lo dicho por el usuario con lo generado por el
+        # modelo no es ninguna de las dos cosas (ADR 0013).
+        source_stated_bys = {row["stated_by"] for row in source_rows}
+        stated_by = (
+            source_stated_bys.pop()
+            if len(source_stated_bys) == 1
+            else str(StatedBy.UNKNOWN)
+        )
         row = connection.execute(
             """
             INSERT INTO engrams (
                 id, type_name, user_id, session_id, namespace, content,
                 embedding, score, stability, service, domain_tag,
-                entity_refs, unresolved_mentions, source_trace_id
+                entity_refs, unresolved_mentions, source_trace_id,
+                stated_by
             )
             VALUES (
                 %s, %s, %s, %s, %s, %s, %s::vector, %s, %s, %s, %s,
-                %s, %s, %s
+                %s, %s, %s, %s
             )
             RETURNING *
             """,
@@ -695,6 +799,7 @@ class PostgresMemoryStore:
                 list(entity_refs),
                 list(unresolved_mentions),
                 first["source_trace_id"],
+                stated_by,
             ),
         ).fetchone()
         assert row is not None
@@ -745,6 +850,11 @@ class PostgresMemoryStore:
         )
         sql = f"""
             SELECT e.*,
+                   EXISTS (
+                     SELECT 1 FROM memory_links ml
+                     WHERE ml.source_id = e.id
+                       AND ml.link_kind = 'contradicted_by'
+                   ) AS contradicted,
                    (
                      mt.w_recency *
                        CASE
@@ -917,6 +1027,10 @@ def _default_migration_path() -> Traversable:
     return migration_resource("0001_memory_registry.sql")
 
 
+def _default_stated_by_migration_path() -> Traversable:
+    return migration_resource("0004_stated_by.sql")
+
+
 def _require_authority(
     memory_type: MemoryType,
     principal: Principal,
@@ -1013,6 +1127,8 @@ def _engram_from_row(row: dict[str, Any]) -> Engram:
         version=row["version"],
         created_at=row["created_at"],
         last_reinforced_at=row["last_reinforced_at"],
+        stated_by=StatedBy(row.get("stated_by", StatedBy.UNKNOWN)),
+        contradicted=bool(row.get("contradicted", False)),
     )
 
 

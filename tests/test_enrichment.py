@@ -2,10 +2,13 @@ import json
 
 from ianest_extended import (
     CoreClient,
+    CoreResult,
+    EngramStatus,
     ExtendedConfig,
     EngramWrite,
     MemoryEnricher,
     Principal,
+    StatedBy,
     TelemetryWriter,
 )
 from ianest_extended.enrichment import (
@@ -17,11 +20,12 @@ from ianest_extended.enrichment import (
 from .fakes import InMemoryStore, identity
 
 
-def _enricher(tmp_path, local_service_stub, store):
+def _enricher(tmp_path, local_service_stub, store, **overrides):
     config = ExtendedConfig(
         telemetry_dir=tmp_path,
         embedding_dimension=2,
         memory_budget_tokens=1500,
+        **overrides,
     )
     return MemoryEnricher(
         store=store,
@@ -161,9 +165,239 @@ def test_extraction_prompt_uses_concrete_values_and_json_only():
 
     assert '"namespace":"preferences"' in prompt
     assert '"confidence":0.9' in prompt
-    assert '{"items":[]}' in prompt
+    assert '{"from_user":[],"from_assistant":[]}' in prompt
     assert "facts|preferences|tasks" not in prompt
     assert "no markdown fences or text outside the JSON" in prompt
+
+
+def test_extraction_prompt_separates_the_two_emitters():
+    prompt = _extraction_prompt("hola", "hola")
+
+    assert "from_user" in prompt and "from_assistant" in prompt
+    assert "Never move an item from one list to the other." in prompt
+
+
+def test_extraction_prompt_forbids_translating_the_item():
+    """Si el extractor traduce, el anclaje no reconoce su propio bloque.
+
+    Medido en el lab el 2026-08-22: sin esta linea, mistral-nemo devolvia el
+    item en ingles -o con `content` nulo- ante una conversacion en espanol, y
+    toda la atribucion caia a `unknown`.
+    """
+    prompt = _extraction_prompt("hola", "hola")
+
+    assert "SAME LANGUAGE" in prompt
+    assert "never translate it" in prompt
+
+
+def test_dialog_records_who_said_each_turn(tmp_path, local_service_stub):
+    store = InMemoryStore()
+    enricher = _enricher(tmp_path, local_service_stub, store)
+
+    enricher.enrich(identity(), "smalltalk")
+
+    dialog = [item for item in store.engrams if item.type_name == "dialog"]
+    assert [item.stated_by for item in dialog] == [
+        StatedBy.USER,
+        StatedBy.MODEL,
+    ]
+
+
+def test_model_claim_is_stored_as_model_not_as_user_fact(
+    tmp_path,
+    local_service_stub,
+):
+    """El hallazgo del 2026-08-21: una afirmacion del modelo entraba como hecho."""
+    store = InMemoryStore()
+    enricher = _enricher(tmp_path, local_service_stub, store)
+
+    enricher.enrich(identity(), "carpenter-claim")
+
+    episodic = [item for item in store.engrams if item.type_name == "episodic"]
+    assert len(episodic) == 1
+    assert episodic[0].stated_by is StatedBy.MODEL
+
+
+def test_unanchored_attribution_falls_back_to_unknown(
+    tmp_path,
+    local_service_stub,
+):
+    store = InMemoryStore()
+    enricher = _enricher(tmp_path, local_service_stub, store)
+
+    enricher.enrich(identity(), "misattributed")
+
+    episodic = [item for item in store.engrams if item.type_name == "episodic"]
+    assert len(episodic) == 1
+    assert episodic[0].stated_by is StatedBy.UNKNOWN
+    assert _events(tmp_path)[-1]["counters"]["items_unattributed"] == 1
+
+
+def test_old_single_list_extraction_is_left_unattributed(
+    tmp_path,
+    local_service_stub,
+):
+    """El formato antiguo se tolera, pero no se le inventa emisor."""
+    store = InMemoryStore()
+    enricher = _enricher(tmp_path, local_service_stub, store)
+
+    enricher.enrich(identity(), "remember-blue")
+
+    episodic = [item for item in store.engrams if item.type_name == "episodic"]
+    assert episodic[0].stated_by is StatedBy.UNKNOWN
+
+
+def test_user_version_annotates_the_model_claim_without_retiring_it(
+    tmp_path,
+    local_service_stub,
+):
+    """Regresion del envenenamiento medido: las dos versiones coexistian mudas.
+
+    Lo que el usuario dice NO retira lo que el modelo afirmo -la separacion
+    medida entre contradecir y compartir tema es de centesimas, y no da para
+    una accion destructiva-: lo anota, y el recall lo despriorza y lo etiqueta.
+
+    El umbral se baja respecto al de produccion porque el almacen en memoria
+    aproxima la banda por solapamiento de palabras, no por coseno de vectores.
+    """
+    store = InMemoryStore()
+    enricher = _enricher(
+        tmp_path,
+        local_service_stub,
+        store,
+        conflict_threshold=0.5,
+    )
+
+    enricher.enrich(identity(), "carpenter-claim")
+    enricher.enrich(
+        identity(),
+        "carpenter-correction: la pelicula de carpenter si tiene precuela",
+    )
+
+    episodic = [item for item in store.engrams if item.type_name == "episodic"]
+    from_model = [item for item in episodic if item.stated_by is StatedBy.MODEL]
+    from_user = [item for item in episodic if item.stated_by is StatedBy.USER]
+
+    assert len(from_user) == 1
+    assert "si tiene precuela" in from_user[0].content
+    assert len(from_model) == 1
+    # Sigue vivo y sin archivar; lo unico que cambia es que consta anotado.
+    assert from_model[0].status == EngramStatus.ACTIVE
+    assert from_model[0].contradicted is True
+    assert from_user[0].contradicted is False
+    assert _events(tmp_path)[-1]["counters"]["items_contradicted"] == 1
+
+
+def test_annotated_claim_is_labelled_and_demoted_in_the_context(
+    tmp_path,
+    local_service_stub,
+):
+    store = InMemoryStore()
+    enricher = _enricher(
+        tmp_path,
+        local_service_stub,
+        store,
+        conflict_threshold=0.5,
+    )
+
+    enricher.enrich(identity(session="A"), "carpenter-claim")
+    enricher.enrich(
+        identity(session="A"),
+        "carpenter-correction: la pelicula de carpenter si tiene precuela",
+    )
+    third = enricher.enrich(identity(session="A"), "smalltalk")
+
+    lines = [
+        line
+        for line in third.context.splitlines()
+        if line.startswith("[episodic/facts]")
+    ]
+    annotated = [line for line in lines if "version del usuario" in line]
+
+    assert len(annotated) == 1
+    assert "no tiene precuela" in annotated[0]
+    assert "fuente: modelo, sin verificar" in annotated[0]
+    # Despriorizado: el anotado va por detras del resto de su tier.
+    assert lines[-1] == annotated[0]
+
+
+def test_recall_marks_stated_by_in_the_injected_context(
+    tmp_path,
+    local_service_stub,
+):
+    store = InMemoryStore()
+    enricher = _enricher(tmp_path, local_service_stub, store)
+
+    enricher.enrich(identity(session="A"), "carpenter-claim")
+    second = enricher.enrich(identity(session="A"), "smalltalk")
+
+    # El episodico que afirmo el modelo viaja marcado como candidato...
+    assert (
+        "[episodic/facts] (fuente: modelo, sin verificar) "
+        "la pelicula de carpenter no tiene precuela"
+    ) in second.context
+    # ...y el turno que dijo el usuario, como suyo.
+    assert "[dialog/raw] (fuente: usuario) carpenter-claim" in second.context
+
+
+def test_unconverged_task_does_not_feed_the_memory(tmp_path, local_service_stub):
+    """El core publica `stop_reason`; si no acepto su respuesta, no se memoriza.
+
+    Ese dato ya viaja en la respuesta de `task.run`, asi que no es un cambio de
+    contrato que pedir al core: es informacion que esta capa tenia sin usar.
+    """
+    from ianest_extended.enrichment import _downstream_converged
+
+    assert _downstream_converged({"stop_reason": "task_done"}) is True
+    assert _downstream_converged({"stop_reason": "max_iterations"}) is False
+    assert _downstream_converged({"stop_reason": "replan_unavailable"}) is False
+    # `prompt.run` no declara `stop_reason`: sin informacion en contra, pasa.
+    assert _downstream_converged({}) is True
+
+
+def _core_result(stop_reason):
+    return CoreResult(
+        response="la pelicula de carpenter no tiene precuela",
+        trace={"request_id": "core-x"},
+        payload={"stop_reason": stop_reason},
+    )
+
+
+def test_unconverged_response_does_not_reach_episodic(
+    tmp_path,
+    local_service_stub,
+):
+    store = InMemoryStore()
+    enricher = _enricher(tmp_path, local_service_stub, store)
+
+    counters, status = enricher.write_back(
+        request_id="req-x",
+        identity=identity(),
+        prompt="carpenter-claim",
+        core_result=_core_result("max_iterations"),
+    )
+
+    assert status == "ok"
+    assert not [i for i in store.engrams if i.type_name == "episodic"]
+    assert counters["items_unconverged"] == 1
+    # Los dos turnos siguen en dialog: lo crudo no depende de la convergencia.
+    assert len([i for i in store.engrams if i.type_name == "dialog"]) == 2
+
+
+def test_converged_response_does_reach_episodic(tmp_path, local_service_stub):
+    store = InMemoryStore()
+    enricher = _enricher(tmp_path, local_service_stub, store)
+
+    counters, _ = enricher.write_back(
+        request_id="req-y",
+        identity=identity(),
+        prompt="carpenter-claim",
+        core_result=_core_result("task_done"),
+    )
+
+    episodic = [i for i in store.engrams if i.type_name == "episodic"]
+    assert [item.stated_by for item in episodic] == [StatedBy.MODEL]
+    assert counters["items_unconverged"] == 0
 
 
 def test_parse_extraction_tolerates_real_qwen_output_defects():
@@ -181,9 +415,9 @@ def test_parse_extraction_tolerates_real_qwen_output_defects():
         "```\nTexto colgante."
     )
 
-    low_confidence_item = _parse_extraction(copied_confidence)[0]
-    invalid_namespace_item = _parse_extraction(copied_namespace)[0]
-    fenced_item = _parse_extraction(fenced_with_trailing_text)[0]
+    low_confidence_item = _parse_extraction(copied_confidence)[0][1]
+    invalid_namespace_item = _parse_extraction(copied_namespace)[0][1]
+    fenced_item = _parse_extraction(fenced_with_trailing_text)[0][1]
 
     assert _validate_item(low_confidence_item)["confidence"] == 0.0
     assert _validate_item(invalid_namespace_item) is None

@@ -6,6 +6,16 @@ Sin acentos por convencion.
 ## [No publicado]
 
 ### Anadido
+- Procedencia de los engramas, campo `stated_by` (ADR 0013): cada engrama
+  registra si lo dijo el interlocutor (`user`), lo genero el modelo (`model`) o
+  no consta (`unknown`), y esa marca viaja al contexto inyectado. La extraccion
+  pide dos listas separadas por emisor y la procedencia la fija el codigo, no el
+  modelo, con un anclaje lexico que degrada a `unknown` la atribucion que no se
+  sostiene. Los engramas anteriores quedan en `unknown`: no se les inventa
+  origen. El campo no se llama `provenance` porque ese nombre ya designa el
+  origen de una entrada del catalogo. Migracion `0004_stated_by.sql`;
+  `verify_schema` declara no migrado un esquema sin la columna. Adicion
+  compatible sobre `memory.write` y `memory.recall`: MINOR.
 - Fase 8, instalador de despliegue reproducible: `deploy/setup.sh` con fichero
   declarativo, layout externo `config/extended` y `state/extended`, almacen
   PostgreSQL+pgvector existente (incluido remoto, sin runtime local) o
@@ -17,6 +27,25 @@ Sin acentos por convencion.
   abierta hasta su verificacion en maquina real.
 
 ### Corregido
+- Una respuesta de `task.run` que el propio core corto sin aceptar
+  (`stop_reason` distinto de `task_done`) alimentaba la memoria episodica igual
+  que cualquier otra. Ahora no: lo que salga de una tarea no convergida no se
+  destila a `episodic` -lo que dijo el interlocutor si, y `dialog` se conserva
+  entero-. El dato ya viajaba en la respuesta del core desde siempre; esta capa
+  no lo leia. Contabilizado en `items_unconverged`.
+- La memoria dejaba coexistir dos versiones contradictorias del mismo hecho y
+  se las inyectaba juntas y mudas al modelo, que no podia sino contradecirse;
+  medido en laboratorio el 2026-08-21 sobre una sesion real de cuatro turnos,
+  donde una alucinacion del modelo se persistio como `episodic/facts` con
+  confianza 1 y fue premisa de los turnos siguientes. Causa: el dedup detectaba
+  redundancia (similitud >= 0.92 refuerza) pero no contradiccion. Ahora, cuando
+  el interlocutor dice algo muy proximo a lo que el modelo afirmo, el candidato
+  del modelo queda anotado con un enlace `contradicted_by`, y el recall lo
+  etiqueta y lo despriorza al recortar. NO se retira: la separacion medida entre
+  contradecir y compartir tema es de centesimas
+  (`local/lab/2026-08-22_banda_de_conflicto.md`), y ese margen no sostiene una
+  accion destructiva sobre la memoria. Banda configurable por
+  `conflict_threshold` (calibrado en 0.70 con `bge-m3`).
 - Retrabajo de Fase 8 tras la primera instalacion limpia: las tres migraciones
   SQL tienen una unica copia dentro de `ianest_extended`, viajan como datos del
   wheel y se resuelven con recursos del paquete tanto en instalaciones editables

@@ -1,6 +1,7 @@
 # Plan de ia_nest_extended
 
-Estado: fases 0-5c, 7 y 8 completas, con v0.1.0 publicada; fase 6 pendiente
+Estado: fases 0-5c, 7 y 8 completas, con v0.1.0 publicada; fase 6 APARCADA
+(2026-08-21, con su motivo y su diseno escritos en ella)
 Version: 0.1 - 2026-07-18
 
 Misma disciplina que el core: fases con criterio de salida falsable; no se abre
@@ -142,8 +143,92 @@ confirmados, y sincronia con el catalogo del core; sin tocar el core.
 
 ## Fase 6: Datos web
 
-Recuperacion de informacion actual para enriquecer. Criterio: enriquecimiento
-web verificable, acotado y trazable.
+Estado: APARCADA (2026-08-21). No por falta de mecanismo: porque al disenarla
+aparecio que lo que se quiere no es una fuente mas, es un COMPORTAMIENTO, y
+merece abordarse entero y no a trozos. Se aparca con la idea escrita para que no
+vuelva dentro de unos meses reducida a "buscar en internet", que es justo lo que
+pierde su parte distintiva.
+
+Criterio original, que se conserva: recuperacion de informacion actual para
+enriquecer; enriquecimiento web verificable, acotado y trazable.
+
+### Lo que se quiere de verdad: que el ente investigue
+
+No "traer una pagina y volcarla". El ente se comporta como una persona que busca:
+
+1. Detecta que no puede cubrir la necesidad con lo que sabe ni con su corpus.
+2. **Redacta una pregunta.** No reenvia el material del interlocutor: formula una
+   consulta propia.
+3. La lanza a un buscador y recibe candidatos: sitios donde PODRIA estar.
+4. **Abre y lee**, y busca DENTRO del contenido las referencias que queria.
+5. Se queda con esas referencias, no con la pagina.
+
+**La linea que gobierna esto, reconciliada el 2026-08-21:** lo que sale de la
+maquina es una consulta que el ente REDACTA; no sale el material del
+interlocutor. Consultar no es distribuir. Todo lo demas -modelos, extraccion,
+indice, juicio de relevancia- es local, por directriz explicita del usuario.
+
+### Las dos recuperaciones, que es la sustancia
+
+El paso 4 es lo que separa esta idea de coger el primer resultado y volcarlo.
+Hay DOS recuperaciones, no una:
+
+- **localizar el documento**: la hace el buscador, fuera;
+- **localizar lo relevante dentro del documento**: la hace el ente, dentro, con
+  la maquinaria de similitud que ya existe.
+
+La segunda es local y es donde aplican el suelo (D1/D5) y el presupuesto de
+composicion. Sobre el suelo: la web NO tiene gate de dominio, asi que cae de
+lleno en el regimen ESTRICTO de D5, y en su version extrema.
+
+Forma frugal, coherente con la tesis de hardware del ente: primero SIMILITUD
+-trocea la pagina y descarta barato, sin inferencia-, y solo despues el modelo,
+que lee unicamente lo que sobrevive.
+
+### Piezas y su cajon
+
+- **Leer dentro del documento** no es un dominio: no es una materia y no tiene
+  corpus (el corpus es la pagina traida, y se descarta). Es un tercer MODELO DE
+  APOYO de la capa, hermano de los de ADR 0006 (embeddings y extraccion),
+  configurable por instalacion. El dominio de la MATERIA sigue sirviendo para
+  juzgar relevancia, pero como refinamiento, no como mecanismo.
+- **El buscador va detras de un puerto**, con su adaptador, como el almacen y los
+  modelos de apoyo. Configurable por instalacion y sustituible sin tocar codigo:
+  no es trabajo extra, es la forma que la capa ya usa. Necesario ademas porque
+  los proveedores limitan y bloquean.
+- **Extraccion de texto**: hay herramienta madura y local para esto y no hay que
+  escribirla (`trafilatura`, Apache-2.0, sin navegador). Solo haria falta un
+  navegador headless si se demuestra por medida que las paginas de interes
+  montan el texto con JavaScript.
+
+### El disparador: un hecho, no un juicio
+
+Cuando salir a investigar NO se decide clasificando la pregunta -eso es juicio, y
+el juicio no vive aqui-. Se decide por **fracaso observado**: las fuentes locales
+no devolvieron nada. Es un hecho, es barato y ya esta instrumentado ("cero
+resultados es valido" desde D1; la telemetria emite `k_returned`).
+
+Limite declarado: "no devolvio nada" no es el unico fracaso. El corpus puede
+devolver algo irrelevante, o el modelo responder mal con aplomo. Como PRIMER
+disparador es limpio y falsable; los demas, si hacen falta, despues.
+
+### Lo que bloquea, y por donde se desbloquea
+
+Investigar exige **iterar**: buscar, leer, comprobar si sirve, y si no, reformular
+y volver a buscar. Eso choca de frente con un coste ya declarado en la Fase 7b:
+un plan suministrado NO se puede re-planificar, y es `--no-enrich` lo que
+conserva la re-planificacion. Hoy, por tanto, **enriquecer y re-planificar son
+mutuamente excluyentes**, y una investigacion necesita las dos a la vez.
+
+El camino de desbloqueo no es local: pasa por pedirselo al core por el canal CR,
+igual que CR-0001 pidio un checkpoint y volvio como `task.plan` (core ADR 0040).
+
+### Que queda fuera de esta capa
+
+**Quien decide que el ente salga a investigar, y quien orquesta el bucle**, no es
+de extended. Tiene la misma forma que la seleccion de capacidad (ver "Fuera de
+este plan"): una funcion sin dueno. Registrada en
+`ia_nest_meta/docs/CAPAS_FUTURAS.md`, que es su hogar, y no se duplica aqui.
 
 ## Fase 7: Interfaz y contrato publico de la capa
 
@@ -376,14 +461,36 @@ de modo que el umbral vigente pierde una consulta legitima para no admitir una
 formula de cortesia. El disparador de esta deuda se ha cumplido y deja de ser un
 riesgo declarado.
 
-Propuesta de diseno, a reconciliar: **dos regimenes en vez de uno**. Todas las
-sondas de ruido se hacen SIN dominio y todas las relevantes CON dominio, asi que
-el umbral esta mezclando dos situaciones distintas:
+**REMEDIDO el 2026-08-21 en las cuatro combinaciones de relevancia y dominio**
+(19 corpus, 57 chunks, embebedor `bge-m3`; tablas en `local/lab/`, no
+versionadas). La medida del 08-19 solo cubria dos esquinas opuestas y por eso
+apuntalaba una causa equivocada:
 
-- con dominio, el gate de conocimiento ya ha reducido los candidatos a un corpus
-  confirmado, y el suelo puede ser laxo;
-- sin dominio, se busca contra todos los corpus a la vez y ahi es donde aparece el
-  mejor-match espurio, de modo que el suelo debe ser estricto.
+    relevante CON dominio  0.327-0.783 (n=17)   relevante SIN dominio  0.430-0.783 (n=17)
+    ruido     CON dominio  0.310-0.402 (n=8)    ruido     SIN dominio  0.357-0.458 (n=8)
+    cruzado   CON dominio  0.248-0.370 (n=5)
+
+La causa NO es que el umbral mezcle dos poblaciones incomparables. Es mas simple y
+mas dura: **el gate de dominio busca en un subconjunto, asi que la puntuacion con
+dominio es siempre menor o igual que sin dominio para la misma sonda** (verificado
+sonda a sonda, ni un contraejemplo). Un umbral global castiga por tanto a las
+consultas CON dominio, que son las mas fiables, porque el gate les ha quitado de
+la baraja el mejor resultado global.
+
+Diseno reconciliado el 2026-08-21: **dos regimenes en vez de uno**, elegidos por
+el dominio EFECTIVO que llega al almacen. El suelo con dominio puede ser mas bajo
+que el suelo sin dominio.
+
+Lo que el diseno no hace, declarado para no venderlo de mas: **no separa las
+bandas**. El solape sobrevive en los dos regimenes y es peor en el laxo (-0.075)
+que en el estricto (-0.028). Dos regimenes dan dos puntos de operacion mejores que
+uno; no vuelven separable el problema.
+
+Ademas, parte del solape del regimen laxo NO es de umbral: los tres aciertos mas
+bajos con dominio (`codigo` 0.327, `educacion` 0.392, `matematicas` 0.411) son
+corpus de uno o pocos chunks que no contienen la respuesta. Sin ellos la banda
+arranca en 0.464. Eso es **deuda de corpus**, y devolver cero es ahi el
+comportamiento correcto.
 
 Alternativas descartables si esa no basta: umbral por dominio, o umbral relativo
 al mejor resultado de cada consulta en vez de absoluto.

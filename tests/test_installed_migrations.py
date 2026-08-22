@@ -83,13 +83,14 @@ def test_wheel_install_contains_reachable_migrations(tmp_path):
             (
                 "import json, ianest_extended; "
                 "from ianest_extended.adapters.postgres import "
-                "_default_migration_path as memory; "
+                "_default_migration_path as memory, "
+                "_default_stated_by_migration_path as stated_by; "
                 "from ianest_extended.adapters.rag_postgres import "
                 "_default_migration_path as rag, "
                 "_default_domain_migration_path as domains; "
                 "print(json.dumps({'package': ianest_extended.__file__, "
                 "'sql': [resource().read_text(encoding='ascii') "
-                "for resource in (memory, rag, domains)]}))"
+                "for resource in (memory, rag, domains, stated_by)]}))"
             ),
         ],
         cwd=tmp_path,

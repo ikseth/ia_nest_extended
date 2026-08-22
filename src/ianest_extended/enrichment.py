@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import time
+import unicodedata
 from dataclasses import dataclass, field, replace
 from typing import Any
 from uuid import uuid4
@@ -19,6 +21,7 @@ from .models import (
     RagChunk,
     RecallItem,
     RecallQuery,
+    StatedBy,
 )
 from .ports import MemoryStore, RagStore
 from .telemetry import TelemetryWriter
@@ -32,6 +35,29 @@ SEMANTIC_NAMESPACES = ("facts", "preferences")
 EPISODIC_NAMESPACES = ("facts", "tasks", "preferences")
 CONTEXT_WRAPPER_CHARS = len("<enrichment_context>\n\n</enrichment_context>\n\n")
 _CORE_RESULT_TRACE = object()
+
+# Anclaje lexico de la atribucion (ADR 0013). Numeros de arranque: el lab es el
+# banco de finetuning, como el resto de umbrales de la politica de write-back.
+ANCHOR_MIN_TOKEN_LEN = 4
+ANCHOR_MIN_OVERLAP = 0.5
+
+# Como se presenta la procedencia en el contexto inyectado. Un candidato del
+# modelo deja de ser indistinguible de un hecho que dijo el interlocutor.
+STATED_BY_LABELS = {
+    StatedBy.USER: "fuente: usuario",
+    StatedBy.MODEL: "fuente: modelo, sin verificar",
+    StatedBy.UNKNOWN: "fuente: no registrada",
+}
+
+# Lo que el mecanismo SABE es que el usuario dijo algo muy proximo, no que esto
+# sea falso: la separacion medida entre contradecir y compartir tema es de
+# centesimas (local/lab, 2026-08-22), asi que la etiqueta no puede afirmar mas
+# de la cuenta. Dice donde mirar; no dicta el veredicto.
+CONTRADICTED_LABEL = "hay una version del usuario sobre esto"
+
+# Penalizacion al recortar por presupuesto: basta con que caiga por detras de
+# cualquier hermano no contradicho, no con anularlo.
+CONTRADICTED_RELEVANCE_PENALTY = 1.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -555,6 +581,9 @@ class MemoryEnricher:
             "items_written": 0,
             "items_reinforced": 0,
             "items_discarded": 0,
+            "items_unattributed": 0,
+            "items_contradicted": 0,
+            "items_unconverged": 0,
             "invalid_json": 0,
         }
         common = {
@@ -563,12 +592,17 @@ class MemoryEnricher:
             "domain_tag": identity.domain_tag,
             "source_trace_id": source_trace_id,
         }
-        for content in (prompt, core_result.response):
+        turns = (
+            (prompt, StatedBy.USER),
+            (core_result.response, StatedBy.MODEL),
+        )
+        for content, stated_by in turns:
             self._store.write(
                 Principal.EXTENDED,
                 EngramWrite(
                     type_name="dialog",
                     content=content,
+                    stated_by=stated_by,
                     **common,
                 ),
             )
@@ -587,7 +621,12 @@ class MemoryEnricher:
             return counters, "invalid_extraction_json"
 
         counters["items_extracted"] = len(items)
-        for item in items:
+        source_texts = {
+            StatedBy.USER: prompt,
+            StatedBy.MODEL: core_result.response,
+        }
+        converged = _downstream_converged(core_result.payload)
+        for claimed, item in items:
             parsed = _validate_item(item)
             if (
                 parsed is None
@@ -595,6 +634,20 @@ class MemoryEnricher:
             ):
                 counters["items_discarded"] += 1
                 continue
+            # Si el core corto sin aceptar su respuesta, lo que salio de ella no
+            # entra en la memoria. Lo que dijo el interlocutor si: su turno no
+            # depende de que la tarea convergiera.
+            if not converged and claimed is not StatedBy.USER:
+                counters["items_unconverged"] += 1
+                continue
+            stated_by = claimed
+            if claimed is not StatedBy.UNKNOWN and not _is_anchored(
+                parsed["content"],
+                source_texts[claimed],
+            ):
+                stated_by = StatedBy.UNKNOWN
+            if stated_by is StatedBy.UNKNOWN:
+                counters["items_unattributed"] += 1
             existing = self._store.find_similar(
                 user_id=identity.user_id or "",
                 namespace=parsed["namespace"],
@@ -605,7 +658,7 @@ class MemoryEnricher:
                 self._store.reinforce(Principal.EXTENDED, existing.id)
                 counters["items_reinforced"] += 1
                 continue
-            self._store.write(
+            written = self._store.write(
                 Principal.EXTENDED,
                 EngramWrite(
                     type_name="episodic",
@@ -613,10 +666,19 @@ class MemoryEnricher:
                     namespace=parsed["namespace"],
                     score=parsed["confidence"],
                     unresolved_mentions=parsed["mentions"],
+                    stated_by=stated_by,
                     **common,
                 ),
             )
             counters["items_written"] += 1
+            if stated_by is StatedBy.USER:
+                contradicted = self._store.record_contradiction(
+                    Principal.EXTENDED,
+                    stated_by_user=written,
+                    conflict_threshold=self._config.conflict_threshold,
+                    dedup_threshold=self._config.dedup_threshold,
+                )
+                counters["items_contradicted"] += len(contradicted)
         return counters, "ok"
 
     def write_back(
@@ -655,6 +717,9 @@ class MemoryEnricher:
                     "items_written": 0,
                     "items_reinforced": 0,
                     "items_discarded": 0,
+                    "items_unattributed": 0,
+                    "items_contradicted": 0,
+                    "items_unconverged": 0,
                     "invalid_json": 0,
                 },
                 latency_ms=_latency_ms(started),
@@ -720,9 +785,17 @@ def _lines(
 ) -> list[_ContextLine]:
     result = []
     for item in items:
+        relevance = item.relevance
         if item.engram is not None:
             namespace = item.engram.namespace or "raw"
-            text = f"[{item.type_name}/{namespace}] {item.engram.content}"
+            label = STATED_BY_LABELS[item.engram.stated_by]
+            if item.engram.contradicted:
+                label = f"{label}; {CONTRADICTED_LABEL}"
+                relevance -= CONTRADICTED_RELEVANCE_PENALTY
+            text = (
+                f"[{item.type_name}/{namespace}] ({label}) "
+                f"{item.engram.content}"
+            )
         elif item.entity is not None:
             text = (
                 f"[{item.type_name}/entities] {item.entity.name}: "
@@ -734,7 +807,7 @@ def _lines(
             _ContextLine(
                 tier=tier,
                 text=text,
-                relevance=item.relevance,
+                relevance=relevance,
                 permanent=permanent,
             )
         )
@@ -835,18 +908,71 @@ def _extraction_prompt(user_prompt: str, assistant_response: str) -> str:
     return (
         "Extract only literal, durable information stated in the conversation. "
         "Do not infer motives, identity, personality, or unstated facts. "
+        "Put each item in the list matching WHERE it was stated: from_user for "
+        "what the user stated, from_assistant for what the assistant stated. "
+        "Never move an item from one list to the other. "
+        # Sin esto el extractor traduce al ingles lo dicho en espanol, y
+        # entonces el anclaje lexico no reconoce su propio bloque y la
+        # atribucion se pierde. Medido en laboratorio (2026-08-22).
+        "Write each item content in the SAME LANGUAGE it was stated in; "
+        "never translate it. "
         "For each item, namespace must be exactly one of facts, preferences, "
         "or tasks. Confidence must express the actual certainty from 0 to 1. "
         "Smalltalk must produce zero items. Return only one JSON object, with "
         "no markdown fences or text outside the JSON. Example for durable "
-        'information: {"items":[{"namespace":"preferences","content":'
-        '"mi color favorito es el verde","confidence":0.9,'
-        '"mentions":[]}]}. Example for smalltalk: {"items":[]}.\n\n'
+        'information: {"from_user":[{"namespace":"preferences","content":'
+        '"mi color favorito es el verde","confidence":0.9,"mentions":[]}],'
+        '"from_assistant":[]}. Example for smalltalk: '
+        '{"from_user":[],"from_assistant":[]}.\n\n'
         f"USER:\n{user_prompt}\n\nASSISTANT:\n{assistant_response}"
     )
 
 
-def _parse_extraction(response: str) -> list[dict[str, Any]]:
+def _downstream_converged(payload: dict[str, Any]) -> bool:
+    """El core dio por buena su propia respuesta?
+
+    `task.run` publica `stop_reason`, y un valor distinto de `task_done` dice
+    que la tarea se corto sin que su evaluador aceptara el resultado. Ese dato
+    ya viaja en la respuesta: no hace falta pedirselo al core, hace falta
+    leerlo. Las capacidades que no lo declaran (`prompt.run`) devuelven `None`,
+    y entonces no hay informacion en contra.
+    """
+    stop_reason = payload.get("stop_reason")
+    return stop_reason is None or stop_reason == "task_done"
+
+
+def _normalize_tokens(text: str) -> set[str]:
+    stripped = unicodedata.normalize("NFKD", text.casefold())
+    stripped = "".join(ch for ch in stripped if not unicodedata.combining(ch))
+    return {
+        token
+        for token in re.split(r"[^a-z0-9]+", stripped)
+        if len(token) >= ANCHOR_MIN_TOKEN_LEN
+    }
+
+
+def _is_anchored(content: str, source_text: str) -> bool:
+    """Comprueba que el item procede del bloque al que se le atribuye.
+
+    La procedencia es la garantia que el ADR 0013 construye, asi que no puede
+    descansar en que acierte el mismo modelo cuya falibilidad la motiva. Esta
+    es la verificacion mecanica: sin lexico compartido con el bloque, la
+    atribucion no se acepta y el item cae a `unknown`.
+    """
+    tokens = _normalize_tokens(content)
+    if not tokens:
+        return False
+    shared = tokens & _normalize_tokens(source_text)
+    return len(shared) / len(tokens) >= ANCHOR_MIN_OVERLAP
+
+
+def _parse_extraction(response: str) -> list[tuple[StatedBy, Any]]:
+    """Devuelve los items con el emisor que declara la extraccion.
+
+    Tolera el formato antiguo de una sola lista `items`: entonces el emisor no
+    consta y los items salen como `unknown`. No se les atribuye procedencia por
+    conveniencia (ADR 0013).
+    """
     cleaned = response.replace("```json", "").replace("```JSON", "")
     cleaned = cleaned.replace("```", "")
     decoder = json.JSONDecoder()
@@ -871,9 +997,20 @@ def _parse_extraction(response: str) -> list[dict[str, Any]]:
             cleaned,
             0,
         )
-    if not isinstance(data, dict) or not isinstance(data.get("items"), list):
-        raise ValueError("la extraccion no contiene items")
-    return data["items"]
+    buckets = (
+        (StatedBy.USER, data.get("from_user")),
+        (StatedBy.MODEL, data.get("from_assistant")),
+    )
+    if any(isinstance(items, list) for _, items in buckets):
+        return [
+            (stated_by, item)
+            for stated_by, items in buckets
+            if isinstance(items, list)
+            for item in items
+        ]
+    if isinstance(data.get("items"), list):
+        return [(StatedBy.UNKNOWN, item) for item in data["items"]]
+    raise ValueError("la extraccion no contiene items")
 
 
 def _validate_item(item: Any) -> dict[str, Any] | None:

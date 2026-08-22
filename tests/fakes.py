@@ -8,7 +8,17 @@ from ianest_extended import (
     MemoryIdentity,
     RecallItem,
     SchemaMigrationRequiredError,
+    StatedBy,
 )
+
+
+def _word_overlap(left: str, right: str) -> float:
+    left_words = set(left.casefold().split())
+    right_words = set(right.casefold().split())
+    if not left_words or not right_words:
+        return 0.0
+    union = left_words | right_words
+    return len(left_words & right_words) / len(union)
 
 
 class InMemoryStore:
@@ -41,6 +51,7 @@ class InMemoryStore:
             version=1,
             created_at=datetime.now(UTC),
             last_reinforced_at=None,
+            stated_by=request.stated_by,
         )
         self.engrams.append(engram)
         return engram
@@ -87,6 +98,37 @@ class InMemoryStore:
             ),
             None,
         )
+
+    def record_contradiction(
+        self,
+        principal,
+        *,
+        stated_by_user,
+        conflict_threshold,
+        dedup_threshold,
+    ):
+        """Sin pgvector, la banda se aproxima por solapamiento de palabras."""
+        marked = []
+        for index, engram in enumerate(self.engrams):
+            if (
+                engram.id == stated_by_user.id
+                or engram.stated_by != StatedBy.MODEL
+            ):
+                continue
+            if (
+                engram.type_name != stated_by_user.type_name
+                or engram.user_id != stated_by_user.user_id
+                or engram.namespace != stated_by_user.namespace
+                or engram.status != EngramStatus.ACTIVE
+            ):
+                continue
+            similarity = _word_overlap(engram.content, stated_by_user.content)
+            if conflict_threshold <= similarity < dedup_threshold:
+                # El estado NO cambia: solo se anota (ADR 0013).
+                annotated = replace(engram, contradicted=True)
+                self.engrams[index] = annotated
+                marked.append(annotated)
+        return tuple(marked)
 
     def reinforce(self, principal, engram_id):
         for index, engram in enumerate(self.engrams):
