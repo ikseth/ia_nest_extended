@@ -6,7 +6,7 @@ Sin acentos por convencion.
 ## [No publicado]
 
 ### Anadido
-- `docs/PUERTA_LABORATORIO.md`, en estado `propuesta`: la puerta de
+- `docs/PUERTA_LABORATORIO.md`, reconciliado el 2026-09-12: la puerta de
   laboratorio de esta capa, que aplica meta ADR 0010. Certifica un despliegue
   NATURAL (instaladores, un tag de cada uno y ficheros de parametros declarados,
   sin pasos a mano) por la superficie REST, y separa fallo de codigo de ajuste
@@ -29,6 +29,12 @@ Sin acentos por convencion.
   "la fase permanece abierta hasta su verificacion en maquina real" ya no era
   cierto al publicarla. La Fase 8 se cerro el 2026-08-21 al instalar en una
   maquina limpia (`docs/PLAN.md`), un dia antes del tag.
+- Los documentos versionados dejan de nombrar maquinas concretas del
+  laboratorio del operador: el PLAN y un brief de la fase 7b decian `rocinante`
+  y `pitufo`. Lo medido y su fecha se conservan enteros; lo que desaparece es
+  el nombre propio, que es estado de una red particular y no decision de la
+  capa. Repo publico, y la regla ya vigente: la decision y su razon en git, el
+  estado de una maquina en `local/`.
 - Impacto de version: ninguno, solo documentacion.
 
 ## [0.2.0] - 2026-08-22

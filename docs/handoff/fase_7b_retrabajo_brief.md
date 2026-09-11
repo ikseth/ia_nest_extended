@@ -19,7 +19,8 @@ por igual a todas las capacidades. Ese modelo se fijo en la fase 7a, cuando
 
 Desde la linea v0.4 del core, `task.run` es una llamada JSON BLOQUEANTE: no
 emite nada hasta terminar, y la orquestacion tarda entre 30 y 90 segundos, con
-picos observados de ~150 s. La consecuencia, medida en pitufo el 2026-08-18:
+picos observados de ~150 s. La consecuencia, medida en laboratorio el
+2026-08-18:
 
     CoreConnectionError: no se pudo conectar con http://127.0.0.1:8000/task/run:
     timed out
@@ -51,7 +52,7 @@ En el camino de `prompt.run`, el evento `rag.retrieve` rellena
 `details.domain` y `details.corpora`. En el camino de tarea no: se ve
 `k_returned` pero no de que dominio ni de que corpus salio el chunk.
 
-Comprobado en la telemetria de pitufo: cuatro eventos `rag.retrieve` con
+Comprobado en la telemetria del laboratorio: cuatro eventos `rag.retrieve` con
 `domain=None` y `corpora=None`.
 
 Eso deja sin traza precisamente lo que la fase 7b promete -que cada subtarea
