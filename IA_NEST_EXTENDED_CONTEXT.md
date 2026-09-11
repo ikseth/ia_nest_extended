@@ -1,7 +1,7 @@
 # IA_NEST Extended - Contexto
 
-Estado: semilla
-Version: 0.0 - 2026-07-17
+Estado: activo
+Version: 0.1 - 2026-09-11
 
 ## Que es
 
@@ -26,7 +26,8 @@ es la CLAVE con la que esta capa indexa su memoria (core ADR 0031/0035;
 
 ## Relacion con el ente
 
-- Depende del core (`ia_nest_core >=0.2 <0.3`, ver `docs/DEPENDENCIAS.md`).
+- Depende del core, en el rango que declara `docs/DEPENDENCIAS.md` (fuente de
+  verdad; el numero no se copia aqui).
 - Es dependencia de conscience (memoria de comportamiento) y de la GUI.
 - No absorbe logica del core; no actua sobre sistemas externos (eso es
   `tool_contracts`/`external_*`, no enriquecimiento).

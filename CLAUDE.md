@@ -5,7 +5,8 @@ Sigue el orden de lectura y las reglas de `AGENTS.md` (compartidas con Codex).
 Puntos clave de esta capa:
 
 - Enriquecimiento EN LA CAPA (via 2): esta capa envuelve al core, no lo toca.
-- Depende de `ia_nest_core >=0.2 <0.3` (manifiesto: `docs/DEPENDENCIAS.md`). La
+- Depende de `ia_nest_core` en el rango que declara su manifiesto,
+  `docs/DEPENDENCIAS.md` (fuente de verdad; el numero no se copia aqui). La
   costura con el core vive en el repo del core (`docs/FRONTERAS.md`,
   ADR 0031-0037); el registro de capas del ente, en `ia_nest_meta`.
 - SemVer y `CHANGELOG.md` para todo lo que toque contrato publico; no cortes
