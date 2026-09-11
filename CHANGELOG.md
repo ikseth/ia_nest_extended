@@ -5,6 +5,17 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+### Anadido
+- `docs/PUERTA_LABORATORIO.md`, en estado `propuesta`: la puerta de
+  laboratorio de esta capa, que aplica meta ADR 0010. Certifica un despliegue
+  NATURAL (instaladores, un tag de cada uno y ficheros de parametros declarados,
+  sin pasos a mano) por la superficie REST, y separa fallo de codigo de ajuste
+  de configuracion con una sola pregunta: se arregla cambiando un valor de esos
+  ficheros, o no. Oraculo externo por testigos fijados antes de medir; dos
+  agentes independientes. Su linea L4b -la autocorreccion del interlocutor, que
+  el ADR 0013 no cubre- es el brazo sin sintesis de la Fase 9 y no bloquea la
+  puerta. Se escribe ANTES de medir. Impacto de version: ninguno.
+
 ### Corregido
 - Higiene documental: cinco sitios decian un estado que ya no era verdad.
   `CLAUDE.md` e `IA_NEST_EXTENDED_CONTEXT.md` copiaban el rango del core
