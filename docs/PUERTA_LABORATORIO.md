@@ -1,7 +1,7 @@
 # Puerta de laboratorio de ia_nest_extended
 
-Estado: propuesta (2026-09-11), a reconciliar. Declarada ANTES de medir.
-Version: 0.1 - 2026-09-11
+Estado: reconciliado 2026-09-12. Declarado ANTES de medir.
+Version: 1.0 - 2026-09-12
 
 Aplica `ia_nest_meta` ADR 0010 (regla de la puerta de laboratorio): la regla
 dice que la puerta existe y que forma tiene; este documento fija el
@@ -81,8 +81,14 @@ construido.
 
 - Script `tools/lab/puerta.py`, solo biblioteca estandar, contra la REST de la
   capa. Codigo de salida: 0 PASA, 1 NO PASA, 2 NULA.
-- Dos agentes independientes lo ejecutan por separado. La discrepancia entre las
-  dos pasadas no es ruido: es el hallazgo.
+- **Dos agentes independientes lo ejecutan por separado, y la discrepancia entre
+  las dos pasadas no es ruido: es el hallazgo.** Independiente significa dos
+  ejecutores distintos sobre la MISMA maquina y la misma instalacion -por
+  ejemplo el agente disenador y el agente codificador, o un agente y el
+  operador-, no dos laboratorios ni dos despliegues. Lo que se busca es lo que
+  un solo ejecutor no ve: una puerta que solo pasa cuando la conduce quien la
+  escribio, un paso a mano que el autor da sin darse cuenta, o un resultado
+  leido como el autor esperaba leerlo.
 - La evidencia de cada pasada (huellas, respuestas, veredicto por linea) va a
   `local/lab/`.
 - L5 y L5r dependen de poder declarar N corpus en el instalador. Hasta entonces
@@ -101,8 +107,8 @@ construido.
   falso NO PASA ante una parafrasis ("dos dias despues del martes"); por eso
   cada respuesta queda en la evidencia y la cruzan dos agentes.
 
-## Pendiente de reconciliar
+## Reconciliado el 2026-09-12
 
-1. Si L4b queda como medida no excluyente (propuesta) o como linea que bloquea.
-2. La regla n = 3 con 3 de 3.
-3. Si L5 entra en esta puerta o espera al instalador con N corpus.
+Los tres puntos que quedaban abiertos se cierran tal como estaban propuestos:
+L4b mide y no bloquea; una linea pasa con 3 de 3; y L5 y L5r esperan al
+instalador con N corpus, hasta entonces NO EJECUTABLES y nunca PASA.
