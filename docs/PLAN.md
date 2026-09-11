@@ -327,8 +327,8 @@ por los tres consumos de arriba.
 
 ## Fase 8: Despliegue reproducible de la capa
 
-Estado: CERRADA (verificada el 2026-08-21 instalando en una maquina limpia,
-`rocinante`, desde el snapshot de sistema operativo: un solo comando con su
+Estado: CERRADA (verificada el 2026-08-21 instalando en una maquina limpia del
+laboratorio, desde su snapshot de sistema operativo: un solo comando con su
 fichero de parametros dejo la capa utilizable por un operador desde su
 directorio personal, sin activar venv).
 
