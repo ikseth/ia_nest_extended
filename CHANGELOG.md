@@ -15,6 +15,17 @@ Sin acentos por convencion.
   agentes independientes. Su linea L4b -la autocorreccion del interlocutor, que
   el ADR 0013 no cubre- es el brazo sin sintesis de la Fase 9 y no bloquea la
   puerta. Se escribe ANTES de medir. Impacto de version: ninguno.
+- Dos briefs de implementacion para el agente codificador.
+  `docs/handoff/instalador_n_corpus_brief.md`: el instalador ingiere N corpus
+  desde un manifiesto declarativo (`CORPUS_MANIFEST`, excluyente con la terna
+  actual, que no se retira; rutas relativas al manifiesto; validacion completa
+  antes de la primera ingesta). Hoy solo admite UN corpus con un juego de
+  dominios, asi que un laboratorio con muchos no se puede desplegar por el
+  instalador y el corpus acaba entrando a mano, lo que invalida la puerta.
+  `docs/handoff/puerta_script_brief.md`: `tools/lab/puerta.py`, solo biblioteca
+  estandar, que ejecuta la puerta contra la REST y devuelve 0 PASA, 1 NO PASA y
+  2 NULA, con testigos fijados en codigo como oraculo. Impacto de version:
+  ninguno.
 
 ### Corregido
 - Higiene documental: cinco sitios decian un estado que ya no era verdad.
