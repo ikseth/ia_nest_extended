@@ -3,6 +3,23 @@
 Formato basado en Keep a Changelog; SemVer (ver core `docs/VERSIONADO.md`).
 Sin acentos por convencion.
 
+## [No publicado]
+
+### Corregido
+- Higiene documental: cinco sitios decian un estado que ya no era verdad.
+  `CLAUDE.md` e `IA_NEST_EXTENDED_CONTEXT.md` copiaban el rango del core
+  (`>=0.2 <0.3`, dos rangos por detras del real); ahora remiten a
+  `docs/DEPENDENCIAS.md` sin copiar el numero, que es lo que dejo derivar las
+  copias (hogar unico, meta ADR 0008). `IA_NEST_EXTENDED_CONTEXT.md` deja de
+  declararse "semilla". `docs/PLAN.md` retira "v0.1.0 publicada" de su cabecera
+  -la version la dicen el CHANGELOG y los tags- y las tres menciones a un core
+  v0.4 "sin tag", que se re-verifico en vivo contra `v0.4.0` el 2026-08-20.
+- Nota a la entrada `[0.2.0]`, que no se reescribe por estar publicada: su
+  "la fase permanece abierta hasta su verificacion en maquina real" ya no era
+  cierto al publicarla. La Fase 8 se cerro el 2026-08-21 al instalar en una
+  maquina limpia (`docs/PLAN.md`), un dia antes del tag.
+- Impacto de version: ninguno, solo documentacion.
+
 ## [0.2.0] - 2026-08-22
 
 ### Anadido

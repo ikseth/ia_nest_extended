@@ -1,9 +1,10 @@
 # Plan de ia_nest_extended
 
-Estado: fases 0-5c, 7 y 8 completas, con v0.1.0 publicada; fase 6 APARCADA
-(2026-08-21, con su motivo y su diseno escritos en ella); fase 9 ABIERTA
-(2026-08-22), pendiente de reconciliar su criterio
-Version: 0.2 - 2026-08-22
+Estado: fases 0-5c, 7 y 8 completas; fase 6 APARCADA (2026-08-21, con su
+motivo y su diseno escritos en ella); fase 9 ABIERTA (2026-08-22), pendiente de
+reconciliar su criterio. La version publicada de la capa no se anota aqui: la
+dicen `CHANGELOG.md` y los tags.
+Version: 0.3 - 2026-09-11
 
 Misma disciplina que el core: fases con criterio de salida falsable; no se abre
 una fase sin validar la anterior; diseno y prueba de aceptacion antes de
@@ -105,8 +106,8 @@ memorias estrictas.
 CR-0001 RESUELTO (core ADR 0040, REFORMULADO): en vez de un checkpoint, la forma
 adoptada es `task.plan` (devuelve el plan con el dominio de cada subtarea) +
 `task.run` que acepta un `plan` enriquecido entre las dos llamadas. Impacto en el
-core: minor, linea v0.4 completa en `main` (`705941e`) pero aun SIN tag; la
-dependencia declarada no se mueve hasta que exista v0.4.0.
+core: minor, entregado en su tag v0.4.0; el rango que esta capa declara lo
+recoge `docs/DEPENDENCIAS.md`.
 
 Estado de los dos caminos:
 
@@ -114,7 +115,8 @@ Estado de los dos caminos:
   (ingesta, troceo, embedding, almacen, recuperacion por dominio) es agnostico de
   la version del core; la integracion usa el `prompt.run` estable. Se construye ya.
 - RAG per-subtarea (`task.run`): IMPLEMENTADO en la Fase 7b contra el `main` de
-  la linea v0.4 del core; `docs/DEPENDENCIAS.md` espera al tag v0.4.0.
+  la linea v0.4 del core, y re-verificado en vivo contra su tag v0.4.0
+  (`docs/DEPENDENCIAS.md`).
 
 RAG no es un tier de memoria: es un subsistema hermano que comparte el mecanismo
 de inyeccion y su presupuesto, no el modelo (`docs/VISION_MEMORIA.md`). Forma
@@ -309,7 +311,8 @@ Coste declarado: el plan suministrado no puede re-planificarse; `--no-enrich`
 conserva el camino sin plan y su capacidad de re-planificacion. `task.stream`
 sigue reenviado sin enriquecer porque el core no admite plan suministrado en esa
 capacidad. Implementado contra el `main` de la linea v0.4 del core (`705941e`),
-aun sin tag; el rango de `docs/DEPENDENCIAS.md` espera a v0.4.0.
+antes de su tag, y re-verificado en vivo contra el tag v0.4.0
+(`docs/DEPENDENCIAS.md`).
 
 ### Fase 7c: REST y MCP
 
