@@ -3,6 +3,22 @@
 Formato basado en Keep a Changelog; SemVer (ver core `docs/VERSIONADO.md`).
 Sin acentos por convencion.
 
+## [No publicado]
+
+### Cambiado
+- **Criterio de salida de la Fase 9, RECONCILIADO** (2026-09-12). Deja de ser
+  una propuesta: se mide sobre un despliegue natural con la puerta de
+  laboratorio y sus reglas -dos ejecutores, evidencia guardada, lo no cubierto
+  declarado-, y la sintesis se conmuta por configuracion, que desde la v0.2.2
+  viaja por el fichero de parametros. Cuatro lineas bloquean: coherencia
+  (>= 8 de 9 con sintesis y una diferencia >= 5 sobre el brazo sin ella, con
+  n = 9 por brazo, porque con n = 3 la misma linea dio 0/3, 1/3 y 3/3 sin que el
+  producto cambiara), anclaje verificable por consulta, coste en tokens, y **no
+  promocion a `semantic`**, que sale de la enmienda "recordar no es sostener un
+  hilo" y es lo que impide que un resumen alucinado se vuelva memoria duradera.
+  La linea base del brazo sin sintesis ya esta medida y no se vuelve a discutir:
+  2 aciertos de 15. Impacto de version: ninguno.
+
 ## [0.2.3] - 2026-09-12
 
 ### Anadido
