@@ -4,6 +4,8 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SETUP = ROOT / "deploy" / "setup.sh"
@@ -44,6 +46,15 @@ def _deployment(
         venv_bin / "ianest-extended",
         "#!/usr/bin/env bash\n"
         "printf '%s\\n' \"$*\" >> \"$FAKE_CALL_LOG\"\n"
+        "if [[ $* == *'knowledge '* ]]; then\n"
+        "  grep -Fqx -- \"$*\" \"$FAKE_STATE_LOG\" 2>/dev/null || "
+        "printf '%s\\n' \"$*\" >> \"$FAKE_STATE_LOG\"\n"
+        "fi\n"
+        "if [[ -n ${FAKE_FAIL_CORPUS:-} && "
+        "\"$*\" == *\"knowledge ingest --corpus ${FAKE_FAIL_CORPUS} \"* ]]; then\n"
+        "  echo \"simulated ingest failure for ${FAKE_FAIL_CORPUS}\" >&2\n"
+        "  exit 31\n"
+        "fi\n"
         "if [[ \"$*\" == *'runtime migrate'* ]]; then " + failure + "; fi\n"
         "exit 0\n",
     )
@@ -97,8 +108,29 @@ def _deployment(
         "IANEST_BIN_DIR": str(bin_dir),
         "IANEST_SYSTEMD_DIR": str(systemd_dir),
         "FAKE_CALL_LOG": str(log_path),
+        "FAKE_STATE_LOG": str(tmp_path / "fake-state.log"),
     }
     return config, env, install_root, bin_dir, log_path
+
+
+def _use_manifest(config: Path, manifest: Path) -> None:
+    lines = [
+        line
+        for line in config.read_text(encoding="ascii").splitlines()
+        if not line.startswith(("CORPUS_PATH=", "CORPUS_NAME=", "CORPUS_DOMAINS="))
+    ]
+    lines.append(f"CORPUS_MANIFEST={manifest}")
+    config.write_text("\n".join(lines) + "\n", encoding="ascii")
+
+
+def _knowledge_calls(log_path: Path) -> list[str]:
+    if not log_path.exists():
+        return []
+    return [
+        line[line.index("knowledge ") :]
+        for line in log_path.read_text(encoding="ascii").splitlines()
+        if "knowledge " in line
+    ]
 
 
 def test_setup_is_valid_bash_and_example_resolves_without_effects():
@@ -152,6 +184,193 @@ def test_remote_store_path_is_idempotent_ingests_text_and_never_calls_runtime(tm
     assert f"--env-file {env_file} memory_type list" in log_path.read_text(
         encoding="ascii"
     )
+
+
+def test_manifest_ingests_n_corpora_in_file_order_with_relative_paths(tmp_path):
+    config, env, _, _, log_path = _deployment(tmp_path)
+    corpus_dir = tmp_path / "portable" / "texts"
+    corpus_dir.mkdir(parents=True)
+    for name in ("linux.txt", "scripting.txt", "domotica.txt"):
+        (corpus_dir / name).write_text(name, encoding="ascii")
+    manifest = tmp_path / "portable" / "corpora.txt"
+    manifest.write_text(
+        "# name | domains | path\n"
+        "linux_docs | linux | texts/linux.txt\n"
+        "scripting_docs | codigo, linux | texts/scripting.txt\n"
+        "domotica_docs | domotica | texts/domotica.txt\n",
+        encoding="ascii",
+    )
+    _use_manifest(config, manifest)
+
+    result = subprocess.run(
+        [str(SETUP), "--config", str(config)], env=env, capture_output=True, text=True
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _knowledge_calls(log_path) == [
+        f"knowledge ingest --corpus linux_docs --domain linux {corpus_dir / 'linux.txt'}",
+        "knowledge confirm --corpus linux_docs --domain linux",
+        f"knowledge ingest --corpus scripting_docs --domain codigo --domain linux {corpus_dir / 'scripting.txt'}",
+        "knowledge confirm --corpus scripting_docs --domain codigo",
+        "knowledge confirm --corpus scripting_docs --domain linux",
+        f"knowledge ingest --corpus domotica_docs --domain domotica {corpus_dir / 'domotica.txt'}",
+        "knowledge confirm --corpus domotica_docs --domain domotica",
+    ]
+
+
+@pytest.mark.parametrize("legacy_key", ["CORPUS_PATH", "CORPUS_NAME", "CORPUS_DOMAINS"])
+def test_manifest_is_exclusive_with_each_legacy_corpus_key(tmp_path, legacy_key):
+    config, env, _, _, log_path = _deployment(tmp_path)
+    corpus = tmp_path / "only.txt"
+    corpus.write_text("text", encoding="ascii")
+    manifest = tmp_path / "corpora.txt"
+    manifest.write_text(f"one | linux | {corpus}\n", encoding="ascii")
+    lines = config.read_text(encoding="ascii").splitlines()
+    for index, line in enumerate(lines):
+        if line.startswith(("CORPUS_PATH=", "CORPUS_NAME=", "CORPUS_DOMAINS=")):
+            key = line.split("=", 1)[0]
+            lines[index] = f"{key}=" if key != legacy_key else line
+    lines.append(f"CORPUS_MANIFEST={manifest}")
+    config.write_text("\n".join(lines) + "\n", encoding="ascii")
+
+    result = subprocess.run(
+        [str(SETUP), "--config", str(config)], env=env, capture_output=True, text=True
+    )
+
+    assert result.returncode != 0
+    assert "CORPUS_MANIFEST es excluyente" in result.stderr
+    assert _knowledge_calls(log_path) == []
+
+
+def test_no_corpus_configuration_preserves_no_ingestion_behavior(tmp_path):
+    config, env, _, _, log_path = _deployment(tmp_path)
+    lines = [
+        line
+        for line in config.read_text(encoding="ascii").splitlines()
+        if not line.startswith(("CORPUS_PATH=", "CORPUS_NAME=", "CORPUS_DOMAINS="))
+    ]
+    config.write_text("\n".join(lines) + "\n", encoding="ascii")
+
+    result = subprocess.run(
+        [str(SETUP), "--config", str(config)], env=env, capture_output=True, text=True
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _knowledge_calls(log_path) == []
+
+
+def test_manifest_is_fully_validated_before_first_ingestion(tmp_path):
+    config, env, _, _, log_path = _deployment(tmp_path)
+    corpus = tmp_path / "valid.txt"
+    corpus.write_text("text", encoding="ascii")
+    manifest = tmp_path / "corpora.txt"
+    manifest.write_text(
+        f"valid | linux | {corpus}\ninvalid | only-two-fields\n",
+        encoding="ascii",
+    )
+    _use_manifest(config, manifest)
+
+    result = subprocess.run(
+        [str(SETUP), "--config", str(config)], env=env, capture_output=True, text=True
+    )
+
+    assert result.returncode != 0
+    assert f"{manifest}:2: se esperaban tres campos" in result.stderr
+    assert _knowledge_calls(log_path) == []
+
+
+def test_manifest_rejects_duplicate_corpus_name_before_ingestion(tmp_path):
+    config, env, _, _, log_path = _deployment(tmp_path)
+    corpus = tmp_path / "valid.txt"
+    corpus.write_text("text", encoding="ascii")
+    manifest = tmp_path / "corpora.txt"
+    manifest.write_text(
+        f"same | linux | {corpus}\nsame | codigo | {corpus}\n",
+        encoding="ascii",
+    )
+    _use_manifest(config, manifest)
+
+    result = subprocess.run(
+        [str(SETUP), "--config", str(config)], env=env, capture_output=True, text=True
+    )
+
+    assert result.returncode != 0
+    assert "nombre de corpus repetido 'same'" in result.stderr
+    assert _knowledge_calls(log_path) == []
+
+
+def test_manifest_ingestion_failure_names_corpus_and_stops(tmp_path):
+    config, env, _, _, log_path = _deployment(tmp_path)
+    corpus = tmp_path / "valid.txt"
+    corpus.write_text("text", encoding="ascii")
+    manifest = tmp_path / "corpora.txt"
+    manifest.write_text(
+        f"first | linux | {corpus}\nsecond | codigo | {corpus}\nthird | domotica | {corpus}\n",
+        encoding="ascii",
+    )
+    _use_manifest(config, manifest)
+    env["FAKE_FAIL_CORPUS"] = "second"
+
+    result = subprocess.run(
+        [str(SETUP), "--config", str(config)], env=env, capture_output=True, text=True
+    )
+
+    assert result.returncode != 0
+    assert "simulated ingest failure for second" in result.stderr
+    assert "fallo knowledge ingest para el corpus 'second'" in result.stderr
+    calls = _knowledge_calls(log_path)
+    assert any("--corpus first" in call for call in calls)
+    assert any("--corpus second" in call for call in calls)
+    assert not any("--corpus third" in call for call in calls)
+
+
+def test_manifest_repetition_uses_identical_idempotency_keys(tmp_path):
+    config, env, _, _, log_path = _deployment(tmp_path)
+    corpus = tmp_path / "valid.txt"
+    corpus.write_text("text", encoding="ascii")
+    manifest = tmp_path / "corpora.txt"
+    manifest.write_text(
+        f"first | linux | {corpus}\nsecond | codigo,linux | {corpus}\n",
+        encoding="ascii",
+    )
+    _use_manifest(config, manifest)
+
+    first = subprocess.run(
+        [str(SETUP), "--config", str(config)], env=env, capture_output=True, text=True
+    )
+    second = subprocess.run(
+        [str(SETUP), "--config", str(config)], env=env, capture_output=True, text=True
+    )
+
+    assert first.returncode == second.returncode == 0, first.stderr + second.stderr
+    calls = _knowledge_calls(log_path)
+    assert calls[:5] == calls[5:]
+    state = Path(env["FAKE_STATE_LOG"]).read_text(encoding="ascii").splitlines()
+    assert len(state) == len(set(state)) == 5
+
+
+@pytest.mark.parametrize(
+    ("line", "message"),
+    [
+        (" | linux | readable.txt", "nombre de corpus no puede estar vacio"),
+        ("name | , | readable.txt", "contiene un dominio vacio"),
+        ("name | linux | missing.txt", "ruta de corpus no legible"),
+    ],
+)
+def test_manifest_rejects_empty_fields_and_unreadable_paths(tmp_path, line, message):
+    config, env, _, _, log_path = _deployment(tmp_path)
+    (tmp_path / "readable.txt").write_text("text", encoding="ascii")
+    manifest = tmp_path / "corpora.txt"
+    manifest.write_text(line + "\n", encoding="ascii")
+    _use_manifest(config, manifest)
+
+    result = subprocess.run(
+        [str(SETUP), "--config", str(config)], env=env, capture_output=True, text=True
+    )
+
+    assert result.returncode != 0
+    assert message in result.stderr
+    assert _knowledge_calls(log_path) == []
 
 
 def test_existing_configuration_is_preserved_without_replace(tmp_path):

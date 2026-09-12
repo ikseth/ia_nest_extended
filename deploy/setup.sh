@@ -28,7 +28,7 @@ readonly -a CONFIG_KEYS=(
   INSTANCE_NAME STORE_DSN PROVISION_STORE CORE_URL EMBEDDINGS_ENDPOINT
   EMBEDDING_MODEL EMBEDDING_DIMENSION EXTRACTION_MODEL REST_HOST REST_PORT
   MCP_HOST MCP_PORT SERVICE_INSTALL SERVICE_ENABLE VERIFY CORPUS_PATH
-  CORPUS_NAME CORPUS_DOMAINS OPERATOR_USER REPLACE_CONFIG
+  CORPUS_NAME CORPUS_DOMAINS CORPUS_MANIFEST OPERATOR_USER REPLACE_CONFIG
 )
 readonly -a OWN_CAPABILITIES=(
   memory_type.list memory_type.validate memory.recall memory.write
@@ -55,6 +55,7 @@ declare -A VALUES=(
   [CORPUS_PATH]=''
   [CORPUS_NAME]=''
   [CORPUS_DOMAINS]=''
+  [CORPUS_MANIFEST]=''
   [OPERATOR_USER]="${SUDO_USER:-$(id -un)}"
   [REPLACE_CONFIG]=false
 )
@@ -71,6 +72,9 @@ EFFECTIVE_SETUP=''
 VENV_DIR=''
 RUNTIME=''
 declare -a COMPOSE_COMMAND=()
+declare -a MANIFEST_CORPUS_NAMES=()
+declare -a MANIFEST_CORPUS_DOMAINS=()
+declare -a MANIFEST_CORPUS_PATHS=()
 
 usage() {
   sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'
@@ -86,6 +90,7 @@ Overrides:
   --service-install BOOL     --service-enable BOOL
   --verify strict|warn|skip  --corpus-path PATH
   --corpus-name NAME         --corpus-domains D1,D2
+  --corpus-manifest PATH
   --operator-user USER       --replace-config BOOL
 EOF
 }
@@ -126,6 +131,69 @@ require_bool() {
   [[ "$2" == true || "$2" == false ]] || error "$1 debe ser true o false"
 }
 
+trim_whitespace() {
+  local value="$1"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s\n' "$value"
+}
+
+validate_corpus_domains() {
+  local value="$1" source="$2" domain trimmed
+  local -a domains=() normalized=()
+  [[ -n "$value" && "$value" != ,* && "$value" != *, && "$value" != *,,* ]] ||
+    error "$source contiene un dominio vacio"
+  IFS=',' read -r -a domains <<< "$value"
+  for domain in "${domains[@]}"; do
+    trimmed="$(trim_whitespace "$domain")"
+    [[ -n "$trimmed" ]] || error "$source contiene un dominio vacio"
+    normalized+=("$trimmed")
+  done
+  ((${#normalized[@]} > 0)) || error "$source no puede estar vacio"
+  local IFS=','
+  printf '%s\n' "${normalized[*]}"
+}
+
+validate_corpus_manifest() {
+  local manifest="${VALUES[CORPUS_MANIFEST]}" manifest_dir line
+  local name domains corpus_path separators normalized_domains
+  local line_number=0
+  local -A seen_names=()
+
+  MANIFEST_CORPUS_NAMES=()
+  MANIFEST_CORPUS_DOMAINS=()
+  MANIFEST_CORPUS_PATHS=()
+  [[ -r "$manifest" && -f "$manifest" ]] || error "CORPUS_MANIFEST no es un fichero legible: $manifest"
+  manifest_dir="$(cd -- "$(dirname -- "$manifest")" && pwd)" ||
+    error "no se puede resolver el directorio de CORPUS_MANIFEST: $manifest"
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line_number=$((line_number + 1))
+    line="${line%$'\r'}"
+    [[ -z "$(trim_whitespace "$line")" || "$line" == \#* ]] && continue
+    separators="${line//[^|]/}"
+    ((${#separators} == 2)) ||
+      error "$manifest:$line_number: se esperaban tres campos separados por |"
+    IFS='|' read -r name domains corpus_path <<< "$line"
+    name="$(trim_whitespace "$name")"
+    domains="$(trim_whitespace "$domains")"
+    corpus_path="$(trim_whitespace "$corpus_path")"
+    [[ -n "$name" ]] || error "$manifest:$line_number: el nombre de corpus no puede estar vacio"
+    [[ -z "${seen_names[$name]+present}" ]] ||
+      error "$manifest:$line_number: nombre de corpus repetido '$name'"
+    normalized_domains="$(validate_corpus_domains "$domains" "$manifest:$line_number: los dominios")"
+    if [[ "$corpus_path" != /* ]]; then
+      corpus_path="${manifest_dir}/${corpus_path}"
+    fi
+    [[ -r "$corpus_path" ]] ||
+      error "$manifest:$line_number: ruta de corpus no legible para '$name': $corpus_path"
+    seen_names["$name"]=1
+    MANIFEST_CORPUS_NAMES+=("$name")
+    MANIFEST_CORPUS_DOMAINS+=("$normalized_domains")
+    MANIFEST_CORPUS_PATHS+=("$corpus_path")
+  done < "$manifest"
+}
+
 resolve_implicit_values() {
   if [[ -z "${VALUES[OPERATOR_USER]}" ]]; then
     VALUES[OPERATOR_USER]="${SUDO_USER:-$(id -un)}"
@@ -157,11 +225,22 @@ validate_config() {
   if [[ "${VALUES[VERIFY]}" == strict && "${VALUES[SERVICE_ENABLE]}" == false ]]; then
     error "VERIFY=strict requiere SERVICE_ENABLE=true para verificar REST y MCP escuchando"
   fi
+  if [[ -n "${VALUES[CORPUS_MANIFEST]}" &&
+    ( -n "${VALUES[CORPUS_PATH]}" || -n "${VALUES[CORPUS_NAME]}" || -n "${VALUES[CORPUS_DOMAINS]}" ) ]]; then
+    error "CORPUS_MANIFEST es excluyente con CORPUS_PATH, CORPUS_NAME y CORPUS_DOMAINS"
+  fi
   if [[ -n "${VALUES[CORPUS_PATH]}" ]]; then
     [[ -n "${VALUES[CORPUS_NAME]}" ]] || error "CORPUS_PATH requiere CORPUS_NAME"
     [[ -n "${VALUES[CORPUS_DOMAINS]}" ]] || error "CORPUS_PATH requiere CORPUS_DOMAINS para confirmar vinculos"
   elif [[ -n "${VALUES[CORPUS_NAME]}" || -n "${VALUES[CORPUS_DOMAINS]}" ]]; then
     error "CORPUS_NAME y CORPUS_DOMAINS requieren CORPUS_PATH"
+  fi
+  if [[ -n "${VALUES[CORPUS_MANIFEST]}" ]]; then
+    validate_corpus_manifest
+  else
+    MANIFEST_CORPUS_NAMES=()
+    MANIFEST_CORPUS_DOMAINS=()
+    MANIFEST_CORPUS_PATHS=()
   fi
 }
 
@@ -362,6 +441,10 @@ migrate_schema() {
 }
 
 ingest_corpus() {
+  if [[ -n "${VALUES[CORPUS_MANIFEST]}" ]]; then
+    ingest_corpus_manifest
+    return
+  fi
   [[ -n "${VALUES[CORPUS_PATH]}" ]] || return 0
   [[ -r "${VALUES[CORPUS_PATH]}" ]] || error "CORPUS_PATH no es legible: ${VALUES[CORPUS_PATH]}"
   local -a domains=() ingest_args=(knowledge ingest --corpus "${VALUES[CORPUS_NAME]}")
@@ -380,6 +463,27 @@ ingest_corpus() {
     trimmed="${domain#"${domain%%[![:space:]]*}"}"
     trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
     extended_cli knowledge confirm --corpus "${VALUES[CORPUS_NAME]}" --domain "$trimmed"
+  done
+}
+
+ingest_corpus_manifest() {
+  local index name corpus_path domain trimmed
+  local -a domains=() ingest_args=()
+  for index in "${!MANIFEST_CORPUS_NAMES[@]}"; do
+    name="${MANIFEST_CORPUS_NAMES[$index]}"
+    corpus_path="${MANIFEST_CORPUS_PATHS[$index]}"
+    IFS=',' read -r -a domains <<< "${MANIFEST_CORPUS_DOMAINS[$index]}"
+    ingest_args=(knowledge ingest --corpus "$name")
+    for domain in "${domains[@]}"; do
+      ingest_args+=(--domain "$domain")
+    done
+    ingest_args+=("$corpus_path")
+    log "Ingeriendo TEXTO del corpus $name; no se copian vectores."
+    extended_cli "${ingest_args[@]}" || error "fallo knowledge ingest para el corpus '$name'"
+    for domain in "${domains[@]}"; do
+      extended_cli knowledge confirm --corpus "$name" --domain "$domain" ||
+        error "fallo knowledge confirm para el corpus '$name' y el dominio '$domain'"
+    done
   done
 }
 
@@ -551,7 +655,7 @@ while (($# > 0)); do
   case "$1" in
     --config) (($# >= 2)) || error "--config requiere una ruta"; CONFIG_FILE="$2"; shift 2 ;;
     --print-config) PRINT_CONFIG=true; shift ;;
-    --instance-name|--store-dsn|--provision-store|--core-url|--embeddings-endpoint|--embedding-model|--embedding-dimension|--extraction-model|--rest-host|--rest-port|--mcp-host|--mcp-port|--service-install|--service-enable|--verify|--corpus-path|--corpus-name|--corpus-domains|--operator-user|--replace-config)
+    --instance-name|--store-dsn|--provision-store|--core-url|--embeddings-endpoint|--embedding-model|--embedding-dimension|--extraction-model|--rest-host|--rest-port|--mcp-host|--mcp-port|--service-install|--service-enable|--verify|--corpus-path|--corpus-name|--corpus-domains|--corpus-manifest|--operator-user|--replace-config)
       (($# >= 2)) || error "$1 requiere un valor"
       key="${1#--}"; key="${key//-/_}"; set_argument "${key^^}" "$2"; shift 2 ;;
     --help|-h) usage; exit 0 ;;
