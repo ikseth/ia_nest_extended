@@ -395,7 +395,14 @@ es una frase con estructura temporal, y eso es sintesis.
    que resume, y una sintesis que mezcla emisores no puede presentarse como
    dicha por ninguno.
 4. Composicion en el recall: cuando el hilo tiene sintesis, esta sustituye en el
-   presupuesto a los engramas que resume, no se suma a ellos.
+   presupuesto a los engramas que resume, no se suma a ellos. Leido junto al
+   punto 2: **combinado en el ALMACEN, sustitucion en el PRESUPUESTO**.
+5. **Estado de trabajo, no recuerdo** (ADR 0007, enmienda del 2026-09-12): la
+   sintesis vive y muere con el hilo, y el barrido de la Fase 4 no la
+   promociona a `semantic`; sedimentar algo del hilo es juicio de conscience.
+6. **Lo exacto no se resume**: nombres, fechas y referentes siguen anclados y
+   exactos via `entities` (ADR 0004), que hoy esta declarado y SIN implementar.
+   Es una dependencia de esta fase, no algo que ella reinvente.
 
 ### Lo que NO entra
 

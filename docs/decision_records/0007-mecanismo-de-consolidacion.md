@@ -114,3 +114,47 @@ eso hereda de ADR 0013 la obligacion de conservar procedencia.
 
 Pendiente: fase propia en el PLAN, con su criterio de salida falsable. Esta
 enmienda registra la decision de reabrir y por que; no fija la forma.
+
+## Enmienda (2026-09-12): recordar no es sostener un hilo
+
+Reconciliada con el usuario el 2026-09-12, al releer la Fase 9 antes de fijar
+su criterio. No cambia lo decidido: precisa POR QUE, y de ahi salen limites que
+el alcance de la fase no tenia.
+
+La enmienda anterior zanjo la propiedad apelando a que la ventana es temporal y
+mecanica. Sirve, pero es un argumento sobre el MECANISMO. Hay otro mejor, y es
+sobre la FUNCION: **son dos funciones distintas sobre el mismo sustrato.**
+
+- El **historico** de lo que una conversacion o una experiencia genera, para que
+  el ente tenga continuidad manana.
+- El **tratamiento del hilo argumental** mientras la conversacion ocurre, para
+  que el ente no se contradiga ahora.
+
+Recordar y sostener un argumento no son la misma funcion, aunque compartan
+almacen. Cuatro consecuencias:
+
+1. **La sintesis de hilo es ESTADO DE TRABAJO, no un recuerdo.** Vive y muere
+   con el hilo, y el barrido mecanico de la Fase 4 NO la promociona a
+   `semantic`. Que algo de ese hilo merezca sedimentarse es juicio, y es de
+   conscience. Esto acota el riesgo ya declarado: un resumen alucinado que
+   llegara a `semantic` envenenaria el yo de forma duradera, que es exactamente
+   lo que no puede pasar.
+2. **La propiedad queda cerrada por la funcion, no solo por la ventana.**
+   Sostener la coherencia de la conversacion en curso es andamiaje, y el
+   andamiaje es mecanismo: extended. Elegir que de ese hilo se recuerda es
+   juicio: conscience.
+3. **Lo exacto no se resume.** Nombres, fechas y referentes son hechos exactos,
+   y el ADR 0004 lo prohibe expresamente: nunca aproximar lo que se conoce con
+   exactitud. El resumen aporta DIRECCION; los artefactos siguen anclados y
+   exactos. El mecanismo que los sostiene ya existe -`entities`, ADR 0004-, hoy
+   DECLARADO Y SIN IMPLEMENTAR. La Fase 9 declara esa dependencia en vez de
+   reinventarla.
+4. **Combinado en el ALMACEN, sustitucion en el PRESUPUESTO.** Es la lectura
+   conjunta de los dos puntos que parecian tensos: el resumen y los engramas
+   anclados coexisten y ambos son direccionables, y lo que se INYECTA es el
+   resumen en lugar de los items que resume.
+
+Lo que esta enmienda NO hace: fijar el criterio de salida de la Fase 9. Sigue
+pendiente de una medida limpia de su brazo de control -la linea L4b de
+`docs/PUERTA_LABORATORIO.md`-, porque una fase no se justifica con la medida
+que confirma lo que su disenador esperaba.
