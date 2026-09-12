@@ -6,6 +6,15 @@ Sin acentos por convencion.
 ## [No publicado]
 
 ### Anadido
+- `docs/handoff/instalador_configuracion_brief.md`: el instalador no sabe
+  declarar la configuracion de la capa. Medido al ejecutar la puerta contra el
+  primer despliegue natural: `ExtendedConfig` tiene 45 campos, `setup.sh` conoce
+  20 claves y escribe 11 variables, y ningun umbral esta entre ellas. Afinar
+  obliga hoy a editar `extended.env` a mano, y un paso a mano invalida la
+  pasada, de modo que el lado de "ajuste de configuracion" de la regla de
+  clasificacion no tiene canal legitimo. Se pide paso a traves de las claves
+  `IANEST_EXTENDED_*` declaradas en el fichero de parametros, con colision
+  tipada y sin que el instalador valide valores -el esquema vive en la capa-.
 - Enmienda al ADR 0007 (2026-09-12), reconciliada al releer la Fase 9 antes de
   fijar su criterio: **recordar no es sostener un hilo**. Son dos funciones
   distintas sobre el mismo sustrato -el historico de lo que una conversacion
@@ -21,6 +30,17 @@ Sin acentos por convencion.
   es en el PRESUPUESTO, que resuelve la tension entre dos puntos del alcance.
   No fija el criterio de salida: sigue pendiente de la medida limpia de L4b.
   Impacto de version: ninguno.
+
+### Cambiado
+- La linea L2 de la puerta deja de juzgar la respuesta del modelo y se juzga por
+  lo que devuelve `memory.recall` (reconciliado el 2026-09-12, al medir). Dos
+  pasadas mostraron al modelo respondiendo `Xanthe` a un testigo
+  `Xanthe74bad8d4b3` mientras el recall lo entregaba entero y con su
+  procedencia: exigir la respuesta convertia la linea en una prueba de fidelidad
+  de transcripcion, y hacia suspender a la capa por algo que no gobierna. La
+  respuesta sigue en la evidencia. L4a y L4b no cambian, porque ahi lo que se
+  mide es si el contexto compuesto induce una contradiccion, y eso solo se ve en
+  lo que el modelo dice.
 
 ### Corregido
 - La puerta de laboratorio se contaminaba a si misma. Ejecutada por primera vez
