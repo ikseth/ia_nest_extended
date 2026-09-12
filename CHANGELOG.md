@@ -6,6 +6,24 @@ Sin acentos por convencion.
 ## [No publicado]
 
 ### Anadido
+- D5, dos regimenes para el suelo del RAG. La base
+  `IANEST_EXTENDED_RAG_MIN_SCORE` se conserva, incluido su default `0.50`, y
+  las nuevas `IANEST_EXTENDED_RAG_MIN_SCORE_DOMAIN` e
+  `IANEST_EXTENDED_RAG_MIN_SCORE_NO_DOMAIN` son `float | None` con default
+  `None`: cada una gana solo en su regimen y, ausente, cae a la base. Elige el
+  dominio efectivo entregado al almacen, no el solicitado. La misma regla
+  gobierna enriquecimiento y `memory.recall`. `rag.retrieve` declara ahora
+  `score_regime` y `min_score`. Adicion compatible: PATCH en la serie pre-1.0.
+- Calibracion PROVISIONAL asociada a D5, medida el 2026-08-21 sobre 19 corpus,
+  57 chunks y el embebedor `bge-m3`, con n=17 consultas relevantes por regimen:
+  `0.46` sin dominio (estricto) queda por encima del ruido medido, cuyo maximo
+  fue `0.458`, pero pierde 2/17 consultas legitimas (`matematicas` 0.430 y
+  `educacion` 0.431). Su margen es solo `0.002`, dos milesimas. `0.41` con
+  dominio (laxo) queda por encima del ruido con dominio (maximo `0.402`) y del
+  cruzado (maximo `0.370`), pero pierde tambien 2/17 (`codigo` 0.327 y
+  `educacion` 0.392). Las bandas se solapan; estos valores no son universales
+  ni pasan a ser defaults del codigo. La calibracion sigue pendiente para cada
+  corpus y embebedor.
 - `CORPUS_MANIFEST` permite al instalador ingerir N corpus, cada uno con sus
   dominios, desde un manifiesto validado por completo antes de la primera
   ingesta. Es excluyente con la terna antigua, que conserva exactamente su

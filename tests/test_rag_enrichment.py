@@ -27,9 +27,11 @@ class InMemoryRagStore:
     def __init__(self, chunks):
         self.chunks = tuple(chunks)
         self.domains = []
+        self.min_scores = []
 
     def retrieve(self, query_text, *, domain=None, top_k=3, min_score=0.0):
         self.domains.append(domain)
+        self.min_scores.append(min_score)
         selected = [
             chunk
             for chunk in self.chunks
@@ -183,8 +185,12 @@ def test_auto_route_uses_confident_domain_and_falls_back_to_global(
     rag_events = [event for event in events if event["event"] == "rag.retrieve"]
     assert rag_events[0]["domain"] == "linux"
     assert rag_events[0]["auto_route_confidence"] == 0.9
+    assert rag_events[0]["score_regime"] == "domain"
+    assert rag_events[0]["min_score"] == 0.50
     assert rag_events[1]["domain"] is None
     assert rag_events[1]["auto_route_confidence"] == 0.2
+    assert rag_events[1]["score_regime"] == "no_domain"
+    assert rag_events[1]["min_score"] == 0.50
 
     prompt_requests = [
         payload
@@ -336,6 +342,94 @@ def test_rag_floor_is_governed_by_config_not_a_hardcoded_default(
     )
     lenient_result = lenient_enricher.enrich(no_domain, "smalltalk otra vez")
     assert "parecido medio" in lenient_result.context
+
+
+def test_d5_domain_regime_can_accept_the_same_score_rejected_without_domain(
+    tmp_path,
+    local_service_stub,
+):
+    """D5 criterio 1: la puntuacion es controlada; no interviene un embedder."""
+    domain_store = InMemoryRagStore([_chunk("pasa con dominio", score=0.45)])
+    domain_enricher = _enricher(
+        tmp_path,
+        local_service_stub,
+        InMemoryStore(),
+        domain_store,
+        rag_min_score_domain=0.40,
+        rag_min_score_no_domain=0.50,
+    )
+    with_domain = identity().__class__(
+        user_id="u",
+        session_id="A",
+        service="test",
+        domain_tag="linux",
+    )
+
+    accepted = domain_enricher.enrich(with_domain, "sonda controlada")
+
+    no_domain_store = InMemoryRagStore(
+        [_chunk("no pasa sin dominio", score=0.45)]
+    )
+    no_domain_enricher = _enricher(
+        tmp_path,
+        local_service_stub,
+        InMemoryStore(),
+        no_domain_store,
+        rag_min_score_domain=0.40,
+        rag_min_score_no_domain=0.50,
+    )
+    without_domain = identity().__class__(
+        user_id="u",
+        session_id="A",
+        service="test",
+    )
+
+    rejected = no_domain_enricher.enrich(without_domain, "sonda controlada")
+
+    assert "pasa con dominio" in accepted.context
+    assert "no pasa sin dominio" not in rejected.context
+    assert domain_store.min_scores == [0.40]
+    assert no_domain_store.min_scores == [0.50]
+
+
+@pytest.mark.parametrize("domain", [None, "linux"])
+def test_d5_zero_rag_results_are_valid_in_both_regimes(
+    tmp_path,
+    local_service_stub,
+    domain,
+):
+    """D5 criterio 5: ambos suelos pueden devolver cero sin producir error."""
+    rag_store = InMemoryRagStore([_chunk("bajo ambos suelos", score=0.1)])
+    enricher = _enricher(
+        tmp_path,
+        local_service_stub,
+        InMemoryStore(),
+        rag_store,
+        rag_min_score_domain=0.8,
+        rag_min_score_no_domain=0.9,
+    )
+    request_identity = identity().__class__(
+        user_id="u",
+        session_id="A",
+        service="test",
+        domain_tag=domain,
+    )
+
+    result = enricher.enrich(request_identity, "sonda sin resultados")
+
+    assert result.response == "echo:sonda sin resultados"
+    event = [
+        json.loads(line)
+        for path in tmp_path.glob("extended-*.jsonl")
+        for line in path.read_text().splitlines()
+        if json.loads(line)["event"] == "rag.retrieve"
+    ][-1]
+    assert event["status"] == "ok"
+    assert event["counters"]["k_returned"] == 0
+    assert event["score_regime"] == (
+        "no_domain" if domain is None else "domain"
+    )
+    assert event["min_score"] == (0.9 if domain is None else 0.8)
 
 
 def test_d2_delegated_types_inject_with_and_without_requested_domain(

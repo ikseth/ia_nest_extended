@@ -197,6 +197,7 @@ class InMemoryRagStore:
     def __init__(self, chunks=()):
         self.chunks = tuple(chunks)
         self.domains = []
+        self.min_scores = []
         self.migrated = False
 
     def migrate(self):
@@ -207,6 +208,7 @@ class InMemoryRagStore:
 
     def retrieve(self, query_text, *, domain=None, top_k=3, min_score=0.0):
         self.domains.append(domain)
+        self.min_scores.append(min_score)
         selected = [
             chunk
             for chunk in self.chunks

@@ -151,6 +151,19 @@ las presupone.
 Combinacion contradictoria (desactivar el enriquecimiento y pedir una fuente) es
 error tipado, no precedencia silenciosa.
 
+El suelo del RAG tiene una base compatible,
+`IANEST_EXTENDED_RAG_MIN_SCORE` (default `0.50`), y dos overrides opcionales
+`IANEST_EXTENDED_RAG_MIN_SCORE_DOMAIN` e
+`IANEST_EXTENDED_RAG_MIN_SCORE_NO_DOMAIN` (ambos `float | None`, default
+`None`). El dominio EFECTIVO entregado al almacen elige el regimen: con dominio
+usa el primer override y sin dominio el segundo; un override ausente cae a la
+base. Por tanto, no declarar las claves nuevas conserva exactamente la politica
+anterior.
+
+Cada evento `rag.retrieve` declara `score_regime` (`domain` o `no_domain`) y
+`min_score`, ademas del dominio efectivo. La calibracion puede asi observar la
+regla aplicada sin reconstruirla desde otros campos.
+
 ## Capacidades propias
 
 Estado: `implementada` (existe el mecanismo y se expone por las tres pieles) o

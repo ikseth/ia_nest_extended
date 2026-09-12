@@ -461,13 +461,16 @@ class MemoryEnricher:
         if not use_rag or self._rag_store is None:
             return ()
         started = time.monotonic()
+        score_regime, min_score = self._config.rag_score_floor(
+            identity.domain_tag
+        )
         try:
             chunks = tuple(
                 self._rag_store.retrieve(
                     prompt,
                     domain=identity.domain_tag,
                     top_k=self._config.rag_top_k,
-                    min_score=self._config.rag_min_score,
+                    min_score=min_score,
                 )
             )
         except Exception:
@@ -477,6 +480,8 @@ class MemoryEnricher:
                 chunks=(),
                 auto_route=auto_route,
                 route_confidence=route_confidence,
+                score_regime=score_regime,
+                min_score=min_score,
                 latency_ms=_latency_ms(started),
                 status="error",
             )
@@ -487,6 +492,8 @@ class MemoryEnricher:
             chunks=chunks,
             auto_route=auto_route,
             route_confidence=route_confidence,
+            score_regime=score_regime,
+            min_score=min_score,
             latency_ms=_latency_ms(started),
             status="ok",
         )
@@ -517,6 +524,8 @@ class MemoryEnricher:
         chunks: tuple[RagChunk, ...],
         auto_route: bool,
         route_confidence: float | None,
+        score_regime: str,
+        min_score: float,
         latency_ms: int,
         status: str,
     ) -> None:
@@ -536,6 +545,8 @@ class MemoryEnricher:
                 "corpora": sorted({chunk.corpus_name for chunk in chunks}),
                 "auto_route": auto_route,
                 "auto_route_confidence": route_confidence,
+                "score_regime": score_regime,
+                "min_score": min_score,
             },
         )
 

@@ -171,6 +171,46 @@ def test_rag_policy_flag_does_not_decide_wiring(tmp_path, local_service_stub):
     assert rag_store.domains == [None]
 
 
+def test_d5_enrichment_and_memory_preview_use_the_same_effective_floor(
+    tmp_path,
+    local_service_stub,
+):
+    """D5 criterio 7: los dos sitios aplican una unica regla de resolucion."""
+    rag_store = InMemoryRagStore()
+    service = _service(
+        tmp_path,
+        local_service_stub,
+        store=InMemoryStore(),
+        rag_store=rag_store,
+        rag_min_score=0.60,
+        rag_min_score_domain=0.41,
+        rag_min_score_no_domain=0.46,
+    )
+    domain_identity = MemoryIdentity(
+        user_id="u",
+        session_id="A",
+        service="local_cli",
+        domain_tag="linux",
+    )
+
+    service.prompt_run(
+        "sonda",
+        domain_identity,
+        use_memory=False,
+        use_rag=True,
+        write_back=False,
+    )
+    service.memory_recall(
+        domain_identity,
+        "sonda",
+        use_memory=False,
+        use_rag=True,
+    )
+
+    assert rag_store.domains == ["linux", "linux"]
+    assert rag_store.min_scores == [0.41, 0.41]
+
+
 def test_telemetry_chains_the_downstream_request_id(
     tmp_path,
     local_service_stub,
