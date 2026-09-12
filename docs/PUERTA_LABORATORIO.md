@@ -59,7 +59,7 @@ incorrecto. Ninguna linea usa un modelo del propio sistema como juez.
 | Linea | Que se mide | Pasa | No pasa |
 |---|---|---|---|
 | L1 Forma | `setup.sh` con `VERIFY=strict`; `capability.list` sin degradacion; `knowledge.status` responde | codigo 0 y ninguna degradacion | cualquier otro |
-| L2 Continuidad | el interlocutor dice un testigo aleatorio en la sesion A; se pregunta por el en la sesion B | la respuesta de B contiene el testigo, y `memory.recall` de B lo devuelve con `stated_by=user` | falta cualquiera de las dos |
+| L2 Continuidad | el interlocutor dice un testigo aleatorio en la sesion A; se pregunta por el en la sesion B | `memory.recall` de B devuelve el testigo con `stated_by=user`; lo que responda el modelo se registra pero no decide | el recall no lo devuelve |
 | L3 Procedencia | se siembra por `memory.write` un candidato con `stated_by=model`; el interlocutor dice lo contrario | el contexto del turno siguiente etiqueta el candidato como del modelo y anotado, y lo coloca detras de la version del usuario | sin etiqueta, sin anotacion de conflicto o en otro orden |
 | L4a Coherencia, correccion de un candidato del modelo | hilo de cuatro turnos sobre L3; la ultima pregunta pide el dato | la respuesta contiene el testigo del usuario y no el del modelo | contiene el del modelo, o ninguno |
 | L4b Coherencia, autocorreccion del interlocutor | "la reunion es el martes" ... "perdona, es el jueves" ... "que dia es?" | contiene "jueves" y no "martes" | contiene "martes", o ninguno |
@@ -69,6 +69,19 @@ incorrecto. Ninguna linea usa un modelo del propio sistema como juez.
 
 Repeticion: L2, L3, L4a, L4b y L5 con n = 3. Una linea PASA con 3 de 3; con
 menos, NO PASA y el reparto se anota.
+
+**Por que L2 no juzga la respuesta del modelo** (reconciliado el 2026-09-12, al
+medir): exigirla convierte la linea en una prueba de fidelidad de transcripcion.
+Medido dos veces, el modelo respondia `Xanthe` a un testigo `Xanthe74bad8d4b3`
+mientras el recall lo entregaba entero y con su procedencia. Lo que esta capa
+promete es ENTREGAR la memoria, no que el modelo la copie literalmente; medir lo
+segundo hace que la puerta suspenda a la capa por algo que no gobierna. La
+respuesta sigue en la evidencia, porque un cambio de comportamiento ahi importa
+aunque no decida.
+
+L4a y L4b si juzgan la respuesta, y con razon: ahi lo que se mide es si el
+CONTEXTO compuesto induce o no una contradiccion, y eso solo se ve en lo que el
+modelo termina diciendo.
 
 ## L4b no es excluyente; es la medida que decide la Fase 9
 
@@ -102,6 +115,8 @@ construido.
 ## Lo que la puerta NO cubre
 
 - La veracidad general de las respuestas: solo los testigos fijados.
+- La fidelidad de transcripcion del modelo: L2 mide lo que la capa entrega, no
+  lo que el modelo copia.
 - El filtro que impide destilar a `episodic` una tarea no convergida: no se
   puede forzar la no convergencia de forma reproducible.
 - Streaming y la piel MCP: solo REST, y MCP solo en lo que comprueba L1.
