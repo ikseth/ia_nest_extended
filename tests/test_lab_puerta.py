@@ -31,6 +31,8 @@ def gate_stub():
         l4a_fail_on=set(),
         l4a_count=0,
         l4b_fail=False,
+        l2_answer_contains_witness=True,
+        l2_recall_contains_witness=True,
         l2_witnesses={},
         corrections_by_user={},
         l5_empty_domains=set(),
@@ -112,7 +114,8 @@ def gate_stub():
                 return
             if prompt.startswith("Como se llama mi perro"):
                 witness = state.l2_witnesses[payload["identity"]["user_id"]]
-                self._send({"response": witness})
+                answer = witness if state.l2_answer_contains_witness else "Xanthe"
+                self._send({"response": answer})
                 return
             if prompt.startswith("La clave del refugio es Ambar"):
                 correct = prompt.split()[-1].rstrip(".")
@@ -171,6 +174,9 @@ def gate_stub():
                 return
             if "perro" in prompt:
                 witness = state.l2_witnesses[user_id]
+                if not state.l2_recall_contains_witness:
+                    self._send({"context": "", "counters": {"episodic": 0}})
+                    return
                 self._send(
                     {
                         "context": f"[episodic/facts] (fuente: usuario) Mi perro se llama {witness}.",
@@ -262,6 +268,34 @@ def test_green_verdict_executes_all_executable_lines(gate_stub, tmp_path, capsys
         for name in ("L1", "L2", "L3", "L4a", "L4b", "L5", "L5r")
     )
     assert "VEREDICTO: PASA (codigo 0)" in output
+
+
+def test_l2_passes_by_recall_when_answer_omits_witness(gate_stub, tmp_path, capsys):
+    gate_stub.l2_answer_contains_witness = False
+
+    code, _, report = _run(gate_stub, tmp_path, capsys, repetitions=1)
+
+    attempt = _line(report, "L2")["attempts"][0]
+    assert code == 0
+    assert attempt["verdict"] == "PASA"
+    assert attempt["checks"]["answer_contains_witness"] is False
+    assert attempt["checks"]["recall_contains_witness_stated_by_user"] is True
+    assert "answer" in attempt
+    assert "recall" in attempt
+
+
+def test_l2_fails_without_recall_even_when_answer_has_witness(
+    gate_stub, tmp_path, capsys
+):
+    gate_stub.l2_recall_contains_witness = False
+
+    code, _, report = _run(gate_stub, tmp_path, capsys, repetitions=1)
+
+    attempt = _line(report, "L2")["attempts"][0]
+    assert code == 1
+    assert attempt["verdict"] == "NO PASA"
+    assert attempt["checks"]["answer_contains_witness"] is True
+    assert attempt["checks"]["recall_contains_witness_stated_by_user"] is False
 
 
 def test_red_verdict_keeps_wrong_l4a_evidence(gate_stub, tmp_path, capsys):

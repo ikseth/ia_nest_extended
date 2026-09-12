@@ -149,6 +149,81 @@ def test_setup_is_valid_bash_and_example_resolves_without_effects():
     assert "VERIFY=strict (file)" in printed.stdout
 
 
+def test_extended_config_passes_through_in_order_snapshot_and_is_idempotent(tmp_path):
+    config, env, install_root, _, _ = _deployment(tmp_path)
+    with config.open("a", encoding="ascii") as stream:
+        stream.write(
+            "IANEST_EXTENDED_RAG_MIN_SCORE_DOMAIN=0.41\n"
+            "IANEST_EXTENDED_TASK_TIMEOUT_SECONDS=not-validated-here\n"
+            "IANEST_EXTENDED_RAG_MIN_SCORE_NO_DOMAIN=0.46\n"
+        )
+
+    first = subprocess.run(
+        [str(SETUP), "--config", str(config)], env=env, capture_output=True, text=True
+    )
+    config_dir = install_root / "config" / "extended" / "test"
+    env_file = config_dir / "extended.env"
+    first_environment = env_file.read_text(encoding="ascii")
+    env_file.unlink()
+    second = subprocess.run(
+        [str(SETUP), "--config", str(config)], env=env, capture_output=True, text=True
+    )
+    second_environment = env_file.read_text(encoding="ascii")
+
+    assert first.returncode == second.returncode == 0, first.stderr + second.stderr
+    inherited = [
+        "IANEST_EXTENDED_RAG_MIN_SCORE_DOMAIN=0.41",
+        "IANEST_EXTENDED_TASK_TIMEOUT_SECONDS=not-validated-here",
+        "IANEST_EXTENDED_RAG_MIN_SCORE_NO_DOMAIN=0.46",
+    ]
+    env_lines = first_environment.splitlines()
+    assert env_lines[-3:] == inherited
+    assert env_lines.index(inherited[0]) > env_lines.index(
+        "IANEST_EXTENDED_CATALOG_CACHE_PATH="
+        f"{install_root}/state/extended/test/catalog_cache.json"
+    )
+    assert second_environment == first_environment
+    snapshot_lines = (config_dir / "setup.conf").read_text(
+        encoding="ascii"
+    ).splitlines()
+    assert snapshot_lines[-3:] == inherited
+
+
+def test_unknown_unprefixed_config_key_fails_before_writing(tmp_path):
+    config = tmp_path / "invalid.setup.conf"
+    config.write_text("TYPO_RAG_MIN_SCORE=0.41\n", encoding="ascii")
+    install_root = tmp_path / "untouched"
+    env = {**os.environ, "IANEST_INSTALL_ROOT": str(install_root)}
+
+    result = subprocess.run(
+        [str(SETUP), "--config", str(config)], env=env, capture_output=True, text=True
+    )
+
+    assert result.returncode != 0
+    assert "clave desconocida 'TYPO_RAG_MIN_SCORE'" in result.stderr
+    assert not install_root.exists()
+
+
+def test_generated_extended_config_collision_is_typed_and_names_option(tmp_path):
+    config = tmp_path / "collision.setup.conf"
+    config.write_text("IANEST_EXTENDED_REST_PORT=9001\n", encoding="ascii")
+    install_root = tmp_path / "untouched"
+    env = {**os.environ, "IANEST_INSTALL_ROOT": str(install_root)}
+
+    result = subprocess.run(
+        [str(SETUP), "--config", str(config), "--print-config"],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "configuration_collision" in result.stderr
+    assert "IANEST_EXTENDED_REST_PORT" in result.stderr
+    assert "REST_PORT / --rest-port" in result.stderr
+    assert not install_root.exists()
+
+
 def test_remote_store_path_is_idempotent_ingests_text_and_never_calls_runtime(tmp_path):
     config, env, install_root, bin_dir, log_path = _deployment(tmp_path)
 

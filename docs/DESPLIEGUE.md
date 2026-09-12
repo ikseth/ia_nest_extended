@@ -55,6 +55,18 @@ puede inspeccionar la resolucion; el DSN se oculta:
 deploy/setup.sh --config /tmp/extended.setup.conf --print-config
 ```
 
+El mismo fichero admite cualquier clave con prefijo `IANEST_EXTENDED_` y la
+conserva sin traducir en `extended.env`, despues del bloque que genera el
+instalador. Es el canal para declarar ajustes del esquema de la capa que no
+tienen opcion propia en setup. El instalador no valida esos valores: su esquema
+y su validacion viven en `config.py` y se aplican al arrancar la capa.
+
+Una clave desconocida sin ese prefijo sigue siendo error. Tambien es error
+`configuration_collision` declarar una variable que setup ya genera; el mensaje
+nombra la clave y la opcion equivalente. Nunca se elige en silencio entre las
+dos fuentes. Las claves heredadas conservan el orden del fichero y viajan al
+`setup.conf` efectivo.
+
 Una segunda ejecucion actualiza el paquete, vuelve a aplicar migraciones
 idempotentes, reingiere el texto declarado y deja el mismo estado. Si ya existe
 `setup.conf` o `extended.env`, el instalador lo anuncia y lo preserva. Solo
