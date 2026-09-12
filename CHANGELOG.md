@@ -3,7 +3,7 @@
 Formato basado en Keep a Changelog; SemVer (ver core `docs/VERSIONADO.md`).
 Sin acentos por convencion.
 
-## [No publicado]
+## [0.2.3] - 2026-09-12
 
 ### Anadido
 - Enmienda al ADR 0013 (2026-09-12): **la contradiccion no vive en un cajon**.
