@@ -3,7 +3,7 @@
 Formato basado en Keep a Changelog; SemVer (ver core `docs/VERSIONADO.md`).
 Sin acentos por convencion.
 
-## [No publicado]
+## [0.2.2] - 2026-09-12
 
 ### Anadido
 - El fichero de parametros de `deploy/setup.sh` admite claves adicionales
