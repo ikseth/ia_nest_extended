@@ -2,6 +2,7 @@
 
 import argparse
 import json
+from importlib.metadata import version
 from pathlib import Path
 
 import pytest
@@ -103,7 +104,7 @@ def test_fusion_passes_unknown_core_capability_and_preserves_it(tmp_path):
         "field_from_future_core": {"kept": [1, 2, 3]},
         "provenance": "forwarded",
     }
-    assert result["extended_version"] == "0.0.0"
+    assert result["extended_version"] == version("ianest-extended")
     assert result["core_version"] == "0.4.0"
     assert {item["provenance"] for item in result["capabilities"]} == {
         "own",

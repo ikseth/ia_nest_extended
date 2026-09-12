@@ -22,6 +22,10 @@ test = [
     "pytest>=9,<10",
     "httpx>=0.28,<1",
     "starlette>=1.0,<2",
+    # Una prueba construye el wheel del propio paquete para comprobar que las
+    # migraciones viajan dentro. Un venv moderno no trae setuptools, y en una
+    # maquina limpia tampoco lo trae el python del sistema.
+    "setuptools>=75",
 ]
 rest = [
     "starlette>=1.0,<2",

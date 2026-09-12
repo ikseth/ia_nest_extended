@@ -35,9 +35,28 @@ def test_wheel_install_contains_reachable_migrations(tmp_path):
     wheelhouse.mkdir()
     installed.mkdir()
 
-    build_python = Path(sys.base_prefix) / "bin" / "python3.13"
-    if not build_python.is_file():
-        build_python = Path(sys.executable)
+    system_python = (
+        Path(sys.base_prefix)
+        / "bin"
+        / f"python{sys.version_info.major}.{sys.version_info.minor}"
+    )
+    build_python = next(
+        (
+            candidate
+            for candidate in (Path(sys.executable), system_python)
+            if candidate.is_file()
+            and subprocess.run(
+                [str(candidate), "-c", "import pip, setuptools.build_meta"],
+                capture_output=True,
+                text=True,
+            ).returncode
+            == 0
+        ),
+        None,
+    )
+    assert build_python is not None, (
+        "no hay un interprete capaz de construir el wheel"
+    )
     built = subprocess.run(
         [
             str(build_python),
