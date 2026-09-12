@@ -5,6 +5,23 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+### Anadido
+- Enmienda al ADR 0007 (2026-09-12), reconciliada al releer la Fase 9 antes de
+  fijar su criterio: **recordar no es sostener un hilo**. Son dos funciones
+  distintas sobre el mismo sustrato -el historico de lo que una conversacion
+  genera, para tener continuidad manana, y el tratamiento del hilo argumental
+  mientras ocurre, para no contradecirse ahora-. La enmienda anterior zanjaba la
+  propiedad apelando a que la ventana es temporal; esta lo hace por la funcion,
+  y de ahi salen cuatro limites que el alcance no tenia: la sintesis de hilo es
+  ESTADO DE TRABAJO y el barrido de la Fase 4 no la promociona a `semantic`; la
+  propiedad queda cerrada (andamiaje es mecanismo, elegir que se recuerda es
+  juicio); lo exacto -nombres, fechas, referentes- no se resume y sigue anclado
+  via `entities` (ADR 0004, declarado y sin implementar, luego dependencia
+  declarada de la fase); y el combinado es en el ALMACEN mientras la sustitucion
+  es en el PRESUPUESTO, que resuelve la tension entre dos puntos del alcance.
+  No fija el criterio de salida: sigue pendiente de la medida limpia de L4b.
+  Impacto de version: ninguno.
+
 ### Corregido
 - La puerta de laboratorio se contaminaba a si misma. Ejecutada por primera vez
   contra un despliegue natural (2026-09-12), dio NO PASA, y ninguno de sus
