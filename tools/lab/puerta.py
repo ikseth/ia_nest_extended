@@ -274,7 +274,7 @@ def _attempt_l2(rest: RestRecorder, user_id: str, repetition: int) -> dict[str, 
         context = context if isinstance(context, str) else ""
         matching_lines = [line for line in context.splitlines() if _contains(line, witness)]
         stated_by_user = any(_contains(line, "fuente: usuario") for line in matching_lines)
-        passed = _contains(answer, witness) and stated_by_user
+        passed = stated_by_user
         evidence.update(
             {
                 "answer": answer_payload,

@@ -25,8 +25,9 @@ encima del `0.41` con dominio que D5 midio. Es decir, un AJUSTE DE
 CONFIGURACION lo arregla.
 
 Y ahi aparece el defecto: **ese ajuste no se puede declarar**. `ExtendedConfig`
-tiene 45 campos; `setup.sh` conoce 20 claves propias y escribe 11 variables en
-`extended.env`. Los umbrales -`RAG_MIN_SCORE`, `RAG_MIN_SCORE_DOMAIN`,
+tiene 44 campos; `setup.sh` conoce 21 claves propias y escribe 11 variables en
+`extended.env` (cifras corregidas el 2026-09-12: el brief decia 45 y 20, y las
+conto mal quien lo escribio). Los umbrales -`RAG_MIN_SCORE`, `RAG_MIN_SCORE_DOMAIN`,
 `RAG_MIN_SCORE_NO_DOMAIN`, `CONFLICT_THRESHOLD`, `MEMORY_MIN_SIMILARITY`,
 `TASK_TIMEOUT_SECONDS`...- no estan entre ellas, y una clave desconocida en el
 fichero de parametros ES un error, con razon.

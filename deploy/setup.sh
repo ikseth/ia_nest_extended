@@ -35,6 +35,19 @@ readonly -a OWN_CAPABILITIES=(
   memory.consolidate memory.maintain knowledge.ingest knowledge.status
   knowledge.suggest knowledge.confirm knowledge.reject
 )
+declare -Ar GENERATED_EXTENDED_ENV_OPTIONS=(
+  [IANEST_EXTENDED_CORE_URL]='CORE_URL / --core-url'
+  [IANEST_EXTENDED_OLLAMA_URL]='EMBEDDINGS_ENDPOINT / --embeddings-endpoint'
+  [IANEST_EXTENDED_DATABASE_DSN]='STORE_DSN / --store-dsn'
+  [IANEST_EXTENDED_EMBEDDING_MODEL]='EMBEDDING_MODEL / --embedding-model'
+  [IANEST_EXTENDED_EMBEDDING_DIMENSION]='EMBEDDING_DIMENSION / --embedding-dimension'
+  [IANEST_EXTENDED_EXTRACTION_MODEL]='EXTRACTION_MODEL / --extraction-model'
+  [IANEST_EXTENDED_REST_HOST]='REST_HOST / --rest-host'
+  [IANEST_EXTENDED_REST_PORT]='REST_PORT / --rest-port'
+  [IANEST_EXTENDED_TELEMETRY_DIR]='derivada de INSTANCE_NAME / --instance-name (sin override directo)'
+  [IANEST_EXTENDED_SESSION_STATE_PATH]='derivada de INSTANCE_NAME / --instance-name (sin override directo)'
+  [IANEST_EXTENDED_CATALOG_CACHE_PATH]='derivada de INSTANCE_NAME / --instance-name (sin override directo)'
+)
 
 declare -A VALUES=(
   [INSTANCE_NAME]=extended
@@ -75,6 +88,8 @@ declare -a COMPOSE_COMMAND=()
 declare -a MANIFEST_CORPUS_NAMES=()
 declare -a MANIFEST_CORPUS_DOMAINS=()
 declare -a MANIFEST_CORPUS_PATHS=()
+declare -a EXTENDED_ENV_KEYS=()
+declare -a EXTENDED_ENV_VALUES=()
 
 usage() {
   sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'
@@ -104,6 +119,8 @@ set_argument() { ARGUMENTS["$1"]="$2"; }
 load_config_file() {
   local path="$1" line key value line_number=0
   [[ -r "$path" ]] || error "no se puede leer la configuracion: $path"
+  EXTENDED_ENV_KEYS=()
+  EXTENDED_ENV_VALUES=()
   while IFS= read -r line || [[ -n "$line" ]]; do
     line_number=$((line_number + 1))
     line="${line%$'\r'}"
@@ -111,7 +128,13 @@ load_config_file() {
     [[ "$line" == *=* ]] || error "$path:$line_number: se esperaba CLAVE=VALOR"
     key="${line%%=*}"
     value="${line#*=}"
-    [[ -n "${VALUES[$key]+present}" ]] || error "$path:$line_number: clave desconocida '$key'"
+    if [[ "$key" == IANEST_EXTENDED_* ]]; then
+      EXTENDED_ENV_KEYS+=("$key")
+      EXTENDED_ENV_VALUES+=("$value")
+      continue
+    fi
+    [[ -n "${VALUES[$key]+present}" ]] ||
+      error "$path:$line_number: clave desconocida '$key'"
     VALUES["$key"]="$value"
     SOURCES["$key"]=file
   done < "$path"
@@ -201,7 +224,13 @@ resolve_implicit_values() {
 }
 
 validate_config() {
-  local key
+  local key index equivalent
+  for index in "${!EXTENDED_ENV_KEYS[@]}"; do
+    key="${EXTENDED_ENV_KEYS[$index]}"
+    equivalent="${GENERATED_EXTENDED_ENV_OPTIONS[$key]-}"
+    [[ -z "$equivalent" ]] ||
+      error "configuration_collision: '$key' ya la genera el instalador; opcion equivalente: $equivalent"
+  done
   for key in PROVISION_STORE SERVICE_INSTALL SERVICE_ENABLE REPLACE_CONFIG; do
     require_bool "$key" "${VALUES[$key]}"
   done
@@ -297,16 +326,20 @@ write_atomic() {
 }
 
 write_setup_snapshot() {
-  local key
+  local key index
   {
     for key in "${CONFIG_KEYS[@]}"; do
       printf '%s=%s\n' "$key" "${VALUES[$key]}"
+    done
+    for index in "${!EXTENDED_ENV_KEYS[@]}"; do
+      printf '%s=%s\n' "${EXTENDED_ENV_KEYS[$index]}" "${EXTENDED_ENV_VALUES[$index]}"
     done
   } | write_atomic "$EFFECTIVE_SETUP" 600
   chown "${VALUES[OPERATOR_USER]}" "$EFFECTIVE_SETUP"
 }
 
 write_environment() {
+  local index
   {
     printf 'IANEST_EXTENDED_CORE_URL=%s\n' "${VALUES[CORE_URL]}"
     printf 'IANEST_EXTENDED_OLLAMA_URL=%s\n' "${VALUES[EMBEDDINGS_ENDPOINT]}"
@@ -319,6 +352,9 @@ write_environment() {
     printf 'IANEST_EXTENDED_TELEMETRY_DIR=%s\n' "${STATE_DIR}/telemetry"
     printf 'IANEST_EXTENDED_SESSION_STATE_PATH=%s\n' "${STATE_DIR}/session_id"
     printf 'IANEST_EXTENDED_CATALOG_CACHE_PATH=%s\n' "${STATE_DIR}/catalog_cache.json"
+    for index in "${!EXTENDED_ENV_KEYS[@]}"; do
+      printf '%s=%s\n' "${EXTENDED_ENV_KEYS[$index]}" "${EXTENDED_ENV_VALUES[$index]}"
+    done
   } | write_atomic "$ENV_FILE" 600
   chown "${VALUES[OPERATOR_USER]}" "$ENV_FILE"
 }

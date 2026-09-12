@@ -6,10 +6,16 @@ Sin acentos por convencion.
 ## [No publicado]
 
 ### Anadido
+- El fichero de parametros de `deploy/setup.sh` admite claves adicionales
+  `IANEST_EXTENDED_*` y las conserva literalmente, en orden, en `extended.env`
+  y en el snapshot efectivo. El instalador no duplica la validacion de valores
+  de `config.py`; las claves desconocidas sin prefijo siguen fallando y una
+  colision con una variable generada aborta con `configuration_collision`, la
+  clave y la opcion equivalente. Adicion compatible: PATCH en la serie pre-1.0.
 - `docs/handoff/instalador_configuracion_brief.md`: el instalador no sabe
   declarar la configuracion de la capa. Medido al ejecutar la puerta contra el
-  primer despliegue natural: `ExtendedConfig` tiene 45 campos, `setup.sh` conoce
-  20 claves y escribe 11 variables, y ningun umbral esta entre ellas. Afinar
+  primer despliegue natural: `ExtendedConfig` tiene 44 campos, `setup.sh` conoce
+  21 claves y escribe 11 variables, y ningun umbral esta entre ellas. Afinar
   obliga hoy a editar `extended.env` a mano, y un paso a mano invalida la
   pasada, de modo que el lado de "ajuste de configuracion" de la regla de
   clasificacion no tiene canal legitimo. Se pide paso a traves de las claves
