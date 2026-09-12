@@ -1,10 +1,10 @@
 # Plan de ia_nest_extended
 
 Estado: fases 0-5c, 7 y 8 completas; fase 6 APARCADA (2026-08-21, con su
-motivo y su diseno escritos en ella); fase 9 ABIERTA (2026-08-22), pendiente de
-reconciliar su criterio. La version publicada de la capa no se anota aqui: la
-dicen `CHANGELOG.md` y los tags.
-Version: 0.3 - 2026-09-11
+motivo y su diseno escritos en ella); fase 9 ABIERTA (2026-08-22), con criterio
+reconciliado el 2026-09-12 y sin implementar. La version publicada de la capa no
+se anota aqui: la dicen `CHANGELOG.md` y los tags.
+Version: 0.4 - 2026-09-12
 
 Misma disciplina que el core: fases con criterio de salida falsable; no se abre
 una fase sin validar la anterior; diseno y prueba de aceptacion antes de
@@ -367,7 +367,8 @@ sabiendo que llegan.
 
 ## Fase 9: Sintesis de hilo (ADR 0007, enmienda del 2026-08-22)
 
-Estado: ABIERTA (2026-08-22), pendiente de reconciliar su criterio.
+Estado: ABIERTA (2026-08-22), con su criterio RECONCILIADO el 2026-09-12 y su
+brazo de control ya medido. Sin implementar.
 
 Reabre la sintesis de cluster que el ADR 0007 habia diferido con nombre. El
 motivo del diferimiento -"solo aporta con acumulacion de muchos episodicos
@@ -410,26 +411,50 @@ Que la sintesis ELIJA que merece recordarse. Eso es juicio y es de conscience
 (ADR 0002; test de frontera del ADR 0007). Aqui la ventana es temporal y
 mecanica: resume lo que hay, no lo que importa.
 
-### Criterio de salida (falsable), propuesto y a reconciliar
+### Criterio de salida (falsable), RECONCILIADO el 2026-09-12
 
-Tres lineas, las tres medibles en el banco del laboratorio y con n >= 3, porque
-n = 1 no es veredicto:
+Se mide sobre un despliegue NATURAL con la puerta de laboratorio
+(`docs/PUERTA_LABORATORIO.md`) y sus reglas: dos ejecutores independientes,
+evidencia en `local/lab/`, y lo no cubierto declarado. La sintesis se conmuta
+por configuracion, que desde la v0.2.2 viaja por el fichero de parametros del
+instalador.
 
-1. **Coherencia.** Un hilo de al menos cuatro turnos con una correccion
-   explicita del interlocutor: tras la correccion, el contexto compuesto no
-   presenta las dos versiones como afirmaciones equivalentes, y la respuesta
-   final no reincide en la version corregida. Se mide con la sintesis activada y
-   desactivada sobre el mismo hilo; si el brazo sin sintesis ya cumple, la fase
-   no ha demostrado nada.
-2. **Anclaje.** Toda sintesis conserva enlaces a los engramas que resume, y
-   ninguna de sus afirmaciones carece de origen direccionable. Verificable por
-   consulta, no por lectura.
+**Linea base ya medida, y no se vuelve a discutir.** El brazo SIN sintesis es la
+linea L4b de la puerta: el interlocutor se corrige a si mismo y se le pregunta
+despues. Acumulado limpio a 2026-09-12: **2 aciertos de 15**.
+
+Las cuatro lineas bloquean.
+
+1. **Coherencia.** El mismo hilo de L4b, medido con la sintesis ACTIVADA y
+   DESACTIVADA en la misma instalacion y con el resto de la configuracion igual.
+
+       PASA si   con sintesis >= 8 de 9
+       y ademas  la diferencia sobre el brazo sin sintesis es >= 5 aciertos
+
+   n = 9 por brazo, en tres ejecuciones de tres repeticiones, cruzado por dos
+   ejecutores. El 9 no es capricho: con n = 3 la misma linea dio 0/3, 1/3 y 3/3
+   sin que el producto cambiara. Si el brazo sin sintesis subiera solo, la fase
+   no ha demostrado nada y se replantea en vez de darse por buena.
+2. **Anclaje.** Toda sintesis conserva enlaces a TODOS los engramas de su
+   ventana, verificable por consulta -contando enlaces contra items- y no por
+   lectura. Un resumen sin enlaces es un resumen sin origen direccionable.
 3. **Coste.** Para el mismo hilo, el contexto compuesto con sintesis no ocupa
    mas tokens que sin ella, y un hilo que antes no cabia en el presupuesto cabe.
+4. **No promocion.** Tras `maintain`, ninguna sintesis aparece en `semantic`.
+   Verificable por consulta. Sale de la enmienda del ADR 0007 del 2026-09-12: la
+   sintesis es estado de trabajo, no recuerdo, y esta es la linea que impide que
+   un resumen alucinado se vuelva memoria duradera.
 
-Riesgo declarado, heredado del ADR 0013: resumir con el mismo modelo que alucina
-produce resumenes de alucinaciones. Por eso el resumen no sustituye a los
-engramas anclados y por eso la linea 2 es criterio de salida y no un deseo.
+Y una heredada del ADR 0013, que tambien bloquea: **una sintesis que mezcla
+emisores no se presenta como dicha por ninguno**.
+
+Riesgo declarado: resumir con el mismo modelo que alucina produce resumenes de
+alucinaciones. No se elimina; se acota con las lineas 2 y 4, y por eso son
+criterio y no deseo.
+
+Lo que este criterio NO cubre, declarado: que la sintesis sea BUENA. Se mide que
+sostiene el hilo, no su calidad. Y no exige `entities` (ADR 0004): los artefactos
+exactos siguen anclados como hoy, en engramas atomicos.
 
 ## Deuda de diseno declarada
 
