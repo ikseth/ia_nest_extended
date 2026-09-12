@@ -35,6 +35,9 @@ def gate_stub():
         l2_recall_contains_witness=True,
         l2_witnesses={},
         corrections_by_user={},
+        l3_annotation=True,
+        l3_model_label=True,
+        l3_model_first=False,
         l5_empty_domains=set(),
         l5_hide_corpus_names=False,
         l5r_noise=False,
@@ -187,15 +190,30 @@ def gate_stub():
             corrections = state.corrections_by_user[user_id]
             context_lines = []
             for witnesses in reversed(corrections):
-                context_lines.extend(
-                    [
-                        "[episodic/facts] (fuente: usuario) La clave del refugio es "
-                        f"{witnesses['correct']}.",
-                        "[episodic/facts] (fuente: modelo, sin verificar; "
-                        "hay una version del usuario sobre esto) La clave del refugio es "
-                        f"{witnesses['incorrect']}.",
-                    ]
+                user_line = (
+                    "[episodic/tasks] (fuente: usuario) La clave del refugio es "
+                    f"{witnesses['correct']}."
                 )
+                model_source = (
+                    "fuente: modelo, sin verificar"
+                    if state.l3_model_label
+                    else "fuente: no registrada"
+                )
+                annotation = (
+                    "; hay una version del usuario sobre esto"
+                    if state.l3_annotation
+                    else ""
+                )
+                model_line = (
+                    f"[episodic/facts] ({model_source}{annotation}) "
+                    f"La clave del refugio es {witnesses['incorrect']}."
+                )
+                pair = (
+                    [model_line, user_line]
+                    if state.l3_model_first
+                    else [user_line, model_line]
+                )
+                context_lines.extend(pair)
             self._send(
                 {
                     "context": "\n".join(context_lines),
@@ -296,6 +314,41 @@ def test_l2_fails_without_recall_even_when_answer_has_witness(
     assert attempt["verdict"] == "NO PASA"
     assert attempt["checks"]["answer_contains_witness"] is True
     assert attempt["checks"]["recall_contains_witness_stated_by_user"] is False
+
+
+def test_l3_passes_without_annotation_and_reports_its_rate(
+    gate_stub, tmp_path, capsys
+):
+    gate_stub.l3_annotation = False
+
+    code, output, report = _run(gate_stub, tmp_path, capsys, repetitions=1)
+
+    line = _line(report, "L3")
+    assert code == 0
+    assert line["verdict"] == "PASA"
+    assert line["attempts"][0]["checks"]["model_label"] is True
+    assert (
+        line["attempts"][0]["checks"]["user_version_before_model_version"]
+        is True
+    )
+    assert line["attempts"][0]["checks"]["contradicted_by_annotation"] is False
+    assert line["annotation"] == {"observed": 0, "total": 1, "rate": "0/1"}
+    assert "L3: PASA 1/1 (anotacion 0/1)" in output
+
+
+@pytest.mark.parametrize("failure", ["label", "order"])
+def test_l3_still_fails_without_model_label_or_user_first(
+    gate_stub, tmp_path, capsys, failure
+):
+    if failure == "label":
+        gate_stub.l3_model_label = False
+    else:
+        gate_stub.l3_model_first = True
+
+    code, _, report = _run(gate_stub, tmp_path, capsys, repetitions=1)
+
+    assert code == 1
+    assert _line(report, "L3")["verdict"] == "NO PASA"
 
 
 def test_red_verdict_keeps_wrong_l4a_evidence(gate_stub, tmp_path, capsys):
@@ -471,6 +524,23 @@ def test_unpublished_corpus_identity_is_declared_without_hiding_retrieval(
         probe["k_returned"] == 1 and probe["recovered_corpora"] == []
         for probe in _line(report, "L5")["attempts"][0]["probes"]
     )
+
+
+def test_progress_reports_every_probe_before_the_unchanged_summary(
+    gate_stub, tmp_path, capsys
+):
+    _, output, _ = _run(gate_stub, tmp_path, capsys, repetitions=1)
+
+    output_lines = output.splitlines()
+    summary_index = output_lines.index("LO QUE LA PUERTA NO CUBRE")
+    progress = output_lines[:summary_index]
+    assert len(progress) == 13
+    assert all(line.startswith("PROGRESO ") for line in progress)
+    assert "PROGRESO L1 repeticion 1: PASA" in progress
+    assert "PROGRESO L5 repeticion 1 agricultura: PASA" in progress
+    assert "PROGRESO L5r repeticion 3: PASA" in progress
+    assert "VEREDICTO: PASA (codigo 0)" in output_lines[summary_index:]
+    assert "L6: FUERA DEL SCRIPT" in output_lines[summary_index:]
 
 
 def test_script_imports_only_standard_library():

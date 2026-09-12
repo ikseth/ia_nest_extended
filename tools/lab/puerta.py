@@ -353,7 +353,7 @@ def _attempt_l3_l4a(
             for line in incorrect_lines
         )
         ordered = correct_index >= 0 and incorrect_index > correct_index
-        l3_passed = model_label and contradiction_label and ordered
+        l3_passed = model_label and ordered
         evidence_l3.update(
             {
                 "seed_response": seeded,
@@ -472,6 +472,8 @@ def _attempt_l5(
     rest: RestRecorder,
     user_id: str,
     repetition: int,
+    *,
+    on_probe: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
     probes: list[dict[str, Any]] = []
     for domain, question in L5_PROBES:
@@ -519,6 +521,8 @@ def _attempt_l5(
         except GateHttpError as exc:
             evidence.update({"error": str(exc), "verdict": FAIL})
         probes.append(evidence)
+        if on_probe is not None:
+            on_probe(evidence)
     passed = all(probe.get("verdict") == PASS for probe in probes)
     return {
         "repetition": repetition,
@@ -568,7 +572,11 @@ def _attempt_l5r(
     return evidence
 
 
-def _aggregate(line: str, attempts: list[dict[str, Any]], blocking: bool = True) -> dict[str, Any]:
+def _aggregate(
+    line: str,
+    attempts: list[dict[str, Any]],
+    blocking: bool = True,
+) -> dict[str, Any]:
     passed = sum(item.get("verdict") == PASS for item in attempts)
     total = len(attempts)
     return {
@@ -579,6 +587,16 @@ def _aggregate(line: str, attempts: list[dict[str, Any]], blocking: bool = True)
         "blocking": blocking,
         "attempts": attempts,
     }
+
+
+def _print_probe_progress(
+    line: str,
+    repetition: int,
+    verdict: str,
+    detail: str | None = None,
+) -> None:
+    suffix = f" {detail}" if detail else ""
+    print(f"PROGRESO {line} repeticion {repetition}{suffix}: {verdict}", flush=True)
 
 
 def _check_l1(
@@ -779,7 +797,9 @@ def execute_gate(
         return EXIT_NULL, report
 
     lines: list[dict[str, Any]] = []
-    lines.append(_check_l1(rest, catalog, args.setup_exit_code))
+    l1 = _check_l1(rest, catalog, args.setup_exit_code)
+    lines.append(l1)
+    _print_probe_progress("L1", 1, l1["verdict"])
 
     l2_attempts: list[dict[str, Any]] = []
     l3_attempts: list[dict[str, Any]] = []
@@ -787,14 +807,26 @@ def execute_gate(
     l4b_attempts: list[dict[str, Any]] = []
     l5_attempts: list[dict[str, Any]] = []
     for repetition in range(1, args.repetitions + 1):
-        l2_attempts.append(
-            _attempt_l2(rest, _probe_user_id(run_id, "l2", repetition), repetition)
+        l2 = _attempt_l2(
+            rest,
+            _probe_user_id(run_id, "l2", repetition),
+            repetition,
         )
+        l2_attempts.append(l2)
+        _print_probe_progress("L2", repetition, l2["verdict"])
         l3, _ = _attempt_l3_l4a(
             rest,
             _probe_user_id(run_id, "l3", repetition),
             repetition,
             run_l4a=False,
+        )
+        l3_attempts.append(l3)
+        annotation = l3.get("checks", {}).get("contradicted_by_annotation", False)
+        _print_probe_progress(
+            "L3",
+            repetition,
+            l3["verdict"],
+            f"anotacion {'SI' if annotation else 'NO'}",
         )
         _, l4a = _attempt_l3_l4a(
             rest,
@@ -802,27 +834,37 @@ def execute_gate(
             repetition,
             run_l4a=True,
         )
-        l3_attempts.append(l3)
         l4a_attempts.append(l4a)
-        l4b_attempts.append(
-            _attempt_l4b(
-                rest,
-                _probe_user_id(run_id, "l4b", repetition),
-                repetition,
-            )
+        _print_probe_progress("L4a", repetition, l4a["verdict"])
+        l4b = _attempt_l4b(
+            rest,
+            _probe_user_id(run_id, "l4b", repetition),
+            repetition,
         )
-        l5_attempts.append(
-            _attempt_l5(rest, _probe_user_id(run_id, "l5", repetition), repetition)
+        l4b_attempts.append(l4b)
+        _print_probe_progress("L4b", repetition, l4b["verdict"])
+        l5 = _attempt_l5(
+            rest,
+            _probe_user_id(run_id, "l5", repetition),
+            repetition,
+            on_probe=lambda probe, current=repetition: _print_probe_progress(
+                "L5",
+                current,
+                probe["verdict"],
+                str(probe["domain"]),
+            ),
         )
-    l5r_attempts = [
-        _attempt_l5r(
+        l5_attempts.append(l5)
+    l5r_attempts = []
+    for repetition, question in enumerate(L5R_PROBES, start=1):
+        l5r = _attempt_l5r(
             rest,
             _probe_user_id(run_id, "l5r", repetition),
             repetition,
             question,
         )
-        for repetition, question in enumerate(L5R_PROBES, start=1)
-    ]
+        l5r_attempts.append(l5r)
+        _print_probe_progress("L5r", repetition, l5r["verdict"])
     corpus_observations = [
         probe.get("corpus_identity_verifiable_by_rest", False)
         for attempt in l5_attempts
@@ -840,10 +882,20 @@ def execute_gate(
         "rag_score_verifiable": False,
         "rag_score": "la puntuacion no se publica por REST",
     }
+    l3_line = _aggregate("L3", l3_attempts)
+    annotations = sum(
+        attempt.get("checks", {}).get("contradicted_by_annotation") is True
+        for attempt in l3_attempts
+    )
+    l3_line["annotation"] = {
+        "observed": annotations,
+        "total": len(l3_attempts),
+        "rate": f"{annotations}/{len(l3_attempts)}",
+    }
     lines.extend(
         [
             _aggregate("L2", l2_attempts),
-            _aggregate("L3", l3_attempts),
+            l3_line,
             _aggregate("L4a", l4a_attempts),
             _aggregate("L4b", l4b_attempts, blocking=False),
             _aggregate("L5", l5_attempts),
@@ -922,9 +974,16 @@ def print_report(report: dict[str, Any]) -> None:
         share = ""
         if "passed" in line:
             share = f" {line['passed']}/{line['total']}"
-        label = " [brazo sin sintesis de Fase 9; no bloquea]" if line["line"] == "L4b" else ""
+        annotation = ""
+        if line["line"] == "L3":
+            annotation = f" (anotacion {line['annotation']['rate']})"
+        label = (
+            " [brazo sin sintesis de Fase 9; no bloquea]"
+            if line["line"] == "L4b"
+            else ""
+        )
         print(
-            f"{line['line']}: {line['verdict']}{share}{label}"
+            f"{line['line']}: {line['verdict']}{share}{annotation}{label}"
             f"{_failure_summary(line)}"
         )
 

@@ -1,7 +1,7 @@
 # Politica de write-back (Fase 3)
 
 Estado: reconciliado
-Version: 0.2 - 2026-08-22
+Version: 0.3 - 2026-09-12
 
 Entregable de la Fase 3 del PLAN: que se persiste tras cada respuesta del core,
 donde, y con que filtros. Principio rector: persistir en bruto envenena la
@@ -24,7 +24,9 @@ identificador ya designa otra cosa en el contrato de esta capa (el origen de una
 entrada del catalogo: `own`, `overridden`, `forwarded`).
 No es cosmetica de traza; es lo que materializa la frontera de confianza de la
 enmienda del ADR 0007 -el write-back produce candidatos, no verdades- y lo que
-permite que una correccion del interlocutor retire lo que el modelo afirmo.
+permite que una correccion del interlocutor ANOTE lo que el modelo afirmo. No lo
+retira: la decision 4 del ADR 0013 lo dice expresamente, y el margen medido entre
+contradecir y compartir tema no sostiene una accion destructiva.
 
 - En `dialog` es directa: el prompt es del usuario, la respuesta del modelo.
 - En `episodic` la fija el CODIGO segun la lista en que vino el item, nunca el
@@ -64,7 +66,20 @@ dos listas, `from_user` y `from_assistant`, de items
 
 ## Dedup con refuerzo, y anotacion de contradiccion
 
-Tres bandas de similitud contra los engramas del mismo `user_id`+`namespace`:
+Tres bandas de similitud, con DOS alcances distintos y conviene no confundirlos:
+
+- **Dedup y refuerzo** comparan contra los engramas del mismo
+  `type_name`+`user_id`+`namespace`, como desde el principio.
+- **La anotacion de contradiccion** compara contra el mismo
+  `type_name`+`user_id`, SIN filtrar por `namespace`: una contradiccion es sobre
+  el contenido, no sobre el cajon que eligio el extractor (ADR 0013, enmienda
+  del 2026-09-12).
+
+La asimetria es deliberada por ahora y esta sin decidir del todo: el mismo
+argumento -la redundancia tambien es sobre el contenido- valdria para el dedup,
+pero ahi la accion MUTA el engrama existente (refuerzo, orden en el ranking),
+mientras que anotar no. Ampliar el alcance de una accion que muta pide su propia
+medida, y no se hace de paso.
 
 | Banda | Que significa | Que se hace |
 |---|---|---|

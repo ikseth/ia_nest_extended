@@ -118,7 +118,6 @@ class InMemoryStore:
             if (
                 engram.type_name != stated_by_user.type_name
                 or engram.user_id != stated_by_user.user_id
-                or engram.namespace != stated_by_user.namespace
                 or engram.status != EngramStatus.ACTIVE
             ):
                 continue

@@ -22,8 +22,8 @@ BEGIN
 END
 $migration$;
 
--- La anotacion de contradiccion busca candidatos del modelo dentro del scope
--- de usuario y namespace; el indice sirve a esa consulta.
+-- La anotacion de contradiccion busca candidatos del modelo por tipo y usuario;
+-- el prefijo del indice sirve a esa consulta. Namespace no es un filtro.
 CREATE INDEX IF NOT EXISTS engrams_stated_by_idx
     ON engrams (type_name, user_id, namespace, stated_by)
     WHERE status = 'active';

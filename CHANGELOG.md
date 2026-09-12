@@ -10,7 +10,7 @@ Sin acentos por convencion.
   Hallada al cruzar dos ejecutores en la puerta sobre el mismo despliegue
   natural, que dieron veredictos distintos. La anotacion salia 6 de 9 veces sin
   que el producto cambiara, y la causa no era la banda de similitud sino que
-  `record_contradiction` compara dentro del mismo `namespace`, que lo elige el
+  `record_contradiction` comparaba dentro del mismo `namespace`, que lo elige el
   modelo de extraccion: medido, la frase del usuario cayo en `episodic/tasks` y
   la del modelo en `episodic/facts`, asi que el candidato no entraba en la
   comparacion. Era un supuesto no escrito del ADR. Se corrige comparando por
@@ -18,6 +18,7 @@ Sin acentos por convencion.
   pasa a observacion medida, porque L4a paso 3/3 en nueve repeticiones tambien
   cuando no disparo. Encargo en
   `docs/handoff/contradiccion_entre_namespaces_brief.md`.
+  Correccion compatible: PATCH en la serie pre-1.0.
 
 ### Cambiado
 - La linea L3 de la puerta deja de exigir la anotacion de conflicto y pasa con
@@ -25,6 +26,8 @@ Sin acentos por convencion.
   correctos en las nueve repeticiones medidas. La tasa de anotacion se sigue
   registrando en la evidencia. Motivo: exigir un refuerzo como criterio hacia
   suspender la puerta por algo que el comportamiento medido no necesita.
+- La puerta emite una linea de progreso por sonda terminada, con linea,
+  repeticion y veredicto parcial, antes de conservar su resumen final.
 
 ## [0.2.2] - 2026-09-12
 

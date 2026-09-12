@@ -508,7 +508,6 @@ class PostgresMemoryStore:
                 FROM engrams
                 WHERE type_name = %s
                   AND user_id = %s
-                  AND namespace = %s
                   AND stated_by = 'model'
                   AND status = 'active'
                   AND id <> %s
@@ -518,7 +517,6 @@ class PostgresMemoryStore:
                 (
                     stated_by_user.type_name,
                     stated_by_user.user_id,
-                    stated_by_user.namespace,
                     stated_by_user.id,
                     vector,
                     conflict_threshold,
