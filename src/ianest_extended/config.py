@@ -76,6 +76,8 @@ class ExtendedConfig:
     rag_enabled: bool = True
     rag_top_k: int = 3
     rag_min_score: float = 0.50
+    rag_min_score_domain: float | None = None
+    rag_min_score_no_domain: float | None = None
     rag_max_tokens: int = 500
     rag_chunk_tokens: int = 300
     rag_chunk_overlap: float = 0.15
@@ -204,6 +206,14 @@ class ExtendedConfig:
                 "RAG_MIN_SCORE",
                 defaults.rag_min_score,
             ),
+            "rag_min_score_domain": _env_optional_float(
+                "RAG_MIN_SCORE_DOMAIN",
+                defaults.rag_min_score_domain,
+            ),
+            "rag_min_score_no_domain": _env_optional_float(
+                "RAG_MIN_SCORE_NO_DOMAIN",
+                defaults.rag_min_score_no_domain,
+            ),
             "rag_max_tokens": _env_int(
                 "RAG_MAX_TOKENS",
                 defaults.rag_max_tokens,
@@ -266,8 +276,12 @@ class ExtendedConfig:
             "auto_domain_min_confidence",
             "rag_suggest_min_confidence",
             "rag_min_score",
+            "rag_min_score_domain",
+            "rag_min_score_no_domain",
         ):
             value = getattr(self, name)
+            if value is None:
+                continue
             if not 0.0 <= value <= 1.0:
                 raise ExtendedConfigError(f"{name} debe estar entre 0 y 1")
         if self.conflict_threshold > self.dedup_threshold:
@@ -307,6 +321,22 @@ class ExtendedConfig:
             if not str(getattr(self, name)).strip():
                 raise ExtendedConfigError(f"{name} no puede estar vacio", name)
 
+    def rag_score_floor(self, domain: str | None) -> tuple[str, float]:
+        """Resuelve el regimen D5 desde el dominio efectivo del almacen."""
+        if domain is None:
+            return (
+                "no_domain",
+                self.rag_min_score
+                if self.rag_min_score_no_domain is None
+                else self.rag_min_score_no_domain,
+            )
+        return (
+            "domain",
+            self.rag_min_score
+            if self.rag_min_score_domain is None
+            else self.rag_min_score_domain,
+        )
+
 
 def _load_env_file(path: Path) -> None:
     if not path.is_file():
@@ -343,6 +373,16 @@ def _env_float(name: str, default: float) -> float:
         raise ExtendedConfigError(
             f"{PREFIX}{name} debe ser numerico"
         ) from exc
+
+
+def _env_optional_float(name: str, default: float | None) -> float | None:
+    key = f"{PREFIX}{name}"
+    if key not in os.environ:
+        return default
+    try:
+        return float(os.environ[key])
+    except ValueError as exc:
+        raise ExtendedConfigError(f"{key} debe ser numerico") from exc
 
 
 def _env_bool(name: str, default: bool) -> bool:

@@ -1293,12 +1293,13 @@ class ExtendedService:
         )
         chunks = ()
         if rag_store is not None:
+            _, min_score = config.rag_score_floor(identity.domain_tag)
             chunks = tuple(
                 rag_store.retrieve(
                     prompt,
                     domain=identity.domain_tag,
                     top_k=config.rag_top_k,
-                    min_score=config.rag_min_score,
+                    min_score=min_score,
                 )
             )
         bundle = enricher.recall(

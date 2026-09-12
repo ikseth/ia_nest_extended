@@ -14,6 +14,8 @@ def test_config_reads_prefixed_environment(monkeypatch):
     monkeypatch.setenv("IANEST_EXTENDED_PROMOTE_MIN_STABILITY", "4")
     monkeypatch.setenv("IANEST_EXTENDED_RAG_ENABLED", "false")
     monkeypatch.setenv("IANEST_EXTENDED_RAG_MIN_SCORE", "0.5")
+    monkeypatch.setenv("IANEST_EXTENDED_RAG_MIN_SCORE_DOMAIN", "0.41")
+    monkeypatch.setenv("IANEST_EXTENDED_RAG_MIN_SCORE_NO_DOMAIN", "0.46")
     monkeypatch.setenv("IANEST_EXTENDED_RAG_CHUNK_OVERLAP", "0.2")
     monkeypatch.setenv("IANEST_EXTENDED_AUTO_DOMAIN", "yes")
     monkeypatch.setenv("IANEST_EXTENDED_RAG_SUGGEST_MIN_CONFIDENCE", "0.65")
@@ -32,6 +34,8 @@ def test_config_reads_prefixed_environment(monkeypatch):
     assert config.promote_min_stability == 4
     assert config.rag_enabled is False
     assert config.rag_min_score == 0.5
+    assert config.rag_min_score_domain == 0.41
+    assert config.rag_min_score_no_domain == 0.46
     assert config.rag_chunk_overlap == 0.2
     assert config.auto_domain is True
     assert config.rag_suggest_min_confidence == 0.65
@@ -76,10 +80,45 @@ def test_config_rag_min_score_defaults_to_the_measured_floor():
     config = ExtendedConfig.from_env(env_file=None)
 
     assert config.rag_min_score == 0.50
+    assert config.rag_min_score_domain is None
+    assert config.rag_min_score_no_domain is None
+    assert config.rag_score_floor("linux") == ("domain", 0.50)
+    assert config.rag_score_floor(None) == ("no_domain", 0.50)
+
+
+def test_config_specific_rag_floors_override_only_their_regime():
+    config = ExtendedConfig(
+        rag_min_score=0.60,
+        rag_min_score_domain=0.41,
+    )
+
+    assert config.rag_score_floor("linux") == ("domain", 0.41)
+    assert config.rag_score_floor(None) == ("no_domain", 0.60)
+
+
+def test_config_no_domain_rag_floor_does_not_affect_domain_regime():
+    config = ExtendedConfig(
+        rag_min_score=0.60,
+        rag_min_score_no_domain=0.46,
+    )
+
+    assert config.rag_score_floor("linux") == ("domain", 0.60)
+    assert config.rag_score_floor(None) == ("no_domain", 0.46)
 
 
 def test_config_rejects_out_of_range_rag_min_score(monkeypatch):
     monkeypatch.setenv("IANEST_EXTENDED_RAG_MIN_SCORE", "1.5")
+
+    with pytest.raises(ExtendedConfigError):
+        ExtendedConfig.from_env(env_file=None)
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["RAG_MIN_SCORE_DOMAIN", "RAG_MIN_SCORE_NO_DOMAIN"],
+)
+def test_config_rejects_out_of_range_specific_rag_min_score(monkeypatch, name):
+    monkeypatch.setenv(f"IANEST_EXTENDED_{name}", "1.5")
 
     with pytest.raises(ExtendedConfigError):
         ExtendedConfig.from_env(env_file=None)

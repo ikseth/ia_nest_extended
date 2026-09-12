@@ -443,8 +443,9 @@ Distinto es saber que una pregunta NO necesita conocimiento: eso si es juicio, y
 es de conscience. Disparador: antes de crecer el corpus, porque el ruido escala
 con el.
 
-Cierre: suelo configurable `rag_min_score` (default `0.38`, medido en
-laboratorio el 2026-08-18 contra dos dominios; ver CHANGELOG), aplicado en
+Cierre: suelo configurable `rag_min_score` (default `0.38` al cerrarse esta
+deuda; subido a `0.50` al crecer el corpus, ver CHANGELOG, y convertido en la
+BASE de los dos regimenes de D5), aplicado en
 `RagStore.retrieve` y hecho llegar explicitamente desde `ExtendedConfig` a los
 dos caminos que recuperan RAG (`prompt.run`/`reasoning.run` via
 `MemoryEnricher.enrich` y `task.run` per-subtarea via
@@ -504,10 +505,19 @@ existe es mejor que un umbral que no distingue una alergia de un color
 favorito-. Consecuencia declarada: hoy la Fase 4 apenas consolida, asi que a
 corto plazo esto se parece a no tener suelo; no invalida la decision, senala que
 el trabajo siguiente esta en la consolidacion. El default 0.10 es PROVISIONAL y
-sin medida; su calibracion se hara junto a D5 cuando existan corpus y uso
-reales.
+sin medida.
+
+Su calibracion se anuncio "junto a D5", y eso ya no se cumplio: D5 quedo
+cerrada el 2026-09-12 y este suelo sigue sin medir. No es la misma medida -uno
+gatea conocimiento y el otro memoria episodica, y sus poblaciones no son
+comparables-, asi que se separa aqui en vez de arrastrar una promesa vencida.
+Disparador vigente: cuando haya uso real acumulado en un despliegue, o antes si
+`conscience` empieza a escribir en los delegados.
 
 ### D5. Un umbral global puede no separar ruido de acierto
+
+Estado: CERRADA (implementada 2026-09-12,
+`docs/handoff/deuda_d5_brief.md`).
 
 Al calibrar el suelo del RAG con preguntas formuladas como las hace una persona
 -y no reformulando el texto del corpus, que fue el error de la primera
@@ -557,6 +567,18 @@ comportamiento correcto.
 
 Alternativas descartables si esa no basta: umbral por dominio, o umbral relativo
 al mejor resultado de cada consulta en vez de absoluto.
+
+Cierre: dos claves opcionales, `rag_min_score_domain` y
+`rag_min_score_no_domain`, sobrescriben por regimen la base `rag_min_score` sin
+retirarla ni cambiar su default `0.50`. El dominio EFECTIVO que llega al almacen
+elige el regimen; `general` y un auto-ruteo sin confianza suficiente siguen en
+el regimen sin dominio. La regla se aplica tanto al enriquecimiento como a
+`memory.recall`, y `rag.retrieve` declara `score_regime` y `min_score`.
+
+La CALIBRACION sigue pendiente por instalacion: los puntos medidos `0.41` con
+dominio y `0.46` sin dominio proceden de un unico corpus y un unico embebedor,
+las bandas aun se solapan y el margen del regimen estricto sobre el ruido es
+solo `0.002`. Son recomendacion documentada, no defaults del codigo.
 
 ### D3. La identidad como fuente conmutable
 
