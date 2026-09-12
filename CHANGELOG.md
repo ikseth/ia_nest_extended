@@ -6,6 +6,12 @@ Sin acentos por convencion.
 ## [No publicado]
 
 ### Anadido
+- `CORPUS_MANIFEST` permite al instalador ingerir N corpus, cada uno con sus
+  dominios, desde un manifiesto validado por completo antes de la primera
+  ingesta. Es excluyente con la terna antigua, que conserva exactamente su
+  comportamiento; las rutas relativas parten del directorio del manifiesto y
+  un fallo aborta nombrando el corpus sin revertir los anteriores. Adicion
+  compatible del esquema publico de configuracion: PATCH en la serie pre-1.0.
 - `docs/PUERTA_LABORATORIO.md`, reconciliado el 2026-09-12: la puerta de
   laboratorio de esta capa, que aplica meta ADR 0010. Certifica un despliegue
   NATURAL (instaladores, un tag de cada uno y ficheros de parametros declarados,

@@ -105,6 +105,32 @@ El instalador ejecuta `knowledge ingest` con cada dominio declarado y despues
 referencia de fuente y ordinal de chunk. `knowledge status` permite comprobar
 los vinculos confirmados.
 
+Para declarar N corpus se usa `CORPUS_MANIFEST`, excluyente con
+`CORPUS_PATH`, `CORPUS_NAME` y `CORPUS_DOMAINS`. Declarar el manifiesto junto a
+cualquiera de esas tres claves es un error de validacion; sin manifiesto ni
+terna el instalador no ingiere nada. El formato es texto ASCII, una linea por
+corpus y tres campos separados por `|`:
+
+```text
+# nombre | dominios separados por coma | ruta al texto
+linux_docs | linux | nuevo/linux/linux.txt
+scripting_docs | codigo,linux | recuperado/scripting.txt
+domotica_docs | domotica | nuevo/domotica
+```
+
+Las lineas vacias y las que empiezan por `#` se ignoran, y los espacios que
+rodean cada campo se recortan. Una ruta relativa se resuelve desde el directorio
+del manifiesto; una absoluta se conserva. Antes de la primera ingesta se valida
+el fichero entero: sintaxis, nombres unicos y no vacios, dominios no vacios y
+rutas legibles. Los dominios no se contrastan en el instalador con el catalogo
+del core: esa validacion pertenece a `knowledge ingest`.
+
+Los corpus se procesan en el orden declarado. Cada uno se ingiere con todos sus
+dominios y despues se confirma cada vinculo. Si una ingesta o confirmacion falla,
+el instalador aborta nombrando el corpus y conserva la causa del comando. No es
+una transaccion: lo ya ingerido permanece. Repetir el setup despues de corregir
+el fallo no duplica chunks ni vinculos por la idempotencia indicada arriba.
+
 ## Comandos y servicios
 
 Quedan disponibles desde cualquier directorio:
