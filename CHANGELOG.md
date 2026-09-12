@@ -3,7 +3,7 @@
 Formato basado en Keep a Changelog; SemVer (ver core `docs/VERSIONADO.md`).
 Sin acentos por convencion.
 
-## [No publicado]
+## [0.2.1] - 2026-09-12
 
 ### Anadido
 - D5, dos regimenes para el suelo del RAG. La base
