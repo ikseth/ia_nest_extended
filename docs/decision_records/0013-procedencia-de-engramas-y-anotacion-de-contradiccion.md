@@ -151,6 +151,35 @@ natural es la escritura supervisada del guardian, no un barrido mecanico.
   acepta en `memory.write`. Adicion compatible -> MINOR.
 - La politica de write-back cambia y se actualiza `docs/POLITICA_WRITEBACK.md`.
 
+## Enmienda (2026-09-12): la contradiccion no vive en un cajon
+
+Hallado al cruzar dos ejecutores en la puerta de laboratorio, sobre un
+despliegue natural. La anotacion disparaba unas veces si y otras no -6 de 9
+repeticiones- sin que nada cambiara en el producto.
+
+La causa no es la banda de similitud, que era la sospecha obvia. Es que
+`record_contradiction` compara dentro del MISMO namespace
+(`WHERE type_name = ? AND user_id = ? AND namespace = ?`), y el namespace lo
+elige el modelo de extraccion. Medido: la frase del usuario cayo en
+`episodic/tasks` y la del modelo en `episodic/facts`, misma frase y distinto
+cajon, asi que el candidato ni siquiera entro en la comparacion.
+
+Era un supuesto no escrito de esta decision: que las dos versiones del mismo
+hecho caen en el mismo namespace. Depende de un modelo, luego no se sostiene.
+
+**Se corrige:** la deteccion compara dentro del TIPO y del usuario, sin filtrar
+por namespace. Una contradiccion es sobre el CONTENIDO, no sobre el cajon donde
+el extractor lo puso. El riesgo de comparar mas candidatos esta acotado por dos
+cosas que ya decidio este ADR: la banda de similitud sigue gateando, y la accion
+no es destructiva -anota y despriorza, no retira-.
+
+**Y se recorta su papel.** Medido en nueve repeticiones, la linea que mide el
+comportamiento corregido (L4a de la puerta) paso 3 de 3 en todas ellas, tambien
+cuando la anotacion no disparo. Lo que sostiene que el modelo acepte la
+correccion es marcar la PROCEDENCIA; la anotacion es refuerzo. Por eso deja de
+ser criterio de la puerta y pasa a observacion medida, con su tasa registrada.
+La decision 4 no cambia: el candidato del modelo se anota, nunca se retira.
+
 ## Lo que esta decision NO resuelve
 
 La contradiccion se corrige cuando el usuario la corrige. Un contexto con muchos
