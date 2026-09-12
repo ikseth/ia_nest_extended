@@ -1,7 +1,8 @@
 # Puerta de laboratorio de ia_nest_extended
 
 Estado: reconciliado 2026-09-12. Declarado ANTES de medir.
-Version: 1.0 - 2026-09-12
+Version: 1.1 - 2026-09-12 (precisiones de L1 y L3 al implementar el script; el
+criterio no cambia)
 
 Aplica `ia_nest_meta` ADR 0010 (regla de la puerta de laboratorio): la regla
 dice que la puerta existe y que forma tiene; este documento fija el
@@ -53,9 +54,9 @@ incorrecto. Ninguna linea usa un modelo del propio sistema como juez.
 
 | Linea | Que se mide | Pasa | No pasa |
 |---|---|---|---|
-| L1 Forma | `setup.sh` con `VERIFY=strict`; `capability.list` sin degradacion | codigo 0 y ninguna degradacion | cualquier otro |
+| L1 Forma | `setup.sh` con `VERIFY=strict`; `capability.list` sin degradacion; `knowledge.status` responde | codigo 0 y ninguna degradacion | cualquier otro |
 | L2 Continuidad | el interlocutor dice un testigo aleatorio en la sesion A; se pregunta por el en la sesion B | la respuesta de B contiene el testigo, y `memory.recall` de B lo devuelve con `stated_by=user` | falta cualquiera de las dos |
-| L3 Procedencia | se siembra por `memory.write` un candidato con `stated_by=model`; el interlocutor dice lo contrario | el contexto del turno siguiente etiqueta el candidato como del modelo y anotado, y lo coloca detras de la version del usuario | sin etiqueta, sin enlace `contradicted_by` o en otro orden |
+| L3 Procedencia | se siembra por `memory.write` un candidato con `stated_by=model`; el interlocutor dice lo contrario | el contexto del turno siguiente etiqueta el candidato como del modelo y anotado, y lo coloca detras de la version del usuario | sin etiqueta, sin anotacion de conflicto o en otro orden |
 | L4a Coherencia, correccion de un candidato del modelo | hilo de cuatro turnos sobre L3; la ultima pregunta pide el dato | la respuesta contiene el testigo del usuario y no el del modelo | contiene el del modelo, o ninguno |
 | L4b Coherencia, autocorreccion del interlocutor | "la reunion es el martes" ... "perdona, es el jueves" ... "que dia es?" | contiene "jueves" y no "martes" | contiene "martes", o ninguno |
 | L5 RAG por dominio | por cada dominio con corpus confirmado, una pregunta redactada como la haria una persona, SIN mirar el corpus | el corpus esperado aparece en los recuperados (`corpora` en telemetria) | no aparece |
@@ -106,6 +107,16 @@ construido.
 - Un PASA de forma no es un PASA de contenido. El oraculo lexico puede dar un
   falso NO PASA ante una parafrasis ("dos dias despues del martes"); por eso
   cada respuesta queda en la evidencia y la cruzan dos agentes.
+- **El enlace `contradicted_by` NO se comprueba de forma estructural.** Hallado
+  al implementar el script: `memory.recall` publica la ANOTACION textual que el
+  servicio deriva del enlace, no el enlace. L3 comprueba por tanto lo que ve un
+  consumidor, que es lo que la puerta mide; que exista la fila en
+  `memory_links` queda fuera. Si algun dia hace falta comprobarlo, la peticion
+  correcta es exponer el enlace, no que la puerta consulte la base por detras.
+- **El codigo de salida de `setup.sh` en L1 lo aporta el operador** (argumento
+  `--setup-exit-code`): la puerta mide un despliegue ya hecho y no invoca al
+  instalador. Que ese codigo sea el de la instalacion que se esta midiendo es
+  parte de la precondicion P4.
 
 ## Reconciliado el 2026-09-12
 

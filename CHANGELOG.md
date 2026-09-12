@@ -21,6 +21,15 @@ Sin acentos por convencion.
   agentes independientes. Su linea L4b -la autocorreccion del interlocutor, que
   el ADR 0013 no cubre- es el brazo sin sintesis de la Fase 9 y no bloquea la
   puerta. Se escribe ANTES de medir. Impacto de version: ninguno.
+- `tools/lab/puerta.py`: el script que ejecuta la puerta de laboratorio contra
+  la REST de un despliegue real y devuelve veredicto (0 PASA, 1 NO PASA,
+  2 NULA). Solo biblioteca estandar, para que corra en la maquina desplegada
+  sin instalar nada. Testigos fijados antes de responder -aleatorios en L2 y
+  L3, par fijo en L4b- como oraculo externo, `user_id` nuevo por pasada, L4b
+  registrada sin decidir el codigo de salida, y L5/L5r declaradas NO
+  EJECUTABLES mientras el instalador no acepte N corpus. Ocho pruebas contra un
+  stub HTTP. Instrumental: no toca contrato publico ni comportamiento de la
+  capa. Impacto de version: ninguno.
 - Dos briefs de implementacion para el agente codificador.
   `docs/handoff/instalador_n_corpus_brief.md`: el instalador ingiere N corpus
   desde un manifiesto declarativo (`CORPUS_MANIFEST`, excluyente con la terna
