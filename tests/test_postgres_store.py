@@ -511,11 +511,8 @@ def test_contradiction_crosses_namespace_but_not_type_user_or_band(postgres_stor
     content = "La clave del refugio tiene una version distinta"
 
     def write_model(type_name, candidate_user, namespace):
-        principal = (
-            Principal.EXTENDED if type_name == "episodic" else Principal.CONSCIENCE
-        )
         return postgres_store.write(
-            principal,
+            Principal.EXTENDED,
             EngramWrite(
                 type_name=type_name,
                 content=content,
