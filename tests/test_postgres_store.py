@@ -14,6 +14,7 @@ from ianest_extended import (
     MemoryIdentity,
     Principal,
     RecallQuery,
+    StatedBy,
     TelemetryWriter,
     WriteAuthorityError,
 )
@@ -39,6 +40,10 @@ def _orthogonal_embedding(store, text):
     vector[index] += 1.0
     norm = sum(value * value for value in vector) ** 0.5
     return tuple(value / norm for value in vector)
+
+
+def _controlled_vector(store, first, second):
+    return (first, second, *(0.0 for _ in range(store._embedder.dimension - 2)))
 
 
 def test_a1_continuity_and_session_isolation(postgres_store):
@@ -498,3 +503,82 @@ def test_a5_archive_preserves_row(postgres_store):
     assert archived.status is EngramStatus.ARCHIVED
     assert still_present.id == stored.id
     assert still_present.archived_reason == "prueba de retencion"
+
+
+def test_contradiction_crosses_namespace_but_not_type_user_or_band(postgres_store):
+    user = f"contradiction-{uuid4()}"
+    other_user = f"contradiction-{uuid4()}"
+    content = "La clave del refugio tiene una version distinta"
+
+    def write_model(type_name, candidate_user, namespace):
+        principal = (
+            Principal.EXTENDED if type_name == "episodic" else Principal.CONSCIENCE
+        )
+        return postgres_store.write(
+            principal,
+            EngramWrite(
+                type_name=type_name,
+                content=content,
+                identity=MemoryIdentity(candidate_user, "A"),
+                namespace=namespace,
+                stated_by=StatedBy.MODEL,
+            ),
+        )
+
+    cross_namespace = write_model("episodic", user, "facts")
+    other_user_candidate = write_model("episodic", other_user, "facts")
+    other_type_candidate = write_model("semantic", user, "facts")
+    below_band = write_model("episodic", user, "preferences")
+    above_dedup = write_model("episodic", user, "facts")
+    stated_by_user = postgres_store.write(
+        Principal.EXTENDED,
+        EngramWrite(
+            type_name="episodic",
+            content=content,
+            identity=MemoryIdentity(user, "B"),
+            namespace="tasks",
+            stated_by=StatedBy.USER,
+        ),
+    )
+
+    user_vector = _controlled_vector(postgres_store, 1.0, 0.0)
+    conflict_vector = _controlled_vector(postgres_store, 0.8, 0.6)
+    below_vector = _controlled_vector(postgres_store, 0.0, 1.0)
+    for candidate in (
+        cross_namespace,
+        other_user_candidate,
+        other_type_candidate,
+    ):
+        _set_embedding(postgres_store, candidate.id, conflict_vector)
+    _set_embedding(postgres_store, below_band.id, below_vector)
+    _set_embedding(postgres_store, above_dedup.id, user_vector)
+    _set_embedding(postgres_store, stated_by_user.id, user_vector)
+
+    marked = postgres_store.record_contradiction(
+        Principal.EXTENDED,
+        stated_by_user=postgres_store.get_engram(stated_by_user.id),
+        conflict_threshold=0.70,
+        dedup_threshold=0.92,
+    )
+
+    with postgres_store._connect() as connection:
+        links = connection.execute(
+            """
+            SELECT source_id, target_engram_id, link_kind
+            FROM memory_links
+            WHERE link_kind = 'contradicted_by'
+            """
+        ).fetchall()
+    assert [candidate.id for candidate in marked] == [cross_namespace.id]
+    assert [
+        (link["source_id"], link["target_engram_id"], link["link_kind"])
+        for link in links
+    ] == [(cross_namespace.id, stated_by_user.id, "contradicted_by")]
+    assert (
+        postgres_store.get_engram(cross_namespace.id).status
+        is EngramStatus.ACTIVE
+    )
+    assert postgres_store.get_engram(other_user_candidate.id).contradicted is False
+    assert postgres_store.get_engram(other_type_candidate.id).contradicted is False
+    assert postgres_store.get_engram(below_band.id).contradicted is False
+    assert postgres_store.get_engram(above_dedup.id).contradicted is False

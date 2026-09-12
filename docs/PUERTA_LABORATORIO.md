@@ -60,7 +60,7 @@ incorrecto. Ninguna linea usa un modelo del propio sistema como juez.
 |---|---|---|---|
 | L1 Forma | `setup.sh` con `VERIFY=strict`; `capability.list` sin degradacion; `knowledge.status` responde | codigo 0 y ninguna degradacion | cualquier otro |
 | L2 Continuidad | el interlocutor dice un testigo aleatorio en la sesion A; se pregunta por el en la sesion B | `memory.recall` de B devuelve el testigo con `stated_by=user`; lo que responda el modelo se registra pero no decide | el recall no lo devuelve |
-| L3 Procedencia | se siembra por `memory.write` un candidato con `stated_by=model`; el interlocutor dice lo contrario | el contexto del turno siguiente etiqueta el candidato como del modelo y anotado, y lo coloca detras de la version del usuario | sin etiqueta, sin anotacion de conflicto o en otro orden |
+| L3 Procedencia | se siembra por `memory.write` un candidato con `stated_by=model`; el interlocutor dice lo contrario | el contexto del turno siguiente etiqueta el candidato como del modelo y lo coloca detras de la version del usuario; la anotacion de conflicto se registra con su tasa, pero no decide | sin etiqueta o en otro orden |
 | L4a Coherencia, correccion de un candidato del modelo | hilo de cuatro turnos sobre L3; la ultima pregunta pide el dato | la respuesta contiene el testigo del usuario y no el del modelo | contiene el del modelo, o ninguno |
 | L4b Coherencia, autocorreccion del interlocutor | "la reunion es el martes" ... "perdona, es el jueves" ... "que dia es?" | contiene "jueves" y no "martes" | contiene "martes", o ninguno |
 | L5 RAG por dominio | por cada dominio con corpus confirmado, una pregunta redactada como la haria una persona, SIN mirar el corpus | la recuperacion devuelve al menos un fragmento, y se registra el nombre de corpus que el contexto publique | no recupera nada |
@@ -82,6 +82,20 @@ aunque no decida.
 L4a y L4b si juzgan la respuesta, y con razon: ahi lo que se mide es si el
 CONTEXTO compuesto induce o no una contradiccion, y eso solo se ve en lo que el
 modelo termina diciendo.
+
+**Por que L3 no exige la anotacion de conflicto** (reconciliado el 2026-09-12,
+al cruzar dos ejecutores): la etiqueta de procedencia y el orden son mecanismo
+puro y salieron correctos en las NUEVE repeticiones medidas. La anotacion salio
+en 6 de 9, y su ausencia tiene causa conocida -ver ADR 0013, enmienda del
+2026-09-12-. Se separan porque miden cosas distintas: la etiqueta es lo que la
+capa gobierna por completo; la anotacion depende de una banda de similitud y de
+donde el extractor coloque cada version.
+
+Y hay un dato que decide el reparto: **L4a paso 3 de 3 en las tres pasadas,
+tambien cuando la anotacion no disparo**. Lo que sostiene el comportamiento es
+marcar la procedencia; la anotacion es la segunda capa. Exigirla como criterio
+haria suspender a la puerta por un refuerzo, no por la funcion. Su tasa se
+registra en la evidencia, porque una caida ahi sigue siendo informacion.
 
 ## L4b no es excluyente; es la medida que decide la Fase 9
 
