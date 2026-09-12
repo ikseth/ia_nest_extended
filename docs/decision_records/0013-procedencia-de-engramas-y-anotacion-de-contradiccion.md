@@ -135,7 +135,13 @@ natural es la escritura supervisada del guardian, no un barrido mecanico.
 
 - Migracion `0004_stated_by.sql`: campo `stated_by`, sus indices, y
   `contradicted_by` en el CHECK de `memory_links.link_kind`.
-- `EngramStatus.SUPERSEDED` deja de ser un estado muerto.
+- `EngramStatus.SUPERSEDED` SIGUE sin usarse, y es coherente con la decision 4:
+  la version del usuario ANOTA la del modelo, no la retira. (Correccion del
+  2026-09-12: esta linea decia que dejaba de ser un estado muerto, y se
+  contradecia con el cuerpo del propio ADR. Venia de un borrador anterior en el
+  que la version del usuario si retiraba la del modelo; esa forma se descarto
+  por el margen medido. Verificado en el codigo: el valor solo aparece
+  declarado en el modelo.)
 - Config nueva: `conflict_threshold`, calibrado en 0.70 contra `bge-m3` en el
   banco del lab, no elegido a ojo.
 - `Engram.contradicted`, derivado del enlace en cada recuperacion. No es columna:
