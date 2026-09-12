@@ -3,6 +3,31 @@
 Formato basado en Keep a Changelog; SemVer (ver core `docs/VERSIONADO.md`).
 Sin acentos por convencion.
 
+## [No publicado]
+
+### Corregido
+- La puerta de laboratorio se contaminaba a si misma. Ejecutada por primera vez
+  contra un despliegue natural (2026-09-12), dio NO PASA, y ninguno de sus
+  fallos era de la capa: toda la pasada compartia un `user_id`, y como la
+  memoria episodica es de ambito usuario, las sondas se pisaban -una linea
+  llego a responder con el testigo de otra-. Ahora cada sonda usa su propia
+  identidad, una por linea y por repeticion. Ademas los testigos dejan de
+  llevar guion, que invitaba al modelo a truncarlos y hacia que la sonda
+  midiera transcripcion en vez de memoria, y L5/L5r pasan de declararse NO
+  EJECUTABLES a ejecutarse de verdad, porque la condicion que lo impedia -un
+  instalador que solo admitia un corpus- caduco con la v0.2.1.
+- `docs/PUERTA_LABORATORIO.md` recoge lo aprendido al ejecutarla: identidad por
+  sonda y no por pasada, y que la REST no publica ni la puntuacion del RAG ni
+  un campo de corpus estructurado -eso vive en la telemetria, que es fichero en
+  la maquina y no superficie de consumo-, asi que la puerta lo declara en vez
+  de leer ficheros por detras.
+- Contradiccion interna del ADR 0013: su seccion "Consecuencia" afirmaba que
+  `EngramStatus.SUPERSEDED` dejaba de ser un estado muerto, mientras el cuerpo
+  del mismo ADR decia que sigue sin usarse. Verificado en el codigo: solo esta
+  declarado. Venia de un borrador en el que la version del usuario retiraba la
+  del modelo, forma descartada por el margen medido.
+- Impacto de version: ninguno, instrumental y documentacion.
+
 ## [0.2.1] - 2026-09-12
 
 ### Anadido

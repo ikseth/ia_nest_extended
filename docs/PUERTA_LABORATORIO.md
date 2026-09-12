@@ -43,8 +43,12 @@ Nula no es NO PASA: dice que no se midio el producto.
 
 ## Lineas
 
-Cada pasada usa un `user_id` propio, nuevo en cada ejecucion, y nunca el del
-operador (`docs/FORMA_ENRIQUECIMIENTO.md`).
+Cada SONDA usa un `user_id` propio -uno por linea y por repeticion, derivado
+del identificador de la pasada- y nunca el del operador
+(`docs/FORMA_ENRIQUECIMIENTO.md`). No basta con una identidad por pasada: la
+memoria episodica es de ambito usuario, asi que compartirla hace que las sondas
+se contaminen entre si. Se aprendio midiendo, el 2026-09-12: una sonda respondia
+con el testigo de otra.
 
 **El oraculo es externo al sistema (regla 5 de meta ADR 0010).** Cada sonda
 lleva un TESTIGO fijado antes de ejecutar: una cadena aleatoria o un dato
@@ -59,8 +63,8 @@ incorrecto. Ninguna linea usa un modelo del propio sistema como juez.
 | L3 Procedencia | se siembra por `memory.write` un candidato con `stated_by=model`; el interlocutor dice lo contrario | el contexto del turno siguiente etiqueta el candidato como del modelo y anotado, y lo coloca detras de la version del usuario | sin etiqueta, sin anotacion de conflicto o en otro orden |
 | L4a Coherencia, correccion de un candidato del modelo | hilo de cuatro turnos sobre L3; la ultima pregunta pide el dato | la respuesta contiene el testigo del usuario y no el del modelo | contiene el del modelo, o ninguno |
 | L4b Coherencia, autocorreccion del interlocutor | "la reunion es el martes" ... "perdona, es el jueves" ... "que dia es?" | contiene "jueves" y no "martes" | contiene "martes", o ninguno |
-| L5 RAG por dominio | por cada dominio con corpus confirmado, una pregunta redactada como la haria una persona, SIN mirar el corpus | el corpus esperado aparece en los recuperados (`corpora` en telemetria) | no aparece |
-| L5r Ruido | cortesia sin dominio ("hola", "gracias", "que recuerdas de mi") | `k_returned = 0` de RAG | recupera algo |
+| L5 RAG por dominio | por cada dominio con corpus confirmado, una pregunta redactada como la haria una persona, SIN mirar el corpus | la recuperacion devuelve al menos un fragmento, y se registra el nombre de corpus que el contexto publique | no recupera nada |
+| L5r Ruido | cortesia sin dominio ("hola", "gracias", "que recuerdas de mi") | la recuperacion RAG devuelve cero | recupera algo |
 | L6 Repeticion | segunda ejecucion de `setup.sh` sobre lo instalado | L1-L3 siguen pasando y los datos no se duplican | cualquier otro |
 
 Repeticion: L2, L3, L4a, L4b y L5 con n = 3. Una linea PASA con 3 de 3; con
@@ -113,6 +117,12 @@ construido.
   consumidor, que es lo que la puerta mide; que exista la fila en
   `memory_links` queda fuera. Si algun dia hace falta comprobarlo, la peticion
   correcta es exponer el enlace, no que la puerta consulte la base por detras.
+- **La puntuacion de similitud del RAG no se comprueba**, y el corpus de origen
+  solo en la medida en que el contexto lo nombre. Hallado al ejecutar L5 el
+  2026-09-12: la REST no publica ni el `score` ni un campo `corpora`
+  estructurado; eso vive en la telemetria, que es fichero en la maquina y no
+  superficie de consumo. La puerta mide lo que ve un consumidor, y declara el
+  hueco en su evidencia en vez de leer ficheros por detras.
 - **El codigo de salida de `setup.sh` en L1 lo aporta el operador** (argumento
   `--setup-exit-code`): la puerta mide un despliegue ya hecho y no invoca al
   instalador. Que ese codigo sea el de la instalacion que se esta midiendo es

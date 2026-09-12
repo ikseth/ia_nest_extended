@@ -32,6 +32,19 @@ NULL = "NULA"
 NOT_EXECUTABLE = "NO EJECUTABLE"
 OUTSIDE = "FUERA DEL SCRIPT"
 
+L5_PROBES = (
+    ("linux", "como abro un puerto en el cortafuegos de mi servidor"),
+    ("finanzas", "cuanto tarda en duplicarse mi dinero al 6 por ciento anual"),
+    ("agricultura", "cuando conviene sembrar tomates"),
+    ("medicina", "que hago ante una quemadura leve"),
+    ("cocina", "como se hace un sofrito"),
+)
+L5R_PROBES = (
+    "hola, buenos dias",
+    "gracias por tu ayuda",
+    "que recuerdas de mi",
+)
+
 OWN_CAPABILITIES = frozenset(
     {
         "memory_type.list",
@@ -81,10 +94,10 @@ class GateArgs:
 
 
 class RestRecorder:
-    def __init__(self, base_url: str, timeout: float, user_id: str):
+    def __init__(self, base_url: str, timeout: float, default_user_id: str):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
-        self.user_id = user_id
+        self.default_user_id = default_user_id
         self.exchanges: list[dict[str, Any]] = []
 
     def get(self, route: str) -> dict[str, Any]:
@@ -101,11 +114,12 @@ class RestRecorder:
     ) -> dict[str, Any]:
         url = f"{self.base_url}{route}"
         data = None
+        user_id = _payload_user_id(payload) or self.default_user_id
         headers = {
             "Accept": "application/json",
             # Las capacidades sin identidad no admiten body. La cabecera deja
             # trazada la identidad de la pasada tambien en esas llamadas.
-            "X-IA-NEST-Lab-User-Id": self.user_id,
+            "X-IA-NEST-Lab-User-Id": user_id,
         }
         if payload is not None:
             data = json.dumps(payload, ensure_ascii=True).encode("utf-8")
@@ -122,7 +136,7 @@ class RestRecorder:
             "request": {
                 "method": method,
                 "url": url,
-                "headers": {"X-IA-NEST-Lab-User-Id": self.user_id},
+                "headers": {"X-IA-NEST-Lab-User-Id": user_id},
                 "body": payload,
             },
             "started_at": started_wall,
@@ -160,6 +174,17 @@ def _json_or_text(raw: str) -> Any:
         return raw
 
 
+def _payload_user_id(payload: dict[str, Any] | None) -> str | None:
+    if payload is None:
+        return None
+    identity = payload.get("identity")
+    if not isinstance(identity, dict):
+        request = payload.get("request")
+        identity = request.get("identity") if isinstance(request, dict) else None
+    user_id = identity.get("user_id") if isinstance(identity, dict) else None
+    return user_id if isinstance(user_id, str) else None
+
+
 def _normalized(value: str) -> str:
     decomposed = unicodedata.normalize("NFKD", value)
     return "".join(char for char in decomposed if not unicodedata.combining(char)).casefold()
@@ -174,12 +199,29 @@ def _response_text(payload: dict[str, Any]) -> str:
     return response if isinstance(response, str) else ""
 
 
-def _identity(user_id: str, session_id: str) -> dict[str, str]:
-    return {
+def _identity(
+    user_id: str,
+    session_id: str,
+    *,
+    domain: str | None = None,
+) -> dict[str, str]:
+    identity = {
         "user_id": user_id,
         "session_id": session_id,
         "service": "puerta_laboratorio",
     }
+    if domain is not None:
+        identity["domain_tag"] = domain
+    return identity
+
+
+def _probe_user_id(run_id: str, line: str, repetition: int) -> str:
+    return f"puerta-{run_id}-{line.lower()}-{repetition}"
+
+
+def _random_word(prefix: str) -> str:
+    """Crea un testigo alfanumerico de una sola palabra y sin punto de corte."""
+    return f"{prefix}{uuid.uuid4().hex[:10]}"
 
 
 def _prompt(
@@ -212,13 +254,14 @@ def _recall(
 
 
 def _attempt_l2(rest: RestRecorder, user_id: str, repetition: int) -> dict[str, Any]:
-    witness = f"Xanthe-{uuid.uuid4().hex[:10]}"
+    witness = _random_word("Xanthe")
     session_a = f"l2-{repetition}-a-{uuid.uuid4().hex[:8]}"
     session_b = f"l2-{repetition}-b-{uuid.uuid4().hex[:8]}"
     assertion = f"Mi perro se llama {witness}. Recuerda exactamente ese nombre."
     question = "Como se llama mi perro? Escribe el nombre exacto."
     evidence: dict[str, Any] = {
         "repetition": repetition,
+        "user_id": user_id,
         "witness": witness,
         "sessions": [session_a, session_b],
     }
@@ -253,13 +296,16 @@ def _attempt_l3_l4a(
     rest: RestRecorder,
     user_id: str,
     repetition: int,
+    *,
+    run_l4a: bool,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     suffix = uuid.uuid4().hex[:10]
-    correct = f"Ambar-{suffix}"
-    incorrect = f"Cobalto-{suffix}"
+    correct = f"Ambar{suffix}"
+    incorrect = f"Cobalto{suffix}"
     session_id = f"l3-l4a-{repetition}-{uuid.uuid4().hex[:8]}"
     evidence_l3: dict[str, Any] = {
         "repetition": repetition,
+        "user_id": user_id,
         "correct_witness": correct,
         "incorrect_witness": incorrect,
         "session_id": session_id,
@@ -267,6 +313,7 @@ def _attempt_l3_l4a(
     }
     evidence_l4a: dict[str, Any] = {
         "repetition": repetition,
+        "user_id": user_id,
         "correct_witness": correct,
         "incorrect_witness": incorrect,
         "session_id": session_id,
@@ -322,6 +369,9 @@ def _attempt_l3_l4a(
             }
         )
 
+        if not run_l4a:
+            return evidence_l3, evidence_l4a
+
         turn_2 = _prompt(rest, user_id, session_id, "Responde solo OK.")
         turn_3 = _prompt(rest, user_id, session_id, "Responde solo LISTO.")
         turn_4 = _prompt(
@@ -336,6 +386,7 @@ def _attempt_l3_l4a(
         l4a_passed = has_correct and not has_incorrect
         evidence_l4a.update(
             {
+                "recall": recall_payload,
                 "turns": [turn_1, turn_2, turn_3, turn_4],
                 "final_answer": answer,
                 "checks": {
@@ -358,6 +409,7 @@ def _attempt_l4b(rest: RestRecorder, user_id: str, repetition: int) -> dict[str,
     session_id = f"l4b-{repetition}-{uuid.uuid4().hex[:8]}"
     evidence: dict[str, Any] = {
         "repetition": repetition,
+        "user_id": user_id,
         "correct_witness": correct,
         "incorrect_witness": incorrect,
         "session_id": session_id,
@@ -392,6 +444,123 @@ def _attempt_l4b(rest: RestRecorder, user_id: str, repetition: int) -> dict[str,
                     "contains_incorrect": has_incorrect,
                 },
                 "verdict": PASS if passed else FAIL,
+            }
+        )
+    except GateHttpError as exc:
+        evidence.update({"error": str(exc), "verdict": FAIL})
+    return evidence
+
+
+def _rag_observation(payload: dict[str, Any]) -> tuple[int, list[str], str]:
+    counters = payload.get("counters")
+    raw_count = counters.get("rag") if isinstance(counters, dict) else None
+    rag_count = raw_count if isinstance(raw_count, int) and raw_count >= 0 else 0
+    context = payload.get("context")
+    context = context if isinstance(context, str) else ""
+    corpora: set[str] = set()
+    for line in context.splitlines():
+        if not line.startswith("[") or "]" not in line:
+            continue
+        descriptor = line[1 : line.index("]")]
+        corpus = descriptor.split("/", 1)[0]
+        if corpus:
+            corpora.add(corpus)
+    return rag_count, sorted(corpora), context
+
+
+def _attempt_l5(
+    rest: RestRecorder,
+    user_id: str,
+    repetition: int,
+) -> dict[str, Any]:
+    probes: list[dict[str, Any]] = []
+    for domain, question in L5_PROBES:
+        session_id = f"l5-{repetition}-{domain}-{uuid.uuid4().hex[:8]}"
+        evidence: dict[str, Any] = {
+            "domain": domain,
+            "question": question,
+            "user_id": user_id,
+            "session_id": session_id,
+            "score": None,
+            "score_observation": "la puntuacion no se publica por REST",
+        }
+        try:
+            payload = rest.post(
+                "/memory/recall",
+                {
+                    "prompt": question,
+                    "identity": _identity(user_id, session_id, domain=domain),
+                    "use_memory": False,
+                    "use_rag": True,
+                },
+            )
+            rag_count, corpora, context = _rag_observation(payload)
+            corpus_identity_verifiable = bool(corpora)
+            passed = rag_count > 0
+            evidence.update(
+                {
+                    "recall": payload,
+                    "context": context,
+                    "k_returned": rag_count,
+                    "recovered_corpora": corpora,
+                    "corpus_identity_verifiable_by_rest": corpus_identity_verifiable,
+                    "corpus_identity_observation": (
+                        "nombres publicados en context de memory.recall"
+                        if corpora
+                        else (
+                            "no se recupero ningun corpus"
+                            if rag_count == 0
+                            else "la identidad del corpus no se comprueba por REST"
+                        )
+                    ),
+                    "verdict": PASS if passed else FAIL,
+                }
+            )
+        except GateHttpError as exc:
+            evidence.update({"error": str(exc), "verdict": FAIL})
+        probes.append(evidence)
+    passed = all(probe.get("verdict") == PASS for probe in probes)
+    return {
+        "repetition": repetition,
+        "user_id": user_id,
+        "probes": probes,
+        "verdict": PASS if passed else FAIL,
+    }
+
+
+def _attempt_l5r(
+    rest: RestRecorder,
+    user_id: str,
+    repetition: int,
+    question: str,
+) -> dict[str, Any]:
+    session_id = f"l5r-{repetition}-{uuid.uuid4().hex[:8]}"
+    evidence: dict[str, Any] = {
+        "repetition": repetition,
+        "question": question,
+        "user_id": user_id,
+        "session_id": session_id,
+        "score": None,
+        "score_observation": "la puntuacion no se publica por REST",
+    }
+    try:
+        payload = rest.post(
+            "/memory/recall",
+            {
+                "prompt": question,
+                "identity": _identity(user_id, session_id),
+                "use_memory": False,
+                "use_rag": True,
+            },
+        )
+        rag_count, corpora, context = _rag_observation(payload)
+        evidence.update(
+            {
+                "recall": payload,
+                "context": context,
+                "k_returned": rag_count,
+                "recovered_corpora": corpora,
+                "verdict": PASS if rag_count == 0 else FAIL,
             }
         )
     except GateHttpError as exc:
@@ -578,13 +747,17 @@ def execute_gate(
     systemctl_run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
 ) -> tuple[int, dict[str, Any]]:
     run_id = str(uuid.uuid4())
-    user_id = f"puerta-{run_id}"
-    rest = RestRecorder(args.base_url, args.timeout, user_id)
+    user_id_prefix = f"puerta-{run_id}-"
+    rest = RestRecorder(
+        args.base_url,
+        args.timeout,
+        _probe_user_id(run_id, "l1", 1),
+    )
     report: dict[str, Any] = {
         "schema_version": 1,
         "started_at": datetime.now(timezone.utc).isoformat(),
         "run_id": run_id,
-        "user_id": user_id,
+        "user_id_prefix": user_id_prefix,
         "base_url": args.base_url,
         "tag": args.tag,
         "repetitions": args.repetitions,
@@ -612,30 +785,69 @@ def execute_gate(
     l3_attempts: list[dict[str, Any]] = []
     l4a_attempts: list[dict[str, Any]] = []
     l4b_attempts: list[dict[str, Any]] = []
+    l5_attempts: list[dict[str, Any]] = []
     for repetition in range(1, args.repetitions + 1):
-        l2_attempts.append(_attempt_l2(rest, user_id, repetition))
-        l3, l4a = _attempt_l3_l4a(rest, user_id, repetition)
+        l2_attempts.append(
+            _attempt_l2(rest, _probe_user_id(run_id, "l2", repetition), repetition)
+        )
+        l3, _ = _attempt_l3_l4a(
+            rest,
+            _probe_user_id(run_id, "l3", repetition),
+            repetition,
+            run_l4a=False,
+        )
+        _, l4a = _attempt_l3_l4a(
+            rest,
+            _probe_user_id(run_id, "l4a", repetition),
+            repetition,
+            run_l4a=True,
+        )
         l3_attempts.append(l3)
         l4a_attempts.append(l4a)
-        l4b_attempts.append(_attempt_l4b(rest, user_id, repetition))
+        l4b_attempts.append(
+            _attempt_l4b(
+                rest,
+                _probe_user_id(run_id, "l4b", repetition),
+                repetition,
+            )
+        )
+        l5_attempts.append(
+            _attempt_l5(rest, _probe_user_id(run_id, "l5", repetition), repetition)
+        )
+    l5r_attempts = [
+        _attempt_l5r(
+            rest,
+            _probe_user_id(run_id, "l5r", repetition),
+            repetition,
+            question,
+        )
+        for repetition, question in enumerate(L5R_PROBES, start=1)
+    ]
+    corpus_observations = [
+        probe.get("corpus_identity_verifiable_by_rest", False)
+        for attempt in l5_attempts
+        for probe in attempt["probes"]
+        if probe.get("k_returned", 0) > 0
+    ]
+    l5_corpus_observable = bool(corpus_observations) and all(corpus_observations)
+    report["rest_observability"] = {
+        "corpus_identity_verifiable": l5_corpus_observable,
+        "corpus_identity": (
+            "los nombres se publican en context de memory.recall"
+            if l5_corpus_observable
+            else "la identidad del corpus no se comprueba por REST"
+        ),
+        "rag_score_verifiable": False,
+        "rag_score": "la puntuacion no se publica por REST",
+    }
     lines.extend(
         [
             _aggregate("L2", l2_attempts),
             _aggregate("L3", l3_attempts),
             _aggregate("L4a", l4a_attempts),
             _aggregate("L4b", l4b_attempts, blocking=False),
-            {
-                "line": "L5",
-                "verdict": NOT_EXECUTABLE,
-                "blocking": False,
-                "reason": "el instalador aun no acepta N corpus",
-            },
-            {
-                "line": "L5r",
-                "verdict": NOT_EXECUTABLE,
-                "blocking": False,
-                "reason": "el instalador aun no acepta N corpus",
-            },
+            _aggregate("L5", l5_attempts),
+            _aggregate("L5r", l5r_attempts),
             {
                 "line": "L6",
                 "verdict": OUTSIDE,
@@ -667,7 +879,20 @@ def _failure_summary(line: dict[str, Any]) -> str:
             (item for item in line["attempts"] if item.get("verdict") != PASS),
             {},
         )
+        if failed.get("probes"):
+            failed = next(
+                (
+                    probe
+                    for probe in failed["probes"]
+                    if probe.get("verdict") != PASS
+                ),
+                failed,
+            )
         expected = failed.get("correct_witness") or failed.get("witness")
+        if expected is None and failed.get("domain"):
+            expected = f"al menos un fragmento RAG para {failed['domain']}"
+        if expected is None and "k_returned" in failed:
+            expected = "k_returned = 0"
         fragment = failed.get("final_answer") or failed.get("error")
         if not fragment and isinstance(failed.get("answer"), dict):
             fragment = _response_text(failed["answer"])
@@ -690,6 +915,9 @@ def print_report(report: dict[str, Any]) -> None:
             print(f"{name}: {check['verdict']} - {check.get('reason', 'comprobada')}")
         print("LINEAS: no ejecutadas")
         return
+    observability = report.get("rest_observability", {})
+    print(f"IDENTIDAD DE CORPUS POR REST: {observability.get('corpus_identity')}")
+    print(f"PUNTUACION RAG POR REST: {observability.get('rag_score')}")
     for line in report["lines"]:
         share = ""
         if "passed" in line:
