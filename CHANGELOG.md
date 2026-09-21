@@ -3,7 +3,7 @@
 Formato basado en Keep a Changelog; SemVer (ver core `docs/VERSIONADO.md`).
 Sin acentos por convencion.
 
-## [No publicado]
+## [0.3.0] - 2026-09-21
 
 ### Anadido
 - **Fase 9, sintesis de hilo (mecanismo).** Tipo de memoria nuevo
