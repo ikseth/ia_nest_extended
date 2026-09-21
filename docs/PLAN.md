@@ -612,6 +612,41 @@ dominio y `0.46` sin dominio proceden de un unico corpus y un unico embebedor,
 las bandas aun se solapan y el margen del regimen estricto sobre el ruido es
 solo `0.002`. Son recomendacion documentada, no defaults del codigo.
 
+### D6. El fragmento que pierde su referente
+
+Observado el 2026-09-21 en una sesion REAL del operador, no en una sonda. En un
+hilo de recomendaciones de cine, la destilacion guardo estos engramas:
+
+    episodic/facts  la primera puntuacion es 6
+    episodic/facts  la segunda puntuacion es 8
+
+En su turno significaban algo. Fuera de el, nada: el ordinal perdio aquello a lo
+que se referia. Y `episodic` es de ambito USUARIO, asi que esos fragmentos son
+candidatos a inyectarse en cualquier conversacion futura del mismo interlocutor,
+donde no existe ninguna "primera puntuacion".
+
+Efecto medido en ese mismo hilo: al pedir "dame la lista de peliculas que has
+valorado y su puntuacion", la respuesta acerto tres lineas, **invento tres** -las
+pego a la lista que el propio modelo habia recomendado DESPUES- y omitio dos.
+
+**No es lo mismo que la Fase 9 persigue, y conviene no confundirlo.** La Fase 9
+ataca la INCOHERENCIA -dos versiones del mismo hecho que no pueden ordenarse
+entre si-. Esto es PERDIDA DE REFERENTE: un item que era correcto cuando se
+escribio y es ruido fuera de su contexto.
+
+La sintesis de hilo lo MITIGA en lo que se inyecta, porque sustituye los
+fragmentos por una frase con los referentes puestos. Pero **no los retira del
+almacen**, asi que el problema sobrevive a la fase.
+
+Candidatos, sin decidir: que la extraccion resuelva ordinales contra el turno al
+que pertenecen antes de escribir; o que un item sin referente resoluble no se
+escriba, al modo del anclaje lexico del ADR 0013. Lo primero pide juicio y roza
+la frontera de conscience; lo segundo es mecanico y mas barato.
+
+Disparador: antes de que la memoria del usuario crezca, porque cada fragmento
+roto es ruido permanente. Material de referencia en `local/lab/`, hilo
+`cine_20260921`.
+
 ### D3. La identidad como fuente conmutable
 
 Las fuentes de enriquecimiento son declaradas por la capa y desactivables por
