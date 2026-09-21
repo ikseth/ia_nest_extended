@@ -185,11 +185,13 @@ def test_migrate_is_idempotent_with_summarizes_links_present(postgres_store):
         source_trace_id="summary-idempotencia",
     )
 
+    assert sintesis.links_created == len(fuentes)
+
+    # El fallo medido ocurria AQUI: la segunda pasada de migraciones estrechaba
+    # el CHECK y reventaba con CheckViolation por el enlace recien escrito.
     postgres_store.migrate()
     postgres_store.migrate()
 
-    ventana = postgres_store.find_thread_synthesis_window(
-        identity=identity, window_turns=1
-    )
-    assert ventana is not None
-    assert sintesis.id is not None
+    recuperada = postgres_store.get_engram(sintesis.summary.id)
+    assert recuperada is not None
+    assert recuperada.status is EngramStatus.ACTIVE
