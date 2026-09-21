@@ -8,6 +8,8 @@ core (via 2, core ADR 0031).
 - `docs/ALCANCE.md`: dentro/fuera de esta capa.
 - `docs/DEPENDENCIAS.md`: vinculo versionado con el core.
 - `docs/PLAN.md`: fases (memoria primero).
+- [Mejoras futuras a valorar](docs/mejoras_futuras/README.md): propuestas
+  registradas, pendientes de evaluacion y sin compromiso de adopcion.
 
 ## Instalacion de desarrollo
 
