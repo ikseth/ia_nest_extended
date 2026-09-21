@@ -40,6 +40,7 @@ class ExtendedConfig:
     embedding_model: str = "bge-m3"
     embedding_dimension: int = 1024
     extraction_model: str = "qwen_tech"
+    synthesis_model: str | None = None
     telemetry_dir: Path = Path("telemetry")
     session_state_path: Path = field(default_factory=default_session_state_path)
     catalog_cache_path: Path = field(default_factory=default_catalog_cache_path)
@@ -49,6 +50,8 @@ class ExtendedConfig:
     enrich_enabled: bool = True
     memory_enabled: bool = True
     write_back_enabled: bool = True
+    thread_synthesis_enabled: bool = False
+    thread_synthesis_window_turns: int = 4
     memory_budget_tokens: int = 1500
     dialog_top_k: int = 6
     episodic_top_k: int = 4
@@ -113,6 +116,10 @@ class ExtendedConfig:
                 "EXTRACTION_MODEL",
                 defaults.extraction_model,
             ),
+            "synthesis_model": _env(
+                "SYNTHESIS_MODEL",
+                _env("EXTRACTION_MODEL", defaults.extraction_model),
+            ),
             "telemetry_dir": Path(
                 _env("TELEMETRY_DIR", str(defaults.telemetry_dir))
             ),
@@ -139,6 +146,14 @@ class ExtendedConfig:
             "write_back_enabled": _env_bool(
                 "WRITE_BACK_ENABLED",
                 defaults.write_back_enabled,
+            ),
+            "thread_synthesis_enabled": _env_bool(
+                "THREAD_SYNTHESIS_ENABLED",
+                defaults.thread_synthesis_enabled,
+            ),
+            "thread_synthesis_window_turns": _env_int(
+                "THREAD_SYNTHESIS_WINDOW_TURNS",
+                defaults.thread_synthesis_window_turns,
             ),
             "memory_budget_tokens": _env_int(
                 "MEMORY_BUDGET_TOKENS",
@@ -256,6 +271,7 @@ class ExtendedConfig:
             "episodic_top_k",
             "semantic_top_k",
             "dialog_hot_window_seconds",
+            "thread_synthesis_window_turns",
             "rag_top_k",
             "rag_max_tokens",
             "rag_chunk_tokens",
@@ -320,6 +336,15 @@ class ExtendedConfig:
         ):
             if not str(getattr(self, name)).strip():
                 raise ExtendedConfigError(f"{name} no puede estar vacio", name)
+        if self.synthesis_model is not None and not self.synthesis_model.strip():
+            raise ExtendedConfigError(
+                "synthesis_model no puede estar vacio",
+                "synthesis_model",
+            )
+
+    @property
+    def resolved_synthesis_model(self) -> str:
+        return self.synthesis_model or self.extraction_model
 
     def rag_score_floor(self, domain: str | None) -> tuple[str, float]:
         """Resuelve el regimen D5 desde el dominio efectivo del almacen."""

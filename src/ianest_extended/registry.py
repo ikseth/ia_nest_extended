@@ -102,9 +102,9 @@ class MemoryTypeRegistry:
             raise InvalidMemoryTypeError(
                 "memory_class y writer_principal no son coherentes"
             )
-        if memory_type.scope is Scope.SESSION and memory_type.namespaces:
+        if memory_type.scope is Scope.SESSION and len(memory_type.namespaces) > 1:
             raise InvalidMemoryTypeError(
-                "el tipo de sesion dialog usa namespace crudo"
+                "un tipo de sesion admite como maximo un namespace"
             )
         if memory_type.scope is not Scope.SESSION and not memory_type.namespaces:
             raise InvalidMemoryTypeError(
@@ -125,9 +125,19 @@ def derive_memory_key(
             raise ScopeViolationError(
                 "scope session exige user_id y session_id"
             )
-        if namespace is not None:
-            raise InvalidNamespaceError("dialog exige namespace null")
-        return MemoryKey(identity.user_id, identity.session_id, None, None)
+        expected_namespace = (
+            memory_type.namespaces[0] if memory_type.namespaces else None
+        )
+        if namespace != expected_namespace:
+            raise InvalidNamespaceError(
+                f"namespace {namespace!r} no permitido para {memory_type.name!r}"
+            )
+        return MemoryKey(
+            identity.user_id,
+            identity.session_id,
+            None,
+            expected_namespace,
+        )
 
     if namespace not in memory_type.namespaces:
         raise InvalidNamespaceError(
@@ -160,6 +170,19 @@ def seed_memory_types() -> tuple[MemoryType, ...]:
             namespaces=(),
             w_recency=1.0,
             w_similarity=0.0,
+            w_stability=0.0,
+            w_score=0.0,
+            half_life_seconds=4 * 60 * 60,
+        ),
+        MemoryType(
+            name="thread_summary",
+            memory_class=MemoryClass.STRICT,
+            writer_principal=Principal.EXTENDED,
+            retrieval_mode=RetrievalMode.RANKED,
+            scope=Scope.SESSION,
+            namespaces=("thread",),
+            w_recency=0.9,
+            w_similarity=0.1,
             w_stability=0.0,
             w_score=0.0,
             half_life_seconds=4 * 60 * 60,

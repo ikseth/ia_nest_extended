@@ -66,6 +66,7 @@ class RecallBundle:
     rag: tuple[RagChunk, ...]
     semantic: tuple[RecallItem, ...]
     episodic: tuple[RecallItem, ...]
+    thread_summary: tuple[RecallItem, ...]
     dialog: tuple[RecallItem, ...]
     context: str
 
@@ -347,6 +348,7 @@ class MemoryEnricher:
         delegated: list[RecallItem] = []
         semantic: tuple[RecallItem, ...] = ()
         episodic: tuple[RecallItem, ...] = ()
+        thread_summary: tuple[RecallItem, ...] = ()
         dialog: tuple[RecallItem, ...] = ()
         if include_memory:
             for type_name, namespace in DELEGATED_TYPES:
@@ -380,6 +382,19 @@ class MemoryEnricher:
                 prompt,
                 min_similarity=self._config.memory_min_similarity,
             )
+            if self._config.thread_synthesis_enabled:
+                thread_summary = tuple(
+                    self._store.recall(
+                        RecallQuery(
+                            type_names=("thread_summary",),
+                            identity=identity,
+                            text=prompt,
+                            namespace="thread",
+                            domain_tag=identity.domain_tag,
+                            top_k=1,
+                        )
+                    )
+                )
             dialog = tuple(
                 self._store.recall(
                     RecallQuery(
@@ -391,12 +406,29 @@ class MemoryEnricher:
                     )
                 )
             )
+        summarized_ids = {
+            source_id
+            for item in thread_summary
+            if item.engram is not None
+            for source_id in item.engram.summarized_ids
+        }
+        visible_episodic = tuple(
+            item
+            for item in episodic
+            if item.engram is None or item.engram.id not in summarized_ids
+        )
+        visible_dialog = tuple(
+            item
+            for item in dialog
+            if item.engram is None or item.engram.id not in summarized_ids
+        )
         lines = (
             _lines("delegated", delegated, permanent=True)
             + _rag_lines(rag)
             + _lines("semantic", semantic)
-            + _lines("episodic", episodic)
-            + _lines("dialog", dialog)
+            + _lines("thread_summary", thread_summary)
+            + _lines("episodic", visible_episodic)
+            + _lines("dialog", visible_dialog)
         )
         context = _compose_context(
             lines,
@@ -416,6 +448,7 @@ class MemoryEnricher:
             rag=rag,
             semantic=semantic,
             episodic=episodic,
+            thread_summary=thread_summary,
             dialog=dialog,
             context=context,
         )
@@ -629,6 +662,7 @@ class MemoryEnricher:
         except (json.JSONDecodeError, ValueError, TypeError):
             counters["invalid_json"] = 1
             counters["items_discarded"] = 1
+            self._synthesize_thread(identity, source_trace_id)
             return counters, "invalid_extraction_json"
 
         counters["items_extracted"] = len(items)
@@ -690,7 +724,91 @@ class MemoryEnricher:
                     dedup_threshold=self._config.dedup_threshold,
                 )
                 counters["items_contradicted"] += len(contradicted)
+        self._synthesize_thread(identity, source_trace_id)
         return counters, "ok"
+
+    def _synthesize_thread(
+        self,
+        identity: MemoryIdentity,
+        source_trace_id: str | None,
+    ) -> None:
+        if not self._config.thread_synthesis_enabled:
+            return
+        sources = tuple(
+            self._store.find_thread_synthesis_window(
+                identity=identity,
+                window_turns=self._config.thread_synthesis_window_turns,
+            )
+        )
+        if not sources:
+            return
+        started = time.monotonic()
+        model = self._config.resolved_synthesis_model
+        turns = sum(
+            1
+            for source in sources
+            if source.type_name == "dialog" and source.stated_by is StatedBy.USER
+        )
+        try:
+            generated = self._core.prompt_run(
+                _thread_synthesis_prompt(sources),
+                identity,
+                model=model,
+            )
+            content = _bounded_summary(generated.response, sources)
+            result = self._store.write_thread_summary(
+                Principal.EXTENDED,
+                identity=identity,
+                content=content,
+                source_ids=tuple(source.id for source in sources),
+                source_trace_id=source_trace_id,
+            )
+        except Exception:
+            self._record_thread_synthesis(
+                identity=identity,
+                source_trace_id=source_trace_id,
+                turns=turns,
+                items=len(sources),
+                model=model,
+                latency_ms=_latency_ms(started),
+                status="error",
+            )
+            raise
+        self._record_thread_synthesis(
+            identity=identity,
+            source_trace_id=source_trace_id,
+            turns=turns,
+            items=result.links_created,
+            model=model,
+            latency_ms=_latency_ms(started),
+            status="ok",
+        )
+
+    def _record_thread_synthesis(
+        self,
+        *,
+        identity: MemoryIdentity,
+        source_trace_id: str | None,
+        turns: int,
+        items: int,
+        model: str,
+        latency_ms: int,
+        status: str,
+    ) -> None:
+        self._telemetry.record(
+            event="memory.thread_synthesis",
+            request_id=str(uuid4()),
+            downstream_request_id=source_trace_id,
+            identity=identity,
+            counters={
+                "window_turns": self._config.thread_synthesis_window_turns,
+                "turns_summarized": turns,
+                "items_summarized": items,
+            },
+            latency_ms=latency_ms,
+            status=status,
+            details={"model": model},
+        )
 
     def write_back(
         self,
@@ -749,7 +867,7 @@ class MemoryEnricher:
         return counters, status
 
     def _recall_counters(self, bundle: RecallBundle) -> dict[str, int]:
-        return {
+        counters = {
             "delegated_k_requested": 0,
             "delegated_returned": len(bundle.delegated),
             "rag_k_requested": self._config.rag_top_k,
@@ -761,9 +879,12 @@ class MemoryEnricher:
             "dialog_k_requested": self._config.dialog_top_k,
             "dialog_returned": len(bundle.dialog),
         }
+        if self._config.thread_synthesis_enabled:
+            counters["thread_summary_returned"] = len(bundle.thread_summary)
+        return counters
 
     def _empty_recall_counters(self) -> dict[str, int]:
-        return {
+        counters = {
             "delegated_k_requested": 0,
             "delegated_returned": 0,
             "rag_k_requested": self._config.rag_top_k,
@@ -775,6 +896,9 @@ class MemoryEnricher:
             "dialog_k_requested": self._config.dialog_top_k,
             "dialog_returned": 0,
         }
+        if self._config.thread_synthesis_enabled:
+            counters["thread_summary_returned"] = 0
+        return counters
 
 
 def compose_prompt(context: str, prompt: str) -> str:
@@ -886,7 +1010,7 @@ def _trim_tier_to_budget(
 def _next_removable_tier(
     lines: list[_ContextLine],
 ) -> list[tuple[int, _ContextLine]]:
-    for tier in ("rag", "episodic", "semantic", "dialog"):
+    for tier in ("rag", "episodic", "semantic", "dialog", "thread_summary"):
         candidates = [
             (index, line)
             for index, line in enumerate(lines)
@@ -899,7 +1023,14 @@ def _next_removable_tier(
 
 def _render_context(lines: list[_ContextLine]) -> str:
     sections: list[str] = []
-    for tier in ("delegated", "rag", "semantic", "episodic", "dialog"):
+    for tier in (
+        "delegated",
+        "rag",
+        "semantic",
+        "thread_summary",
+        "episodic",
+        "dialog",
+    ):
         tier_lines = [line.text for line in lines if line.tier == tier]
         if tier_lines:
             sections.append(f"## {tier}\n" + "\n".join(tier_lines))
@@ -937,6 +1068,39 @@ def _extraction_prompt(user_prompt: str, assistant_response: str) -> str:
         '{"from_user":[],"from_assistant":[]}.\n\n'
         f"USER:\n{user_prompt}\n\nASSISTANT:\n{assistant_response}"
     )
+
+
+def _thread_synthesis_prompt(sources) -> str:
+    lines = []
+    for source in sources:
+        speaker = {
+            StatedBy.USER: "USER",
+            StatedBy.MODEL: "ASSISTANT",
+            StatedBy.UNKNOWN: "UNKNOWN",
+        }[source.stated_by]
+        lines.append(f"[{speaker}/{source.type_name}] {source.content}")
+    material = "\n".join(lines)
+    return (
+        "Summarize the conversation state mechanically and chronologically. "
+        "Express corrections explicitly: say which newer statement replaces "
+        "which earlier statement. Summarize everything supplied; do not choose "
+        "what is important, do not infer unstated facts, and do not turn this "
+        "working state into durable memory. Keep exact names, dates, and "
+        "referents verbatim. Return only the concise summary, in the language "
+        "of the conversation, with no heading or markdown.\n\n"
+        f"THREAD ITEMS:\n{material}"
+    )
+
+
+def _bounded_summary(response: str, sources) -> str:
+    summary = response.strip()
+    if not summary:
+        raise ValueError("el modelo devolvio una sintesis vacia")
+    max_chars = sum(len(source.content) for source in sources)
+    if len(summary) <= max_chars:
+        return summary
+    shortened = summary[:max_chars].rstrip()
+    return shortened or summary[:max_chars]
 
 
 def _downstream_converged(payload: dict[str, Any]) -> bool:

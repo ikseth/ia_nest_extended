@@ -29,6 +29,7 @@ def test_seed_roster_is_valid():
 
     assert tuple(item.name for item in registry.list()) == (
         "dialog",
+        "thread_summary",
         "episodic",
         "semantic",
         "entities",

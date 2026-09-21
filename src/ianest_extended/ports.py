@@ -20,6 +20,7 @@ from .models import (
     RagChunk,
     RagChunkWrite,
     RagIngestResult,
+    ThreadSynthesisResult,
 )
 
 
@@ -100,6 +101,34 @@ class MemoryStore(Protocol):
         No cambia su estado: deja el enlace para que el recall los despriorice
         y los etiquete (ADR 0013).
         """
+
+    def find_thread_synthesis_window(
+        self,
+        *,
+        identity: MemoryIdentity,
+        window_turns: int,
+    ) -> Sequence[Engram]:
+        """Devuelve el hilo acumulado cuando hay N turnos nuevos que sintetizar."""
+
+    def write_thread_summary(
+        self,
+        principal: Principal,
+        *,
+        identity: MemoryIdentity,
+        content: str,
+        source_ids: Sequence[UUID],
+        source_trace_id: str | None,
+    ) -> ThreadSynthesisResult:
+        """Crea una sintesis anclada y sustituye la sintesis activa anterior."""
+
+    def archive_thread_summaries(
+        self,
+        principal: Principal,
+        *,
+        sessions: Sequence[tuple[str, str]],
+        reason: str,
+    ) -> Sequence[Engram]:
+        """Archiva sintesis activas cuando muere el dialogo de su sesion."""
 
     def find_dialogs_to_archive(
         self,

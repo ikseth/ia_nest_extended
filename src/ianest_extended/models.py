@@ -164,6 +164,15 @@ class Engram:
     # El usuario dijo algo muy proximo a esto. No afirma que sea falso: afirma
     # que hay otra version, y por eso el recall lo despriorza (ADR 0013).
     contradicted: bool = False
+    # Solo `thread_summary` lo rellena. Son los engramas a los que apunta con
+    # enlaces `summarizes`; la fuente de verdad sigue siendo memory_links.
+    summarized_ids: tuple[UUID, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ThreadSynthesisResult:
+    summary: Engram
+    links_created: int
 
 
 @dataclass(frozen=True, slots=True)

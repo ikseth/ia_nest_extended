@@ -77,6 +77,16 @@ def run_maintenance(
                         reason="dialog_hot_window_elapsed",
                     )
                 )
+            sessions = tuple(
+                (dialog.user_id, dialog.session_id)
+                for dialog in old_dialogs
+                if dialog.user_id is not None and dialog.session_id is not None
+            )
+            store.archive_thread_summaries(
+                Principal.EXTENDED,
+                sessions=sessions,
+                reason="dialog_hot_window_elapsed",
+            )
             for episodic in candidates:
                 executor.execute(
                     ConsolidationEvent(
@@ -129,5 +139,4 @@ def _record_maintain(
         latency_ms=max(0, round((time.monotonic() - started) * 1000)),
         status=status,
     )
-
 

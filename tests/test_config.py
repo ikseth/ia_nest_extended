@@ -135,3 +135,30 @@ def test_config_rejects_out_of_range_memory_min_similarity(monkeypatch):
 
     with pytest.raises(ExtendedConfigError):
         ExtendedConfig.from_env(env_file=None)
+
+
+def test_thread_synthesis_defaults_disabled_and_inherits_extraction_model():
+    config = ExtendedConfig.from_env(env_file=None)
+
+    assert config.thread_synthesis_enabled is False
+    assert config.thread_synthesis_window_turns == 4
+    assert config.resolved_synthesis_model == config.extraction_model
+
+
+def test_thread_synthesis_config_from_environment(monkeypatch):
+    monkeypatch.setenv("IANEST_EXTENDED_THREAD_SYNTHESIS_ENABLED", "true")
+    monkeypatch.setenv("IANEST_EXTENDED_THREAD_SYNTHESIS_WINDOW_TURNS", "7")
+    monkeypatch.setenv("IANEST_EXTENDED_SYNTHESIS_MODEL", "summary-model")
+
+    config = ExtendedConfig.from_env(env_file=None)
+
+    assert config.thread_synthesis_enabled is True
+    assert config.thread_synthesis_window_turns == 7
+    assert config.resolved_synthesis_model == "summary-model"
+
+
+def test_thread_synthesis_rejects_non_positive_window(monkeypatch):
+    monkeypatch.setenv("IANEST_EXTENDED_THREAD_SYNTHESIS_WINDOW_TURNS", "0")
+
+    with pytest.raises(ExtendedConfigError):
+        ExtendedConfig.from_env(env_file=None)
