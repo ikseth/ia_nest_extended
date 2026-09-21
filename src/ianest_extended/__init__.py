@@ -89,6 +89,7 @@ from .models import (
     RetrievalMode,
     Scope,
     StatedBy,
+    ThreadSynthesisResult,
 )
 from .registry import MemoryTypeRegistry, seed_memory_types
 from .ranking import calculate_relevance
@@ -186,6 +187,7 @@ __all__ = [
     "Scope",
     "ScopeViolationError",
     "StatedBy",
+    "ThreadSynthesisResult",
     "TelemetryWriter",
     "UnknownMemoryTypeError",
     "UnsupportedWriteError",

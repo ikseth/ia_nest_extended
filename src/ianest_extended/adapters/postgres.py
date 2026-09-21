@@ -39,6 +39,7 @@ from ..models import (
     RetrievalMode,
     Scope,
     StatedBy,
+    ThreadSynthesisResult,
 )
 from ..migrations import migration_resource
 from ..ports import Embedder
@@ -62,6 +63,9 @@ class PostgresMemoryStore:
         self._embedder = embedder
         self._migration_path = migration_path or _default_migration_path()
         self._stated_by_migration_path = _default_stated_by_migration_path()
+        self._thread_synthesis_migration_path = (
+            _default_thread_synthesis_migration_path()
+        )
 
     def verify_schema(self) -> None:
         """Comprueba el esquema SIN mutarlo (migracion explicita, ADR 0011)."""
@@ -97,6 +101,24 @@ class PostgresMemoryStore:
                     "'ianest-extended runtime migrate'",
                     "engrams.stated_by",
                 )
+            link_constraint = connection.execute(
+                """
+                SELECT pg_get_constraintdef(oid) AS definition
+                FROM pg_constraint
+                WHERE conrelid = 'memory_links'::regclass
+                  AND conname = 'memory_links_link_kind_check'
+                """
+            ).fetchone()
+            if (
+                link_constraint is None
+                or "summarizes" not in link_constraint["definition"]
+            ):
+                raise SchemaMigrationRequiredError(
+                    "el esquema de memoria no esta migrado "
+                    "(falta link_kind 'summarizes'); ejecuta "
+                    "'ianest-extended runtime migrate'",
+                    "memory_links.summarizes",
+                )
 
     def migrate(self) -> None:
         embedder = self._require_embedder()
@@ -113,6 +135,9 @@ class PostgresMemoryStore:
             connection.execute(sql)
             connection.execute(
                 self._stated_by_migration_path.read_text(encoding="ascii")
+            )
+            connection.execute(
+                self._thread_synthesis_migration_path.read_text(encoding="ascii")
             )
             self._ensure_embedding_dimension(connection)
         for memory_type in seed_memory_types():
@@ -537,6 +562,216 @@ class PostgresMemoryStore:
                 )
         return tuple(_engram_from_row(row) for row in rows)
 
+    def find_thread_synthesis_window(
+        self,
+        *,
+        identity: MemoryIdentity,
+        window_turns: int,
+    ) -> tuple[Engram, ...]:
+        if window_turns <= 0:
+            raise InvalidEngramError("window_turns debe ser mayor que cero")
+        thread_type = self._get_type("thread_summary")
+        key = derive_memory_key(thread_type, identity, "thread")
+        with self._connect() as connection:
+            latest = connection.execute(
+                """
+                SELECT created_at
+                FROM engrams
+                WHERE type_name = 'thread_summary'
+                  AND user_id = %s
+                  AND session_id = %s
+                ORDER BY created_at DESC, id DESC
+                LIMIT 1
+                """,
+                (key.user_id, key.session_id),
+            ).fetchone()
+            new_dialog_count = connection.execute(
+                """
+                SELECT count(*) AS count
+                FROM engrams
+                WHERE type_name = 'dialog'
+                  AND user_id = %s
+                  AND session_id = %s
+                  AND status = 'active'
+                  AND (%s::timestamptz IS NULL OR created_at > %s)
+                """,
+                (
+                    key.user_id,
+                    key.session_id,
+                    None if latest is None else latest["created_at"],
+                    None if latest is None else latest["created_at"],
+                ),
+            ).fetchone()["count"]
+            # Cada write-back deja exactamente los dos emisores en dialog.
+            if new_dialog_count < window_turns * 2:
+                return ()
+            dialogs = connection.execute(
+                """
+                SELECT *
+                FROM engrams
+                WHERE type_name = 'dialog'
+                  AND user_id = %s
+                  AND session_id = %s
+                  AND status = 'active'
+                ORDER BY created_at, id
+                """,
+                (key.user_id, key.session_id),
+            ).fetchall()
+            trace_ids = tuple(
+                dict.fromkeys(
+                    row["source_trace_id"]
+                    for row in dialogs
+                    if row["source_trace_id"] is not None
+                )
+            )
+            episodic = []
+            if trace_ids:
+                episodic = connection.execute(
+                    """
+                    SELECT *
+                    FROM engrams
+                    WHERE type_name = 'episodic'
+                      AND user_id = %s
+                      AND status = 'active'
+                      AND source_trace_id = ANY(%s::text[])
+                    ORDER BY created_at, id
+                    """,
+                    (key.user_id, list(trace_ids)),
+                ).fetchall()
+        rows = sorted((*dialogs, *episodic), key=lambda row: (row["created_at"], row["id"]))
+        return tuple(_engram_from_row(row) for row in rows)
+
+    def write_thread_summary(
+        self,
+        principal: Principal,
+        *,
+        identity: MemoryIdentity,
+        content: str,
+        source_ids,
+        source_trace_id: str | None,
+    ) -> ThreadSynthesisResult:
+        memory_type = self._get_type("thread_summary")
+        _require_authority(memory_type, principal)
+        key = derive_memory_key(memory_type, identity, "thread")
+        ordered_ids = tuple(dict.fromkeys(source_ids))
+        if not ordered_ids:
+            raise InvalidEngramError("una sintesis exige engramas fuente")
+        embedding = self._require_embedder().embed(content)
+        with self._connect() as connection:
+            source_rows = connection.execute(
+                """
+                SELECT * FROM engrams
+                WHERE id = ANY(%s::uuid[]) AND status = 'active'
+                FOR SHARE
+                """,
+                (list(ordered_ids),),
+            ).fetchall()
+            by_id = {row["id"]: row for row in source_rows}
+            if any(source_id not in by_id for source_id in ordered_ids):
+                raise InvalidEngramError(
+                    "todos los engramas resumidos deben existir y estar activos"
+                )
+            ordered_rows = [by_id[source_id] for source_id in ordered_ids]
+            if any(row["user_id"] != key.user_id for row in ordered_rows):
+                raise ScopeViolationError(
+                    "los engramas resumidos no comparten el usuario del hilo"
+                )
+            dialog_rows = [
+                row for row in ordered_rows if row["type_name"] == "dialog"
+            ]
+            if not dialog_rows or any(
+                row["session_id"] != key.session_id for row in dialog_rows
+            ):
+                raise ScopeViolationError(
+                    "la sintesis exige dialogos de su propia sesion"
+                )
+            source_stated_bys = {row["stated_by"] for row in ordered_rows}
+            stated_by = (
+                source_stated_bys.pop()
+                if len(source_stated_bys) == 1
+                else StatedBy.UNKNOWN.value
+            )
+            row = connection.execute(
+                """
+                INSERT INTO engrams (
+                    id, type_name, user_id, session_id, namespace, content,
+                    embedding, score, stability, service, domain_tag,
+                    entity_refs, unresolved_mentions, source_trace_id,
+                    stated_by
+                )
+                VALUES (
+                    %s, 'thread_summary', %s, %s, 'thread', %s,
+                    %s::vector, 0, 0, %s, %s, '{}', '{}', %s, %s
+                )
+                RETURNING *
+                """,
+                (
+                    uuid4(),
+                    key.user_id,
+                    key.session_id,
+                    content,
+                    _vector_literal(embedding),
+                    identity.service,
+                    identity.domain_tag,
+                    source_trace_id,
+                    stated_by,
+                ),
+            ).fetchone()
+            for source_id in ordered_ids:
+                connection.execute(
+                    """
+                    INSERT INTO memory_links (
+                        source_kind, source_id, target_engram_id, link_kind
+                    )
+                    VALUES ('engram', %s, %s, 'summarizes')
+                    """,
+                    (row["id"], source_id),
+                )
+            connection.execute(
+                """
+                UPDATE engrams
+                SET status = 'archived', archived_at = now(),
+                    archived_reason = 'replaced_by_thread_summary',
+                    version = version + 1
+                WHERE type_name = 'thread_summary'
+                  AND user_id = %s AND session_id = %s
+                  AND status = 'active' AND id <> %s
+                """,
+                (key.user_id, key.session_id, row["id"]),
+            )
+        summary = _engram_from_row({**row, "summarized_ids": ordered_ids})
+        return ThreadSynthesisResult(summary, len(ordered_ids))
+
+    def archive_thread_summaries(
+        self,
+        principal: Principal,
+        *,
+        sessions,
+        reason: str,
+    ) -> tuple[Engram, ...]:
+        memory_type = self._get_type("thread_summary")
+        _require_authority(memory_type, principal)
+        unique_sessions = tuple(dict.fromkeys(sessions))
+        if not unique_sessions:
+            return ()
+        archived = []
+        with self._connect() as connection:
+            for user_id, session_id in unique_sessions:
+                rows = connection.execute(
+                    """
+                    UPDATE engrams
+                    SET status = 'archived', archived_at = now(),
+                        archived_reason = %s, version = version + 1
+                    WHERE type_name = 'thread_summary'
+                      AND user_id = %s AND session_id = %s
+                      AND status = 'active'
+                    RETURNING *
+                    """,
+                    (reason, user_id, session_id),
+                ).fetchall()
+                archived.extend(rows)
+        return tuple(_engram_from_row(row) for row in archived)
+
     def find_dialogs_to_archive(
         self,
         *,
@@ -819,8 +1054,11 @@ class PostgresMemoryStore:
         parameters: list[Any] = []
         for memory_type in memory_types:
             namespace = (
-                None
-                if memory_type.scope is Scope.SESSION
+                memory_type.namespaces[0]
+                if (
+                    memory_type.scope is Scope.SESSION
+                    and memory_type.namespaces
+                )
                 else query.namespace
             )
             key = derive_memory_key(
@@ -848,6 +1086,16 @@ class PostgresMemoryStore:
         )
         sql = f"""
             SELECT e.*,
+                   COALESCE(
+                     ARRAY(
+                       SELECT ml.target_engram_id
+                       FROM memory_links ml
+                       WHERE ml.source_id = e.id
+                         AND ml.link_kind = 'summarizes'
+                       ORDER BY ml.created_at, ml.id
+                     ),
+                     '{{}}'::uuid[]
+                   ) AS summarized_ids,
                    EXISTS (
                      SELECT 1 FROM memory_links ml
                      WHERE ml.source_id = e.id
@@ -1066,9 +1314,15 @@ def _validate_consolidation_event(event: ConsolidationEvent) -> None:
 
 def _scope_clause(memory_type: MemoryType, key) -> tuple[str, list[Any]]:
     if memory_type.scope is Scope.SESSION:
+        namespace_clause = (
+            "e.namespace IS NULL"
+            if key.namespace is None
+            else "e.namespace = %s"
+        )
         return (
-            "e.user_id = %s AND e.session_id = %s AND e.namespace IS NULL",
-            [key.user_id, key.session_id],
+            f"e.user_id = %s AND e.session_id = %s AND {namespace_clause}",
+            [key.user_id, key.session_id]
+            + ([] if key.namespace is None else [key.namespace]),
         )
     if memory_type.scope is Scope.USER:
         return (
@@ -1127,7 +1381,12 @@ def _engram_from_row(row: dict[str, Any]) -> Engram:
         last_reinforced_at=row["last_reinforced_at"],
         stated_by=StatedBy(row.get("stated_by", StatedBy.UNKNOWN)),
         contradicted=bool(row.get("contradicted", False)),
+        summarized_ids=tuple(row.get("summarized_ids", ())),
     )
+
+
+def _default_thread_synthesis_migration_path() -> Traversable:
+    return migration_resource("0005_thread_synthesis.sql")
 
 
 def _entity_from_row(row: dict[str, Any]) -> EntityProfile:

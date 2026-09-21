@@ -111,6 +111,28 @@ Las menciones extraidas van a `unresolved_mentions` del engrama. Solo se
 etiqueta `entity_refs` con matches inequivocos contra el registro de entidades
 (hoy vacio); resolver ambiguedades es juicio del dueno (ADR 0004).
 
+## Sintesis de hilo (Fase 9)
+
+Con `thread_synthesis_enabled` -apagado por defecto-, al terminar el write-back
+de un turno se cuenta cuantos turnos lleva el hilo desde la ultima sintesis. Al
+cumplirse `thread_synthesis_window_turns` (4 de arranque), se genera un
+`thread_summary` de esa ventana con `synthesis_model`, y sustituye al anterior
+de ese hilo.
+
+Tres reglas que no son detalles:
+
+- **Anclaje**: la sintesis enlaza con `summarizes` a CADA engrama de su ventana.
+  Un resumen sin enlaces es un resumen sin origen direccionable, y no vale.
+- **Procedencia**: si la ventana mezcla emisores, la sintesis queda `unknown`.
+  Una sintesis que mezcla emisores no puede presentarse como dicha por ninguno.
+- **Sustitucion en el presupuesto, no en el almacen**: el recall compone la
+  sintesis EN LUGAR DE los engramas que resume, y esos engramas siguen ahi,
+  recuperables por consulta directa.
+
+Por que existe: un conjunto de engramas atomicos no puede expresar que uno
+reemplaza a otro, solo coexistir. Lo que da direccion a un hilo es una frase con
+estructura temporal.
+
 ## Retencion
 
 Sin borrado fisico (ADR 0002). La salida de ventana caliente de `dialog` y la

@@ -160,6 +160,15 @@ usa el primer override y sin dominio el segundo; un override ausente cae a la
 base. Por tanto, no declarar las claves nuevas conserva exactamente la politica
 anterior.
 
+La sintesis de hilo (Fase 9) se gobierna con
+`IANEST_EXTENDED_THREAD_SYNTHESIS_ENABLED` (default `false`),
+`IANEST_EXTENDED_THREAD_SYNTHESIS_WINDOW_TURNS` (default `4`) y
+`IANEST_EXTENDED_SYNTHESIS_MODEL` (vacio toma el modelo de extraccion). Apagada
+-su defecto- la capa se comporta exactamente como antes de la fase. Encendida,
+`memory_type.list` sigue publicando el tipo `thread_summary`, que se declara
+siempre: declarar un tipo y no escribirlo es la forma que esta capa ya usa con
+las memorias delegadas.
+
 Cada evento `rag.retrieve` declara `score_regime` (`domain` o `no_domain`) y
 `min_score`, ademas del dominio efectivo. La calibracion puede asi observar la
 regla aplicada sin reconstruirla desde otros campos.

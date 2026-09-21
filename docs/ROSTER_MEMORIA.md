@@ -17,9 +17,18 @@ ejes (modo de recuperacion, dueno, scope, namespace): eso seria aliasing
 | `dialog` | conversacional | `session_id` | (crudo, sin ns) | write-back directo de turnos | ~4 h |
 | `episodic` | episodica | `user_id` | `facts`, `tasks`, `preferences` | write-back con politica (dedup, filtro anti-ruido) + `entity_refs` | ~30 d |
 | `semantic` | semantica | `user_id` | `facts`, `preferences` | solo consolidacion (Fase 4), comprimida | off |
+| `thread_summary` | resumen de hilo | `session_id` | `thread` | sintesis mecanica por ventana de turnos (Fase 9) | ~4 h |
 
 Notas:
 
+- `thread_summary` NO es un recuerdo: es ESTADO DE TRABAJO del hilo en curso
+  (ADR 0007, enmienda del 2026-09-12). Vive y muere con su sesion -se archiva
+  cuando se archiva su `dialog`- y el barrido de la Fase 4 no lo promociona a
+  `semantic` jamas. Comparte `session_id` con `dialog`, pero difiere en
+  namespace y en como se escribe, asi que no hay aliasing (Leccion 1).
+- `thread_summary` se SUMA a los engramas que resume, no los sustituye en el
+  almacen: los enlaces `summarizes` mantienen cada afirmacion con origen
+  direccionable. Lo que sustituye es lo que se INYECTA.
 - `dialog` guarda los turnos de la sesion tal cual; el etiquetado y la
   destilacion a `episodic` los hace el write-back, no el dialogo mismo.
 - `tasks` no asciende a `semantic`: los compromisos se completan o expiran, no

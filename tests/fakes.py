@@ -5,10 +5,12 @@ from uuid import uuid4
 from ianest_extended import (
     Engram,
     EngramStatus,
+    EngramWrite,
     MemoryIdentity,
     RecallItem,
     SchemaMigrationRequiredError,
     StatedBy,
+    ThreadSynthesisResult,
 )
 
 
@@ -27,9 +29,10 @@ class InMemoryStore:
         self.recall_queries = []
         self.migrated = False
         self.verified = 0
+        self.summary_links = {}
 
     def write(self, principal, request):
-        session_scoped = request.type_name == "dialog"
+        session_scoped = request.type_name in {"dialog", "thread_summary"}
         engram = Engram(
             id=uuid4(),
             type_name=request.type_name,
@@ -74,6 +77,13 @@ class InMemoryStore:
                 if engram.user_id != query.identity.user_id:
                     continue
                 if engram.namespace != query.namespace:
+                    continue
+            elif engram.type_name == "thread_summary":
+                if (
+                    engram.user_id != query.identity.user_id
+                    or engram.session_id != query.identity.session_id
+                    or engram.namespace != query.namespace
+                ):
                     continue
             elif engram.namespace != query.namespace:
                 continue
@@ -128,6 +138,112 @@ class InMemoryStore:
                 self.engrams[index] = annotated
                 marked.append(annotated)
         return tuple(marked)
+
+    def find_thread_synthesis_window(self, *, identity, window_turns):
+        summaries = [
+            item
+            for item in self.engrams
+            if item.type_name == "thread_summary"
+            and item.user_id == identity.user_id
+            and item.session_id == identity.session_id
+        ]
+        latest_at = max(
+            (item.created_at for item in summaries),
+            default=None,
+        )
+        dialogs = [
+            item
+            for item in self.engrams
+            if item.type_name == "dialog"
+            and item.user_id == identity.user_id
+            and item.session_id == identity.session_id
+            and item.status is EngramStatus.ACTIVE
+        ]
+        new_dialogs = [
+            item
+            for item in dialogs
+            if latest_at is None or item.created_at > latest_at
+        ]
+        if len(new_dialogs) < window_turns * 2:
+            return ()
+        trace_ids = {
+            item.source_trace_id
+            for item in dialogs
+            if item.source_trace_id is not None
+        }
+        episodic = [
+            item
+            for item in self.engrams
+            if item.type_name == "episodic"
+            and item.user_id == identity.user_id
+            and item.status is EngramStatus.ACTIVE
+            and item.source_trace_id in trace_ids
+        ]
+        return tuple(sorted((*dialogs, *episodic), key=lambda item: item.created_at))
+
+    def write_thread_summary(
+        self,
+        principal,
+        *,
+        identity,
+        content,
+        source_ids,
+        source_trace_id,
+    ):
+        sources = [self.get_engram(source_id) for source_id in source_ids]
+        stated_bys = {source.stated_by for source in sources}
+        stated_by = (
+            stated_bys.pop() if len(stated_bys) == 1 else StatedBy.UNKNOWN
+        )
+        summary = self.write(
+            principal,
+            EngramWrite(
+                type_name="thread_summary",
+                content=content,
+                identity=identity,
+                namespace="thread",
+                source_trace_id=source_trace_id,
+                stated_by=stated_by,
+            ),
+        )
+        summary = replace(summary, summarized_ids=tuple(source_ids))
+        self.engrams[-1] = summary
+        self.summary_links[summary.id] = tuple(source_ids)
+        for index, item in enumerate(self.engrams[:-1]):
+            if (
+                item.type_name == "thread_summary"
+                and item.user_id == identity.user_id
+                and item.session_id == identity.session_id
+                and item.status is EngramStatus.ACTIVE
+            ):
+                self.engrams[index] = replace(
+                    item,
+                    status=EngramStatus.ARCHIVED,
+                    archived_at=datetime.now(UTC),
+                    archived_reason="replaced_by_thread_summary",
+                    version=item.version + 1,
+                )
+        return ThreadSynthesisResult(summary, len(source_ids))
+
+    def archive_thread_summaries(self, principal, *, sessions, reason):
+        session_set = set(sessions)
+        archived = []
+        for index, item in enumerate(self.engrams):
+            if (
+                item.type_name == "thread_summary"
+                and (item.user_id, item.session_id) in session_set
+                and item.status is EngramStatus.ACTIVE
+            ):
+                changed = replace(
+                    item,
+                    status=EngramStatus.ARCHIVED,
+                    archived_at=datetime.now(UTC),
+                    archived_reason=reason,
+                    version=item.version + 1,
+                )
+                self.engrams[index] = changed
+                archived.append(changed)
+        return tuple(archived)
 
     def reinforce(self, principal, engram_id):
         for index, engram in enumerate(self.engrams):

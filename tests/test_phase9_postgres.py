@@ -1,0 +1,162 @@
+from datetime import UTC, datetime, timedelta
+from uuid import uuid4
+
+import pytest
+
+from ianest_extended import (
+    EngramStatus,
+    EngramWrite,
+    ExtendedConfig,
+    MemoryIdentity,
+    Principal,
+    RecallQuery,
+    StatedBy,
+    TelemetryWriter,
+    WriteAuthorityError,
+)
+from ianest_extended.maintain import run_maintenance
+
+
+def _identity():
+    return MemoryIdentity(
+        user_id=f"phase9-{uuid4()}",
+        session_id="thread",
+        service="test",
+    )
+
+
+def _dialog(postgres_store, identity, content, stated_by, trace):
+    return postgres_store.write(
+        Principal.EXTENDED,
+        EngramWrite(
+            type_name="dialog",
+            content=content,
+            identity=identity,
+            stated_by=stated_by,
+            source_trace_id=trace,
+        ),
+    )
+
+
+def test_phase9_type_authority_window_links_and_replacement(postgres_store):
+    declared = {item.name: item for item in postgres_store.list_types()}
+    memory_type = declared["thread_summary"]
+    assert memory_type.scope.value == "session"
+    assert memory_type.writer_principal is Principal.EXTENDED
+
+    identity = _identity()
+    sources = []
+    for turn in range(2):
+        trace = f"trace-{turn}"
+        sources.extend(
+            (
+                _dialog(postgres_store, identity, f"user {turn}", StatedBy.USER, trace),
+                _dialog(postgres_store, identity, f"model {turn}", StatedBy.MODEL, trace),
+            )
+        )
+    assert postgres_store.find_thread_synthesis_window(
+        identity=identity, window_turns=3
+    ) == ()
+    window = postgres_store.find_thread_synthesis_window(
+        identity=identity, window_turns=2
+    )
+    assert {item.id for item in window} == {item.id for item in sources}
+
+    with pytest.raises(WriteAuthorityError):
+        postgres_store.write_thread_summary(
+            Principal.CONSCIENCE,
+            identity=identity,
+            content="invalid",
+            source_ids=tuple(item.id for item in window),
+            source_trace_id="summary",
+        )
+
+    first = postgres_store.write_thread_summary(
+        Principal.EXTENDED,
+        identity=identity,
+        content="user zero, then user one",
+        source_ids=tuple(item.id for item in window),
+        source_trace_id="summary-1",
+    )
+    assert first.links_created == len(window)
+    assert first.summary.stated_by is StatedBy.UNKNOWN
+    with postgres_store._connect() as connection:
+        links = connection.execute(
+            """
+            SELECT count(*) AS count FROM memory_links
+            WHERE source_id = %s AND link_kind = 'summarizes'
+            """,
+            (first.summary.id,),
+        ).fetchone()["count"]
+    assert links == len(window)
+
+    for turn in range(2, 4):
+        trace = f"trace-{turn}"
+        _dialog(postgres_store, identity, f"user {turn}", StatedBy.USER, trace)
+        _dialog(postgres_store, identity, f"model {turn}", StatedBy.MODEL, trace)
+    second_window = postgres_store.find_thread_synthesis_window(
+        identity=identity, window_turns=2
+    )
+    second = postgres_store.write_thread_summary(
+        Principal.EXTENDED,
+        identity=identity,
+        content="four turns summarized",
+        source_ids=tuple(item.id for item in second_window),
+        source_trace_id="summary-2",
+    )
+    assert postgres_store.get_engram(first.summary.id).status is EngramStatus.ARCHIVED
+    assert second.summary.status is EngramStatus.ACTIVE
+    assert all(postgres_store.get_engram(item.id).status is EngramStatus.ACTIVE for item in sources)
+
+
+def test_phase9_maintain_archives_summary_and_never_promotes_it(
+    postgres_store,
+    tmp_path,
+):
+    identity = _identity()
+    user = _dialog(postgres_store, identity, "martes", StatedBy.USER, "trace")
+    model = _dialog(postgres_store, identity, "jueves", StatedBy.MODEL, "trace")
+    summary = postgres_store.write_thread_summary(
+        Principal.EXTENDED,
+        identity=identity,
+        content="martes fue reemplazado por jueves",
+        source_ids=(user.id, model.id),
+        source_trace_id="summary",
+    ).summary
+    old = datetime.now(UTC) - timedelta(hours=5)
+    with postgres_store._connect() as connection:
+        connection.execute(
+            "UPDATE engrams SET created_at = %s WHERE id = ANY(%s::uuid[])",
+            (old, [user.id, model.id, summary.id]),
+        )
+
+    run_maintenance(
+        store=postgres_store,
+        telemetry=TelemetryWriter(tmp_path),
+        config=ExtendedConfig(telemetry_dir=tmp_path),
+    )
+
+    assert postgres_store.get_engram(summary.id).status is EngramStatus.ARCHIVED
+    semantic = postgres_store.recall(
+        RecallQuery(
+            type_names=("semantic",),
+            identity=identity,
+            namespace="facts",
+            text="martes jueves",
+            top_k=100,
+        )
+    )
+    assert all(item.engram.content != summary.content for item in semantic)
+    with postgres_store._connect() as connection:
+        promoted = connection.execute(
+            """
+            SELECT count(*) AS count
+            FROM memory_links ml
+            JOIN engrams target ON target.id = ml.target_engram_id
+            WHERE ml.source_id = %s
+              AND ml.link_kind = 'consolidated_from'
+              AND target.type_name = 'semantic'
+            """,
+            (summary.id,),
+        ).fetchone()["count"]
+    assert promoted == 0
