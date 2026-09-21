@@ -189,6 +189,22 @@ deploy/setup.sh --config /tmp/extended.setup.conf \
 echo "$?"  # distinto de cero
 ```
 
+## Lo que el instalador NO hace: abrir el cortafuegos
+
+Las units escuchan donde digan `REST_HOST` y `MCP_HOST`, y el instalador espera
+a que los puertos respondan antes de verificar. Pero **no toca el cortafuegos
+del huesped**: si la maquina filtra por puerto -`firewalld` con la zona `public`
+solo permite `ssh` en una instalacion minima de openSUSE-, el servicio escuchara
+en la direccion declarada y aun asi sera inalcanzable desde fuera.
+
+Abrir el puerto es hoy un paso del operador, fuera del alcance de este
+instalador, y conviene saberlo porque un despliegue que declara sus servicios
+pero no su exposicion esta incompleto.
+
+Publicar mas alla de loopback es ademas una decision con doctrina detras
+(`ia_nest_meta` ADR 0011): esta capa no autentica, asi que la exposicion se
+declara -que se expone, con que perimetro y con que caducidad- o no se hace.
+
 ## Verificacion posterior en maquina real
 
 Los criterios que requieren red, systemd, reinicio o contenedores solo se
