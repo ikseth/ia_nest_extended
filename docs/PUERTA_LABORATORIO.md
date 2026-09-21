@@ -1,8 +1,9 @@
 # Puerta de laboratorio de ia_nest_extended
 
 Estado: reconciliado 2026-09-12. Declarado ANTES de medir.
-Version: 1.1 - 2026-09-12 (precisiones de L1 y L3 al implementar el script; el
-criterio no cambia)
+Version: 1.2 - 2026-09-21 (anade L7, memoria conversacional con referente,
+derivada de un hilo real; L1 y L3 se precisaron el 2026-09-12 al implementar el
+script)
 
 Aplica `ia_nest_meta` ADR 0010 (regla de la puerta de laboratorio): la regla
 dice que la puerta existe y que forma tiene; este documento fija el
@@ -66,9 +67,10 @@ incorrecto. Ninguna linea usa un modelo del propio sistema como juez.
 | L5 RAG por dominio | por cada dominio con corpus confirmado, una pregunta redactada como la haria una persona, SIN mirar el corpus | la recuperacion devuelve al menos un fragmento, y se registra el nombre de corpus que el contexto publique | no recupera nada |
 | L5r Ruido | cortesia sin dominio ("hola", "gracias", "que recuerdas de mi") | la recuperacion RAG devuelve cero | recupera algo |
 | L6 Repeticion | segunda ejecucion de `setup.sh` sobre lo instalado | L1-L3 siguen pasando y los datos no se duplican | cualquier otro |
+| L7 Memoria conversacional con referente | hilo de cuatro turnos en el que el interlocutor puntua cosas por ORDINAL -"la primera un 6"- y al final pregunta por una concreta | la respuesta trae la puntuacion correcta de esa pieza y ninguna de las que nunca se puntuaron | trae otra puntuacion, o ninguna |
 
-Repeticion: L2, L3, L4a, L4b y L5 con n = 3. Una linea PASA con 3 de 3; con
-menos, NO PASA y el reparto se anota.
+Repeticion: L2, L3, L4a, L4b, L5 y L7 con n = 3. Una linea PASA con 3 de 3;
+con menos, NO PASA y el reparto se anota.
 
 **Por que L2 no juzga la respuesta del modelo** (reconciliado el 2026-09-12, al
 medir): exigirla convierte la linea en una prueba de fidelidad de transcripcion.
@@ -96,6 +98,32 @@ tambien cuando la anotacion no disparo**. Lo que sostiene el comportamiento es
 marcar la procedencia; la anotacion es la segunda capa. Exigirla como criterio
 haria suspender a la puerta por un refuerzo, no por la funcion. Su tasa se
 registra en la evidencia, porque una caida ahi sigue siendo informacion.
+
+## L7 mide lo que un hilo real rompio, y tampoco bloquea
+
+Sale de una sesion REAL del operador el 2026-09-21, no de una sonda: cuatro
+turnos de recomendaciones de cine donde puntuaba por ordinal -"la primera un 6,
+la segunda un 8"- y al final pedia la lista de lo valorado. La respuesta acerto
+tres lineas, **invento tres** -las pego a la lista que el propio modelo habia
+recomendado despues- y omitio dos.
+
+La causa esta en la memoria: se guardaron engramas como "la primera puntuacion
+es 6", correctos en su turno y sin referente fuera de el. Es la deuda **D6** del
+PLAN, distinta de la incoherencia que ataca la Fase 9.
+
+**Que gatea y que no.** La linea gatea sobre una pregunta ESTRECHA y
+determinista -"que puntuacion le di a X?", con su testigo y con los numeros de
+lo nunca puntuado como prohibidos-. La variante de lista completa se ejecuta y
+se REGISTRA por lineas acertadas, inventadas y omitidas, pero no decide: su
+oraculo es mas rico y tambien mas ruidoso, y un recuento no debe convertirse en
+veredicto sin haberlo calibrado.
+
+**No bloquea todavia**, por la misma razon que L4b: mide un problema abierto y
+declarado, no una promesa incumplida. Pasa a bloquear cuando D6 se cierre; hasta
+entonces su reparto se registra en la evidencia, que es lo que permitira saber si
+lo que se implemente mejora algo.
+
+Material de referencia del hilo original: `local/lab/`, sesion `cine_20260921`.
 
 ## L4b no es excluyente; es la medida que decide la Fase 9
 

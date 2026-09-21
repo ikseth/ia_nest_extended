@@ -42,6 +42,14 @@ Sin acentos por convencion.
 ## [No publicado]
 
 ### Anadido
+- Linea **L7** en la puerta de laboratorio, **memoria conversacional con
+  referente**, derivada de una sesion real y no de una sonda: cuatro turnos con
+  puntuaciones por ordinal y una pregunta final por una pieza concreta. Gatea
+  sobre la pregunta estrecha -testigo correcto, prohibidos los valores de lo
+  nunca puntuado- y REGISTRA aparte la variante de lista completa por lineas
+  acertadas, inventadas y omitidas, que es mas informativa pero tambien mas
+  ruidosa. **No bloquea todavia**: mide la deuda D6, que esta abierta y
+  declarada; bloqueara cuando se cierre. Impacto de version: ninguno.
 - Deuda de diseno **D6, el fragmento que pierde su referente**, observada en una
   sesion REAL del operador y no en una sonda. La destilacion guardo engramas como
   "la primera puntuacion es 6": correctos en su turno y ruido fuera de el, porque
