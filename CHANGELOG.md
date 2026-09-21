@@ -3,7 +3,7 @@
 Formato basado en Keep a Changelog; SemVer (ver core `docs/VERSIONADO.md`).
 Sin acentos por convencion.
 
-## [No publicado]
+## [0.3.1] - 2026-09-21
 
 ### Corregido
 - **El instalador fallaba al reejecutarse en cuanto existia una sintesis de
