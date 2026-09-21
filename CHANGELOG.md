@@ -3,6 +3,20 @@
 Formato basado en Keep a Changelog; SemVer (ver core `docs/VERSIONADO.md`).
 Sin acentos por convencion.
 
+## [No publicado]
+
+### Corregido
+- **El instalador fallaba al reejecutarse en cuanto existia una sintesis de
+  hilo.** Las migraciones se reaplican todas en cada arranque, y la `0004`
+  volvia a poner el `CHECK` de `memory_links` sin `summarizes`, que la `0005`
+  habia anadido: la segunda ejecucion moria con `CheckViolation`. La instalacion
+  inicial iba bien; la repeticion, no, de modo que rompia la idempotencia que la
+  linea L6 de la puerta comprueba. Ahora ambas migraciones **solo actuan si su
+  valor no esta ya admitido**, asi que reaplicarlas en cualquier orden deja el
+  mismo esquema. Se escribe ademas el invariante que faltaba en
+  `docs/DESPLIEGUE.md`: toda migracion debe poder reaplicarse DESPUES de las
+  posteriores. Correccion compatible: PATCH.
+
 ## [0.3.0] - 2026-09-21
 
 ### Anadido

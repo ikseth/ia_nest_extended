@@ -30,13 +30,30 @@ CREATE INDEX IF NOT EXISTS engrams_stated_by_idx
 
 -- `contradicted_by`: el usuario dijo algo muy proximo a lo que este engrama
 -- afirma. No retira nada; el recall lo lee para desprioriar y etiquetar.
+-- Se ANADE el valor solo si el CHECK vigente no lo admite ya. Las migraciones
+-- se reaplican TODAS en cada arranque, asi que una que estreche lo que otra
+-- posterior ensancho rompe el despliegue: medido el 2026-09-21, reejecutar el
+-- instalador fallaba con CheckViolation en cuanto existia un enlace de la 0005.
 DO $migration$
+DECLARE
+    definicion text;
 BEGIN
-    ALTER TABLE memory_links
-        DROP CONSTRAINT IF EXISTS memory_links_link_kind_check;
-    ALTER TABLE memory_links
-        ADD CONSTRAINT memory_links_link_kind_check
-        CHECK (link_kind IN ('evidence', 'consolidated_from', 'contradicted_by'));
+    SELECT pg_get_constraintdef(oid) INTO definicion
+    FROM pg_constraint
+    WHERE conrelid = 'memory_links'::regclass
+      AND conname = 'memory_links_link_kind_check';
+
+    IF definicion IS NULL THEN
+        ALTER TABLE memory_links
+            ADD CONSTRAINT memory_links_link_kind_check
+            CHECK (link_kind IN ('evidence', 'consolidated_from', 'contradicted_by'));
+    ELSIF position('contradicted_by' in definicion) = 0 THEN
+        ALTER TABLE memory_links
+            DROP CONSTRAINT memory_links_link_kind_check;
+        ALTER TABLE memory_links
+            ADD CONSTRAINT memory_links_link_kind_check
+            CHECK (link_kind IN ('evidence', 'consolidated_from', 'contradicted_by'));
+    END IF;
 END
 $migration$;
 

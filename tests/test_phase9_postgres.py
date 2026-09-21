@@ -160,3 +160,38 @@ def test_phase9_maintain_archives_summary_and_never_promotes_it(
             (summary.id,),
         ).fetchone()["count"]
     assert promoted == 0
+
+
+def test_migrate_is_idempotent_with_summarizes_links_present(postgres_store):
+    """Reaplicar las migraciones no debe estrechar lo que una posterior ensancho.
+
+    Regresion medida el 2026-09-21 en el laboratorio: con un enlace
+    `summarizes` ya escrito, reejecutar el instalador fallaba con
+    CheckViolation, porque la 0004 volvia a poner el CHECK sin ese valor. Las
+    migraciones se reaplican TODAS en cada arranque, asi que cada una debe
+    poder correr despues de las que vienen detras.
+    """
+
+    identity = _identity()
+    fuentes = [
+        _dialog(postgres_store, identity, "turno del usuario", StatedBy.USER, "t1"),
+        _dialog(postgres_store, identity, "turno del modelo", StatedBy.MODEL, "t1"),
+    ]
+    sintesis = postgres_store.write_thread_summary(
+        Principal.EXTENDED,
+        identity=identity,
+        content="resumen del hilo",
+        source_ids=tuple(item.id for item in fuentes),
+        source_trace_id="summary-idempotencia",
+    )
+
+    assert sintesis.links_created == len(fuentes)
+
+    # El fallo medido ocurria AQUI: la segunda pasada de migraciones estrechaba
+    # el CHECK y reventaba con CheckViolation por el enlace recien escrito.
+    postgres_store.migrate()
+    postgres_store.migrate()
+
+    recuperada = postgres_store.get_engram(sintesis.summary.id)
+    assert recuperada is not None
+    assert recuperada.status is EngramStatus.ACTIVE

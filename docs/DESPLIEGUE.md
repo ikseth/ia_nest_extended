@@ -189,6 +189,23 @@ deploy/setup.sh --config /tmp/extended.setup.conf \
 echo "$?"  # distinto de cero
 ```
 
+## Las migraciones se reaplican todas, y eso impone una regla
+
+`runtime migrate` aplica TODAS las migraciones en cada ejecucion, en orden, sin
+llevar registro de cuales ya corrieron. De ahi un invariante que conviene tener
+presente al escribir una nueva:
+
+> **Toda migracion debe poder reaplicarse DESPUES de las posteriores.**
+
+Una que estreche lo que otra mas nueva ensancho rompe el despliegue en la
+segunda ejecucion, no en la primera. Medido el 2026-09-21: con un enlace
+`summarizes` ya escrito por la 0005, la 0004 volvia a poner su `CHECK` sin ese
+valor y el instalador fallaba con `CheckViolation`. La instalacion inicial iba
+bien; la repeticion, no.
+
+En la practica, una migracion que amplia una enumeracion comprueba primero si su
+valor ya esta admitido y no hace nada si lo esta.
+
 ## Lo que el instalador NO hace: abrir el cortafuegos
 
 Las units escuchan donde digan `REST_HOST` y `MCP_HOST`, y el instalador espera
