@@ -5,6 +5,26 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+### Anadido
+- **Fase 9, sintesis de hilo (mecanismo).** Tipo de memoria nuevo
+  `thread_summary`: estricto, escrito por extended, de ambito SESION y con
+  namespace propio. Al terminar el write-back de un turno, y solo con
+  `thread_synthesis_enabled`, se resume la ventana de
+  `thread_synthesis_window_turns` (4 de arranque) con `synthesis_model` -por
+  defecto el de extraccion-, y la sintesis sustituye a la anterior del hilo.
+  Ancla con enlaces `summarizes` a cada engrama que resume (migracion `0005`,
+  sin tocar la `0004` publicada), hereda la procedencia del ADR 0013 -`unknown`
+  cuando la ventana mezcla emisores- y en el recall ocupa el PRESUPUESTO de los
+  engramas que resume, que siguen en el almacen y alcanzables por consulta.
+  `maintain` la archiva con el `dialog` de su sesion y NUNCA la promociona a
+  `semantic`: es estado de trabajo, no recuerdo (ADR 0007, enmienda del
+  2026-09-12). **Apagada por defecto**: con la fase apagada el comportamiento es
+  el de siempre. Adicion compatible: MINOR en la serie pre-1.0.
+
+  Lo que esto NO cierra es la FASE: su criterio de salida -coherencia >= 8 de 9
+  contra una linea base medida de 2 de 15- se mide en laboratorio con la puerta
+  y por dos ejecutores. Aqui se entrega el mecanismo.
+
 ### Cambiado
 - **Criterio de salida de la Fase 9, RECONCILIADO** (2026-09-12). Deja de ser
   una propuesta: se mide sobre un despliegue natural con la puerta de
