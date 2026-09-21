@@ -39,6 +39,20 @@ Sin acentos por convencion.
   La linea base del brazo sin sintesis ya esta medida y no se vuelve a discutir:
   2 aciertos de 15. Impacto de version: ninguno.
 
+## [No publicado]
+
+### Anadido
+- Deuda de diseno **D6, el fragmento que pierde su referente**, observada en una
+  sesion REAL del operador y no en una sonda. La destilacion guardo engramas como
+  "la primera puntuacion es 6": correctos en su turno y ruido fuera de el, porque
+  el ordinal perdio aquello a lo que se referia. Como `episodic` es de ambito
+  usuario, esos fragmentos son candidatos en cualquier conversacion futura del
+  mismo interlocutor. Efecto medido en el mismo hilo: al pedir la lista de
+  peliculas valoradas, la respuesta acerto tres, invento tres y omitio dos. **No
+  es lo que persigue la Fase 9** -aquello es incoherencia entre versiones; esto
+  es perdida de referente-, y la sintesis lo mitiga en lo inyectado sin retirarlo
+  del almacen. Impacto de version: ninguno.
+
 ## [0.2.3] - 2026-09-12
 
 ### Anadido
