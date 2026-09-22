@@ -462,17 +462,17 @@ class ExtendedService:
             return self.memory_maintain(dry_run=_bool(body, "dry_run", False))
         if capability == "session.list":
             return self.session_list(
-                self._request_identity(body),
+                self._request_identity(body, require_session=False),
                 status=_optional_text(body, "status") or SessionStatus.ACTIVE.value,
             )
         if capability == "session.show":
             return self.session_show(
-                self._request_identity(body),
+                self._request_identity(body, require_session=False),
                 _required_text(body, "session_id"),
             )
         if capability == "session.new":
             return self.session_new(
-                self._request_identity(body),
+                self._request_identity(body, require_session=False),
                 session_id=_optional_text(body, "session_id"),
             )
         if capability == "knowledge.ingest":
@@ -501,19 +501,53 @@ class ExtendedService:
             "capability",
         )
 
-    def _request_identity(self, body: dict[str, Any]) -> MemoryIdentity:
+    def _request_identity(
+        self,
+        body: dict[str, Any],
+        *,
+        require_session: bool = True,
+    ) -> MemoryIdentity:
+        """Identidad de una peticion de REST o MCP, que NO se inventa.
+
+        ADR 0014: una superficie que puede atender a mas de un interlocutor no
+        suministra defaults de identidad. Inventarla es cosa del cliente, que
+        sabe a quien tiene delante; no de la capa, que no lo sabe. La CLI
+        conserva sus defaults, que es para quien se pensaron (ADR 0011, punto 7,
+        acotado el 2026-09-22).
+
+        `require_session` cae a falso en las capacidades de sesion: ahi el
+        sujeto es el usuario, y exigir una sesion para poder CREARLA no tendria
+        salida.
+        """
         raw = body.get("identity", {})
         if raw is None:
             raw = {}
         if not isinstance(raw, dict):
             raise ExtendedRequestError("identity debe ser un objeto", "identity")
+        user_id = _identity_text(raw, "user_id")
+        if user_id is None:
+            raise ExtendedRequestError(
+                "identity.user_id es obligatorio: esta superficie no supone "
+                "quien llama",
+                "identity.user_id",
+            )
+        session_id = _identity_text(raw, "session_id")
+        if require_session and session_id is None:
+            raise ExtendedRequestError(
+                "identity.session_id es obligatorio: esta superficie no "
+                "recuerda sesiones. Crea una con 'session.new' o envia la tuya",
+                "identity.session_id",
+            )
         return resolve_identity(
             self.config,
-            user_id=_identity_text(raw, "user_id"),
-            session_id=_identity_text(raw, "session_id"),
+            user_id=user_id,
+            session_id=session_id,
             service=_identity_text(raw, "service"),
             namespace=_identity_text(raw, "namespace"),
             domain=_identity_text(raw, "domain_tag"),
+            # El servidor no recuerda sesiones: el fichero de estado es de la
+            # CLI. Un servidor que recuerda una sola las mezcla todas.
+            remember_session=False,
         )
 
     # --- capacidad sobreescrita -------------------------------------------

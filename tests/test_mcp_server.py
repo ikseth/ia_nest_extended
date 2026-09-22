@@ -110,6 +110,9 @@ def test_mcp_rest_and_cli_have_parity_with_declared_parameters(
         ExtendedComposition(config, memory_store=InMemoryStore())
     )
     server = create_server(config, service)
+    # ADR 0014: las superficies de servidor ya no suponen la identidad, asi que
+    # la paridad se comprueba con la MISMA identidad explicita en las tres.
+    identity = {"user_id": "paridad-user", "session_id": "paridad-thread"}
     arguments = {
         "prompt": "hola",
         "use_memory": False,
@@ -121,9 +124,9 @@ def test_mcp_rest_and_cli_have_parity_with_declared_parameters(
         config,
         SimpleNamespace(
             **arguments,
-            user_id=None,
+            user_id=identity["user_id"],
             service=None,
-            session_id=None,
+            session_id=identity["session_id"],
             namespace=None,
             domain=None,
             json=True,
@@ -134,9 +137,9 @@ def test_mcp_rest_and_cli_have_parity_with_declared_parameters(
         create_app(config, service),
         "POST",
         "/memory/recall",
-        json_body=arguments,
+        json_body={**arguments, "identity": identity},
     ).json()
-    mcp_payload = server.tools["memory.recall"].fn(**arguments)
+    mcp_payload = server.tools["memory.recall"].fn(**arguments, identity=identity)
 
     assert mcp_payload == rest_payload == cli_payload
 
@@ -148,6 +151,21 @@ class _OfflineCore:
     def list_capabilities(self):
         self.calls += 1
         raise AssertionError("construir MCP intento consultar el core")
+
+
+def test_identity_is_declared_required_in_the_tool_signature(tmp_path):
+    """ADR 0014: el cliente lo ve en la firma, no lo descubre con un error."""
+    config = _config(tmp_path)
+    service = ExtendedService(
+        ExtendedComposition(config, memory_store=InMemoryStore())
+    )
+    server = create_server(config, service)
+
+    parameter = server.tools["memory.recall"].fn.__signature__.parameters[
+        "identity"
+    ]
+
+    assert parameter.default is parameter.empty
 
 
 def test_server_starts_offline_with_own_tools_and_declares_gap(tmp_path):
