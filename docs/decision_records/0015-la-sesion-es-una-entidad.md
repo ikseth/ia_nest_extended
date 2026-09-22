@@ -35,30 +35,41 @@ Una sesion es una entidad con `user_id`, creacion, ultima actividad, estado,
 titulo y las marcas de tiempo de su ciclo de vida. Deja de inferirse de que
 alguien la nombrara.
 
-### 2. Cerrar y amortizar no son lo mismo
+### 2. Archivar y cerrar son de duenos distintos
 
-Es el punto que evita un bloqueo: si cerrar dependiera de conscience, y
-conscience no existe, **nada se cerraria jamas** y volveriamos al hilo eterno.
+Tres estados en una sola linea de vida, y cada transicion tiene su dueno:
 
-- **Cerrar** -pasar a `archivada`- es operativo: lo decide el reloj de
-  inactividad o un acto explicito. Es de extended y funciona hoy.
-- **Amortizar** es juicio: conscience declara que de ese hilo ya extrajo lo que
-  valia. **No cierra nada**; deja su marca encima de un hilo ya archivado.
+    activa --(reloj; extended)--> archivada --(amortizacion; conscience)--> cerrada
 
-    estado        activa -> archivada        (extended, reloj o acto explicito)
-    amortizada_at null -> marca de tiempo    (conscience; hoy siempre null)
+- **activa**: el hilo admite turnos.
+- **archivada**: extended la deja FUERA DE SU ALCANCE -no admite mas turnos, su
+  `dialog` deja de recuperarse- pero **no la da por terminada**. Sacar algo de
+  tu alcance no es declararlo acabado, y extended no tiene con que declararlo.
+- **cerrada**: conscience ya la desgloso y genero los engramas si procedia.
+  Cerrada NO significa que produjera memoria: significa que **alguien con
+  criterio ya la miro**. Un hilo del que no habia nada que extraer se cierra
+  igual.
 
-"Activa" significa **no archivada**, y no depende de conscience. El dia que
-exista, anade su marca sin redisenar nada.
+De ahi sale lo que hace util al modelo: **`archivada` es la cola de trabajo de
+conscience**. No es una consulta derivada de dos campos, es el estado que dice
+"esto esta pendiente de que alguien lo juzgue".
+
+Mientras conscience no exista, NADA llega a `cerrada`. Habra un respaldo
+permanente de hilos archivados sin amortizar, y eso es informacion que conviene
+ver, no un bloqueo: dice cuanto material lleva el ente esperando a tener quien
+lo piense.
+
+"Activa" -lo que se lista y se continua- significa **no archivada**, y esa
+transicion es solo de extended. El sistema funciona entero sin el guardian.
 
 ### 3. Estados explicitos, nunca por omision
 
-El estado es un valor declarado, no la ausencia de una fila o un `null`
+El estado es un valor declarado, no la ausencia de una fila ni un `null`
 interpretado. Modelar por ausencia es justo lo que produjo esta deuda, y ademas
-no deja sitio donde poner el tercer estado el dia que aparezca.
+no deja sitio donde poner el cuarto estado el dia que aparezca.
 
-Las marcas del ciclo de vida son TIMESTAMPS (`archivada_at`, `amortizada_at`),
-no banderas: cuestan lo mismo y dicen cuando.
+Las transiciones dejan TIMESTAMPS (`archivada_at`, `cerrada_at`), no banderas:
+cuestan lo mismo y dicen cuando.
 
 ### 4. Un solo reloj, y es el del hilo
 
@@ -128,8 +139,9 @@ que un fichero unico no permite.
 ## Lo que esta decision NO cubre
 
 - **Autenticacion.** Ni la del listado ni la de nada. Sigue en la frontera.
-- **Que hace conscience al amortizar**: que engramas genera y con que criterio.
-  Aqui solo se le reserva el sitio donde dejar la marca.
+- **Que hace conscience al amortizar**: que engramas genera, con que criterio y
+  en que orden vacia la cola. Aqui solo se declara el estado del que parte
+  (`archivada`) y el que deja (`cerrada`).
 - **El borrado.** No hay borrado fisico (ADR 0002): archivar no es purgar, y una
   politica de purga es otra decision.
 - **El dueno de `episodic`**, que se debate aparte y no depende de esto.

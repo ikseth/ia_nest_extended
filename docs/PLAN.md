@@ -744,11 +744,12 @@ que durar, y que la caducidad -si la hay- la decida quien ARCHIVE el hilo y
 destile de el, no quien conversa. Eso apunta a conscience, y conecta con la
 frontera de confianza del ADR 0007: sedimentar es juicio.
 
-DECIDIDA el 2026-09-22, ADR 0015: la sesion pasa a ser una entidad declarada.
-Cerrar -reloj de inactividad o acto explicito, de extended- se separa de
-amortizar -juicio de conscience-, porque si el cierre dependiera del guardian y
-el guardian no existe, nada se cerraria nunca. Un solo reloj, el del hilo, con
-el valor de hoy sin tocar. Pendiente de implementar, y **va antes que el
+DECIDIDA el 2026-09-22, ADR 0015: la sesion pasa a ser una entidad declarada,
+con tres estados y un dueno por transicion. Extended ARCHIVA por reloj de
+inactividad -la saca de su alcance, sin declararla terminada-; conscience CIERRA
+al amortizarla. Asi `archivada` es la cola de trabajo del guardian, y mientras
+no exista, el respaldo de hilos sin amortizar es un dato visible, no un bloqueo.
+Un solo reloj, el del hilo, con el valor de hoy sin tocar. Pendiente de implementar, y **va antes que el
 ADR 0014**: exigir `session_id` a los clientes solo tiene sentido cuando hay
 donde consultarlo y crearlo.
 

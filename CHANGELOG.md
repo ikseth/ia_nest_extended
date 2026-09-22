@@ -18,9 +18,10 @@ Sin acentos por convencion.
   aparte. Impacto de version: ninguno todavia.
 - **Decision 0015: la sesion es una entidad, no una etiqueta.** Cierra la deuda
   D7 en diseno. La sesion se declara -dueno, creacion, ultima actividad, estado,
-  titulo-, y **cerrar se separa de amortizar**: cerrar lo decide el reloj de
-  inactividad o un acto explicito y es de extended; amortizar es juicio de
-  conscience y no cierra nada. Un solo reloj, el del hilo, conservando las 4 h
+  titulo- con tres estados y un dueno por transicion: extended **archiva** por
+  reloj de inactividad -la saca de su alcance sin declararla terminada- y
+  conscience **cierra** al amortizarla, de modo que `archivada` es la cola de
+  trabajo del guardian. Un solo reloj, el del hilo, conservando las 4 h
   de hoy pero cambiando su significado -de edad del turno a inactividad del
   hilo-, para no mover modelo y calibracion a la vez. Titulo derivado de
   `thread_summary`; listado por usuario, que acota y no protege. **Solo la
