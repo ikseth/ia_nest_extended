@@ -224,11 +224,17 @@ def test_phase9_recall_composes_summary_with_both_contradiction_sides(
             "UPDATE engrams SET embedding = %s::vector WHERE id = %s",
             (str(user_vector), model.id),
         )
+    # La ventana real de una sintesis incluye los turnos de su sesion: el
+    # almacen exige al menos un `dialog` propio, porque el hilo es la sesion.
+    turnos = [
+        _dialog(postgres_store, identity, "cual es la clave?", StatedBy.USER, "t1"),
+        _dialog(postgres_store, identity, "la clave es Cobalto", StatedBy.MODEL, "t1"),
+    ]
     postgres_store.write_thread_summary(
         Principal.EXTENDED,
         identity=identity,
         content="La clave vigente es Ambar y hay tres mantas.",
-        source_ids=(model.id, user.id, ordinary.id),
+        source_ids=(model.id, user.id, ordinary.id, *(x.id for x in turnos)),
         source_trace_id="summary",
     )
     enricher = MemoryEnricher(
