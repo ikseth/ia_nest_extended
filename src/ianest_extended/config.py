@@ -43,6 +43,9 @@ class ExtendedConfig:
     synthesis_model: str | None = None
     telemetry_dir: Path = Path("telemetry")
     session_state_path: Path = field(default_factory=default_session_state_path)
+    # Override de sesion exclusivo del contexto local/CLI. Tiene precedencia
+    # sobre el fichero recordado, pero no sobre --session-id.
+    cli_session_id: str | None = None
     catalog_cache_path: Path = field(default_factory=default_catalog_cache_path)
     default_user_id: str = "local_operator"
     default_service: str = "local_cli"
@@ -126,6 +129,7 @@ class ExtendedConfig:
             "session_state_path": Path(
                 _env("SESSION_STATE_PATH", str(defaults.session_state_path))
             ).expanduser(),
+            "cli_session_id": _env("SESSION_ID", defaults.cli_session_id),
             "catalog_cache_path": Path(
                 _env("CATALOG_CACHE_PATH", str(defaults.catalog_cache_path))
             ).expanduser(),
@@ -340,6 +344,11 @@ class ExtendedConfig:
             raise ExtendedConfigError(
                 "synthesis_model no puede estar vacio",
                 "synthesis_model",
+            )
+        if self.cli_session_id is not None and not self.cli_session_id.strip():
+            raise ExtendedConfigError(
+                "cli_session_id no puede estar vacio",
+                "cli_session_id",
             )
 
     @property

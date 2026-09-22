@@ -22,6 +22,7 @@ from .models import (
     RagChunkWrite,
     RagIngestResult,
     Session,
+    SessionStatus,
     ThreadSynthesisResult,
 )
 
@@ -75,6 +76,16 @@ class MemoryStore(Protocol):
 
     def get_session(self, user_id: str, session_id: str) -> Session | None:
         """Obtiene la entidad de sesion por su clave compuesta."""
+
+    def list_sessions(
+        self,
+        user_id: str,
+        status: SessionStatus | None = SessionStatus.ACTIVE,
+    ) -> Sequence[Session]:
+        """Lista solo las sesiones del usuario, con titulo derivado."""
+
+    def create_session(self, user_id: str, session_id: str) -> Session:
+        """Declara una sesion activa nueva o falla si la clave ya existe."""
 
     def find_similar(
         self,

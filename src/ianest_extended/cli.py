@@ -22,7 +22,7 @@ from .capabilities import CapabilityParam, LOCAL_CAPABILITIES, local_catalog, me
 from .catalog_cache import read_catalog_cache
 from .config import ExtendedConfig
 from .errors import ExtendedError
-from .identity import resolve_identity
+from .identity import remember_session_id, resolve_identity
 from .service import ExtendedService
 
 PROG = "ianest-extended"
@@ -424,6 +424,29 @@ def _build_parser(
     _add_json_argument(memory_type_list)
     memory_type_list.set_defaults(handler=_memory_type_list)
 
+    session_group = group(
+        "session",
+        "consulta y crea hilos de conversacion",
+        "Lista, muestra y crea sesiones del usuario del contexto local.",
+    )
+    session_list = _add_local_parser(session_group, "session.list")
+    _add_local_parameter(session_list, "session.list", "status")
+    _add_session_user_argument(session_list)
+    _add_json_argument(session_list)
+    session_list.set_defaults(handler=_session_list)
+
+    session_show = _add_local_parser(session_group, "session.show")
+    _add_local_parameter(session_show, "session.show", "session_id")
+    _add_session_user_argument(session_show)
+    _add_json_argument(session_show)
+    session_show.set_defaults(handler=_session_show)
+
+    session_new = _add_local_parser(session_group, "session.new")
+    _add_local_parameter(session_new, "session.new", "session_id")
+    _add_session_user_argument(session_new)
+    _add_json_argument(session_new)
+    session_new.set_defaults(handler=_session_new)
+
     knowledge_group = group(
         "knowledge",
         "conocimiento por dominio",
@@ -714,6 +737,14 @@ def _add_identity_arguments(
     )
 
 
+def _add_session_user_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--user-id",
+        metavar="ID",
+        help="identificador de usuario; por defecto, el configurado",
+    )
+
+
 def _add_json_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--json",
@@ -752,7 +783,7 @@ def _capability_list(service, config, args) -> int:
 
 
 def _prompt_run(service, config, args) -> int:
-    identity = _identity(service, config, args)
+    identity = _identity(service, config, args, announce_session=True)
     result = service.prompt_run(
         args.prompt,
         identity,
@@ -786,7 +817,7 @@ def _prompt_run(service, config, args) -> int:
 def _prompt_stream(service, config, args) -> int:
     stream = service.prompt_stream(
         args.prompt,
-        _identity(service, config, args),
+        _identity(service, config, args, announce_session=True),
         enrich=args.enrich,
         use_memory=args.use_memory,
         use_rag=args.use_rag,
@@ -801,7 +832,7 @@ def _prompt_stream(service, config, args) -> int:
 def _reasoning_run(service, config, args) -> int:
     result = service.reasoning_run(
         args.prompt,
-        _identity(service, config, args),
+        _identity(service, config, args, announce_session=True),
         enrich=args.enrich,
         use_memory=args.use_memory,
         use_rag=args.use_rag,
@@ -832,7 +863,7 @@ def _reasoning_run(service, config, args) -> int:
 def _reasoning_stream(service, config, args) -> int:
     stream = service.reasoning_stream(
         args.prompt,
-        _identity(service, config, args),
+        _identity(service, config, args, announce_session=True),
         enrich=args.enrich,
         use_memory=args.use_memory,
         use_rag=args.use_rag,
@@ -858,6 +889,7 @@ def _task_run(service, config, args) -> int:
             config,
             args,
             include_domain=False,
+            announce_session=True,
         ),
         enrich=args.enrich,
         use_memory=args.use_memory,
@@ -988,7 +1020,7 @@ def _input_payload(args, capability) -> dict[str, Any] | None:
 
 def _memory_recall(service, config, args) -> int:
     payload = service.memory_recall(
-        _identity(service, config, args),
+        _identity(service, config, args, announce_session=True),
         args.prompt,
         use_memory=args.use_memory,
         use_rag=args.use_rag,
@@ -1020,6 +1052,59 @@ def _memory_type_list(service, config, args) -> int:
         for item in payload["types"]
     ]
     return _emit(payload, args.json, text="\n".join(lines))
+
+
+def _session_identity(config, args):
+    return resolve_identity(
+        config,
+        user_id=getattr(args, "user_id", None),
+        remember_session=False,
+    )
+
+
+def _session_list(service, config, args) -> int:
+    payload = service.session_list(
+        _session_identity(config, args),
+        status=args.status,
+    )
+    lines = [
+        "session_id={session_id} status={status} created_at={created_at} "
+        "last_activity_at={last_activity_at} title={title}".format(
+            **{**item, "title": item["title"] or "(sin titulo)"}
+        )
+        for item in payload["sessions"]
+    ]
+    return _emit(payload, args.json, text="\n".join(lines))
+
+
+def _session_show(service, config, args) -> int:
+    payload = service.session_show(
+        _session_identity(config, args),
+        args.session_id,
+    )
+    item = payload["session"]
+    text = (
+        "session_id={session_id} status={status} created_at={created_at} "
+        "last_activity_at={last_activity_at} archived_at={archived_at} "
+        "closed_at={closed_at} title={title}"
+    ).format(**{**item, "title": item["title"] or "(sin titulo)"})
+    return _emit(payload, args.json, text=text)
+
+
+def _session_new(service, config, args) -> int:
+    payload = service.session_new(
+        _session_identity(config, args),
+        session_id=args.session_id,
+    )
+    remember_session_id(
+        config.session_state_path,
+        payload["session"]["session_id"],
+    )
+    return _emit(
+        payload,
+        args.json,
+        text=f"session_id={payload['session']['session_id']}",
+    )
 
 
 def _knowledge_ingest(service, config, args) -> int:
@@ -1147,6 +1232,7 @@ def _identity(
     *,
     include_domain: bool = True,
     check_remembered: bool = True,
+    announce_session: bool = False,
 ):
     identity, replaced_status = service.resolve_cli_identity(
         user_id=getattr(args, "user_id", None),
@@ -1162,6 +1248,8 @@ def _identity(
             "se inicio un hilo nuevo.",
             file=sys.stderr,
         )
+    if announce_session and identity.session_id is not None:
+        print(f"Sesion: {identity.session_id}", file=sys.stderr)
     return identity
 
 

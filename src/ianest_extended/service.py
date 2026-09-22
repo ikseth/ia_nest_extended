@@ -40,6 +40,7 @@ from .errors import (
     ExtendedRequestError,
     ExternalServiceConnectionError,
     SchemaMigrationRequiredError,
+    SessionNotFoundError,
 )
 from .enrichment import compose_prompt
 from .identity import replace_remembered_session_id, resolve_identity
@@ -61,6 +62,7 @@ from .models import (
     Principal,
     RetrievalMode,
     Scope,
+    Session,
     SessionStatus,
     StatedBy,
 )
@@ -301,6 +303,7 @@ class ExtendedService:
         if (
             not check_remembered
             or session_id is not None
+            or self.config.cli_session_id is not None
             or identity.user_id is None
             or identity.session_id is None
         ):
@@ -457,6 +460,21 @@ class ExtendedService:
             )
         if capability == "memory.maintain":
             return self.memory_maintain(dry_run=_bool(body, "dry_run", False))
+        if capability == "session.list":
+            return self.session_list(
+                self._request_identity(body),
+                status=_optional_text(body, "status") or SessionStatus.ACTIVE.value,
+            )
+        if capability == "session.show":
+            return self.session_show(
+                self._request_identity(body),
+                _required_text(body, "session_id"),
+            )
+        if capability == "session.new":
+            return self.session_new(
+                self._request_identity(body),
+                session_id=_optional_text(body, "session_id"),
+            )
         if capability == "knowledge.ingest":
             return self.knowledge_ingest(
                 path=Path(_required_text(body, "path")),
@@ -1417,6 +1435,58 @@ class ExtendedService:
             "dry_run": result.dry_run,
         }
 
+    # --- capacidades propias: sesiones -----------------------------------
+
+    def session_list(
+        self,
+        identity: MemoryIdentity,
+        *,
+        status: str = SessionStatus.ACTIVE.value,
+    ) -> dict[str, Any]:
+        user_id = _session_user_id(identity)
+        status_filter = (
+            None
+            if status == "todas"
+            else _enum(SessionStatus, status, "status")
+        )
+        sessions = self._composition.memory_store().list_sessions(
+            user_id,
+            status_filter,
+        )
+        return {"sessions": [_session_dict(item) for item in sessions]}
+
+    def session_show(
+        self,
+        identity: MemoryIdentity,
+        session_id: str,
+    ) -> dict[str, Any]:
+        user_id = _session_user_id(identity)
+        normalized_id = _session_id(session_id)
+        session = self._composition.memory_store().get_session(
+            user_id,
+            normalized_id,
+        )
+        if session is None:
+            raise SessionNotFoundError(
+                f"la sesion {normalized_id!r} no existe para el usuario {user_id!r}",
+                "session_id",
+            )
+        return {"session": _session_dict(session)}
+
+    def session_new(
+        self,
+        identity: MemoryIdentity,
+        *,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        user_id = _session_user_id(identity)
+        normalized_id = str(uuid4()) if session_id is None else _session_id(session_id)
+        session = self._composition.memory_store().create_session(
+            user_id,
+            normalized_id,
+        )
+        return {"session": _session_dict(session)}
+
     # --- capacidades propias: conocimiento --------------------------------
 
     def knowledge_ingest(
@@ -1524,6 +1594,50 @@ def _memory_type_dict(memory_type: MemoryType) -> dict[str, Any]:
         "status": memory_type.status,
         "version": memory_type.version,
     }
+
+
+def _session_user_id(identity: MemoryIdentity) -> str:
+    if identity.user_id is None or not identity.user_id.strip():
+        raise ExtendedRequestError("'user_id' debe ser texto no vacio", "user_id")
+    return identity.user_id.strip()
+
+
+def _session_id(value: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise ExtendedRequestError(
+            "'session_id' debe ser texto no vacio",
+            "session_id",
+        )
+    return normalized
+
+
+def _session_dict(session: Session) -> dict[str, Any]:
+    return {
+        "session_id": session.session_id,
+        "created_at": session.created_at.isoformat(),
+        "last_activity_at": session.last_activity_at.isoformat(),
+        "status": str(session.status),
+        "title": _session_title(session.title),
+        "archived_at": (
+            None if session.archived_at is None else session.archived_at.isoformat()
+        ),
+        "closed_at": (
+            None if session.closed_at is None else session.closed_at.isoformat()
+        ),
+    }
+
+
+def _session_title(summary: str | None) -> str | None:
+    if summary is None:
+        return None
+    normalized = " ".join(summary.split())
+    if not normalized:
+        return None
+    if len(normalized) <= 80:
+        return normalized
+    boundary = normalized.rfind(" ", 0, 81)
+    return normalized[:80] if boundary <= 0 else normalized[:boundary]
 
 
 def _run_payload(result: PromptRunResult | ReasoningRunResult) -> dict[str, Any]:

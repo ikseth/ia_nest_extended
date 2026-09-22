@@ -1,7 +1,7 @@
 # Contrato de ia_nest_extended
 
 Estado: activo
-Version: 1.1 - 2026-08-20
+Version: 1.2 - 2026-09-22
 
 Frontera publica de la capa de enriquecimiento, VIGENTE desde su primer tag
 (Fase 7d). Lo que aqui se declara es promesa, no objetivo. Que cuenta como
@@ -61,7 +61,7 @@ capacidades de flujo quedan fuera de MCP y su proyeccion nula en
 |---|---|
 | **Reenviadas** sin alterar | las del core que esta capa no enriquece; hoy `runtime.health` y `config.validate` responden por el core, no por la pila |
 | **Sobreescritas** (compuestas o enriquecidas) | `capability.list`, `prompt.run`, `prompt.stream`, `reasoning.run`, `reasoning.stream`, `task.run` |
-| **Propias** | `memory_type.*`, `memory.*`, `knowledge.*` |
+| **Propias** | `memory_type.*`, `memory.*`, `knowledge.*`, `session.*` |
 
 El reenvio es GENERICO: no hay codigo por capacidad. Una capacidad que el core
 anada es alcanzable a traves de esta capa sin tocar su codigo, y eso se verifica
@@ -173,6 +173,12 @@ Cada evento `rag.retrieve` declara `score_regime` (`domain` o `no_domain`) y
 `min_score`, ademas del dominio efectivo. La calibracion puede asi observar la
 regla aplicada sin reconstruirla desde otros campos.
 
+La CLI admite `IANEST_EXTENDED_SESSION_ID` para mantener hilos paralelos en
+terminales distintos. La precedencia es `--session-id`, despues la variable de
+entorno y por ultimo el fichero de sesion recordada. Los comandos que usan
+memoria anuncian la sesion efectiva por stderr; stdout conserva solo la
+respuesta de la capacidad.
+
 ## Capacidades propias
 
 Estado: `implementada` (existe el mecanismo y se expone por las tres pieles) o
@@ -215,6 +221,21 @@ quien dijo un contenido.
 Las dos previstas existen para el consumo de `ia_nest_web`; no se implementan
 hasta que ese consumidor las ejerza (core ADR 0035: una costura sin consumidor
 real se pudre).
+
+### Sesiones
+
+| capacidad | proposito | estado |
+|---|---|---|
+| `session.list` | lista las sesiones del `user_id`; filtra por `activa`, `archivada`, `cerrada` o `todas` | implementada |
+| `session.show` | muestra una sesion del usuario, incluida una archivada | implementada |
+| `session.new` | crea una sesion con id opcional del cliente o generado por el servidor | implementada |
+
+`session.list` usa `activa` por defecto y nunca ofrece una vista global. Cada
+sesion publica `session_id`, creacion, ultima actividad, estado, titulo y sus
+marcas de archivado/cierre. El titulo no se almacena: se deriva en cada lectura
+del `thread_summary` mas reciente, se recorta a 80 caracteres en frontera de
+palabra y queda nulo si no existe resumen. `session.new` rechaza con error
+tipado un id ya existente para el mismo usuario.
 
 ## No capacidades
 

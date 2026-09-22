@@ -103,7 +103,11 @@ La identidad deja de ser obligatoria: `--user-id`, `--service`, `--session-id` y
 `--namespace` toman defaults de configuracion (`service` es `local_cli`). Si no
 se indica `--session-id`, se genera uno y se RECUERDA en un fichero local, de
 ruta configurable y no versionado, para que el tier `dialog` encadene
-invocaciones. `--domain` es un unico valor: gatea el conocimiento, viaja al core
+invocaciones. Para llevar hilos paralelos en terminales distintos se puede usar
+`IANEST_EXTENDED_SESSION_ID`. La precedencia es `--session-id`, despues
+`IANEST_EXTENDED_SESSION_ID` y por ultimo el fichero recordado. Los comandos que
+usan memoria anuncian la sesion efectiva por stderr, sin mezclarla con la
+respuesta de stdout. `--domain` es un unico valor: gatea el conocimiento, viaja al core
 como dominio de ruteo y etiqueta la memoria.
 
 Capacidades SOBREESCRITAS (enriquecidas):
@@ -141,6 +145,10 @@ Capacidades PROPIAS:
     ianest-extended memory recall --prompt "Que recuerdas?"
     ianest-extended memory maintain --dry-run
     ianest-extended memory_type list
+    ianest-extended session list
+    ianest-extended session list --status archivada
+    ianest-extended session show --session-id cine_20260926
+    ianest-extended session new --session-id cine_20260926
     ianest-extended knowledge ingest --corpus manual-unix --domain linux docs/manuales/
     ianest-extended knowledge status
     ianest-extended knowledge suggest --corpus manual-unix
@@ -150,6 +158,12 @@ Capacidades PROPIAS:
 `memory.write`, `memory.consolidate` y `memory_type.validate` existen como
 capacidades del servicio, pero no tienen comando: su consumidor es `conscience`
 por REST (fase 7c).
+
+`session list` solo consulta las sesiones del usuario indicado y filtra por
+`activa` de forma predeterminada; admite `archivada`, `cerrada` y `todas`.
+`session new` genera un id si se omite y, en la CLI, lo deja como sesion
+recordada. El titulo se deriva del `thread_summary` mas reciente, se recorta a
+80 caracteres en frontera de palabra y es nulo cuando no hay resumen.
 
 Codigos de salida, iguales a los del core: `0` correcto, `1` error tipado en
 stderr con formato `Tipo (campo): mensaje` (o su JSON con `--json`), y `2` uso

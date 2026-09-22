@@ -10,6 +10,7 @@ from ianest_extended import (
     MemoryIdentity,
     Principal,
     RecallQuery,
+    SessionAlreadyExistsError,
     SessionNotActiveError,
     SessionStatus,
     StatedBy,
@@ -167,6 +168,61 @@ def test_same_session_text_is_isolated_by_user(postgres_store, tmp_path):
     ).status is SessionStatus.ACTIVE
     assert postgres_store.get_engram(first_dialog.id).status is EngramStatus.ARCHIVED
     assert postgres_store.get_engram(second_dialog.id).status is EngramStatus.ACTIVE
+
+
+def test_session_surface_store_lists_by_user_filters_and_derives_title(
+    postgres_store,
+    tmp_path,
+):
+    first = _identity(user=f"surface-first-{uuid4()}", session="shared")
+    second = _identity(user=f"surface-second-{uuid4()}", session="shared")
+    first_dialog = _dialog(postgres_store, first, "turno del primer usuario")
+    _dialog(postgres_store, second, "turno del segundo usuario")
+    summary_text = (
+        "Resumen persistido que solo puede titular el hilo del primer usuario"
+    )
+    postgres_store.write_thread_summary(
+        Principal.EXTENDED,
+        identity=first,
+        content=summary_text,
+        source_ids=(first_dialog.id,),
+        source_trace_id="surface-summary",
+    )
+    now = datetime.now(UTC)
+    _set_activity(postgres_store, first, now - timedelta(hours=5))
+    run_maintenance(
+        store=postgres_store,
+        telemetry=TelemetryWriter(tmp_path),
+        config=ExtendedConfig(telemetry_dir=tmp_path),
+        now=now,
+    )
+
+    assert postgres_store.list_sessions(first.user_id) == ()
+    archived = postgres_store.list_sessions(
+        first.user_id,
+        SessionStatus.ARCHIVED,
+    )
+    assert len(archived) == 1
+    assert archived[0].session_id == "shared"
+    assert archived[0].title == summary_text
+    assert archived[0].archived_at == now
+    assert [item.session_id for item in postgres_store.list_sessions(second.user_id)] == [
+        "shared"
+    ]
+    assert postgres_store.get_session(first.user_id, "shared").title == summary_text
+
+
+def test_session_surface_store_creates_and_rejects_duplicate(postgres_store):
+    user_id = f"surface-create-{uuid4()}"
+
+    created = postgres_store.create_session(user_id, "client-chosen")
+
+    assert created.user_id == user_id
+    assert created.session_id == "client-chosen"
+    assert created.status is SessionStatus.ACTIVE
+    with pytest.raises(SessionAlreadyExistsError) as exc_info:
+        postgres_store.create_session(user_id, "client-chosen")
+    assert "ya existe" in exc_info.value.message
 
 
 def test_sessions_migration_backfills_and_can_be_reapplied(postgres_store):

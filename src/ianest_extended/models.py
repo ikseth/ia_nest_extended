@@ -128,6 +128,9 @@ class Session:
     status: SessionStatus
     archived_at: datetime | None
     closed_at: datetime | None
+    # Derivado del thread_summary mas reciente al leer; no se almacena en
+    # sessions y el servicio aplica el recorte publico de 80 caracteres.
+    title: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

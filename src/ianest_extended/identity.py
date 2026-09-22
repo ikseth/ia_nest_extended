@@ -24,7 +24,7 @@ def remembered_session_id(path: Path) -> str:
     """Devuelve la sesion recordada; la crea y persiste la primera vez."""
     try:
         if path.is_file():
-            stored = path.read_text(encoding="ascii").strip()
+            stored = path.read_text(encoding="utf-8").strip()
             if stored:
                 return stored
     except OSError as exc:
@@ -38,15 +38,20 @@ def remembered_session_id(path: Path) -> str:
 def replace_remembered_session_id(path: Path) -> str:
     """Genera una sesion nueva y sustituye el estado recordado por la CLI."""
     session_id = str(uuid4())
+    remember_session_id(path, session_id)
+    return session_id
+
+
+def remember_session_id(path: Path, session_id: str) -> None:
+    """Sustituye el estado recordado por una sesion ya declarada."""
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(f"{session_id}\n", encoding="ascii")
+        path.write_text(f"{session_id}\n", encoding="utf-8")
     except OSError as exc:
         raise ExtendedConfigError(
             f"no se pudo persistir el estado de sesion: {exc}",
             "session_state_path",
         ) from exc
-    return session_id
 
 
 def resolve_identity(
@@ -60,6 +65,8 @@ def resolve_identity(
     remember_session: bool = True,
 ) -> MemoryIdentity:
     resolved_session = session_id
+    if resolved_session is None and remember_session:
+        resolved_session = config.cli_session_id
     if resolved_session is None and remember_session:
         resolved_session = remembered_session_id(config.session_state_path)
     return MemoryIdentity(

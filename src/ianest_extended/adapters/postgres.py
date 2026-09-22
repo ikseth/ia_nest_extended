@@ -19,6 +19,7 @@ from ..errors import (
     InvalidEngramError,
     InvalidMemoryTypeError,
     SchemaMigrationRequiredError,
+    SessionAlreadyExistsError,
     SessionNotActiveError,
     ScopeViolationError,
     UnsupportedWriteError,
@@ -498,14 +499,78 @@ class PostgresMemoryStore:
         with self._connect() as connection:
             row = connection.execute(
                 """
-                SELECT user_id, session_id, created_at, last_activity_at,
-                       status, archived_at, closed_at
-                FROM sessions
-                WHERE user_id = %s AND session_id = %s
+                SELECT s.user_id, s.session_id, s.created_at,
+                       s.last_activity_at, s.status, s.archived_at,
+                       s.closed_at, summary.content AS title
+                FROM sessions s
+                LEFT JOIN LATERAL (
+                    SELECT e.content
+                    FROM engrams e
+                    WHERE e.user_id = s.user_id
+                      AND e.session_id = s.session_id
+                      AND e.type_name = 'thread_summary'
+                    ORDER BY e.created_at DESC, e.id DESC
+                    LIMIT 1
+                ) summary ON true
+                WHERE s.user_id = %s AND s.session_id = %s
                 """,
                 (user_id, session_id),
             ).fetchone()
         return None if row is None else _session_from_row(row)
+
+    def list_sessions(
+        self,
+        user_id: str,
+        status: SessionStatus | None = SessionStatus.ACTIVE,
+    ) -> tuple[Session, ...]:
+        parameters: list[Any] = [user_id]
+        status_clause = ""
+        if status is not None:
+            status_clause = " AND s.status = %s"
+            parameters.append(str(status))
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT s.user_id, s.session_id, s.created_at,
+                       s.last_activity_at, s.status, s.archived_at,
+                       s.closed_at, summary.content AS title
+                FROM sessions s
+                LEFT JOIN LATERAL (
+                    SELECT e.content
+                    FROM engrams e
+                    WHERE e.user_id = s.user_id
+                      AND e.session_id = s.session_id
+                      AND e.type_name = 'thread_summary'
+                    ORDER BY e.created_at DESC, e.id DESC
+                    LIMIT 1
+                ) summary ON true
+                WHERE s.user_id = %s{status_clause}
+                ORDER BY s.last_activity_at DESC, s.session_id
+                """,
+                parameters,
+            ).fetchall()
+        return tuple(_session_from_row(row) for row in rows)
+
+    def create_session(self, user_id: str, session_id: str) -> Session:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                INSERT INTO sessions (
+                    user_id, session_id, created_at, last_activity_at, status
+                )
+                VALUES (%s, %s, now(), now(), 'activa')
+                ON CONFLICT (user_id, session_id) DO NOTHING
+                RETURNING user_id, session_id, created_at, last_activity_at,
+                          status, archived_at, closed_at, NULL::text AS title
+                """,
+                (user_id, session_id),
+            ).fetchone()
+        if row is None:
+            raise SessionAlreadyExistsError(
+                f"la sesion {session_id!r} ya existe para el usuario {user_id!r}",
+                "session_id",
+            )
+        return _session_from_row(row)
 
     def find_similar(
         self,
@@ -1543,6 +1608,7 @@ def _session_from_row(row: dict[str, Any]) -> Session:
         status=SessionStatus(row["status"]),
         archived_at=row["archived_at"],
         closed_at=row["closed_at"],
+        title=row.get("title"),
     )
 
 

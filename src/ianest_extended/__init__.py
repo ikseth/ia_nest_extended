@@ -60,13 +60,15 @@ from .errors import (
     RagUnavailableError,
     ProtectedKnowledgeLinkError,
     SchemaMigrationRequiredError,
+    SessionAlreadyExistsError,
     SessionNotActiveError,
+    SessionNotFoundError,
     ScopeViolationError,
     UnknownMemoryTypeError,
     UnsupportedWriteError,
     WriteAuthorityError,
 )
-from .identity import remembered_session_id, resolve_identity
+from .identity import remember_session_id, remembered_session_id, resolve_identity
 from .models import (
     ConsolidationEvent,
     ConsolidationResult,
@@ -130,11 +132,14 @@ __all__ = [
     "ReasoningRunResult",
     "RagUnavailableError",
     "SchemaMigrationRequiredError",
+    "SessionAlreadyExistsError",
     "SessionNotActiveError",
+    "SessionNotFoundError",
     "SseEvent",
     "TaskPlanResult",
     "TaskRunResult",
     "remembered_session_id",
+    "remember_session_id",
     "resolve_identity",
     "CorpusNotFoundError",
     "CoreClient",
