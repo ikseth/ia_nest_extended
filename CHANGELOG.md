@@ -16,6 +16,16 @@ Sin acentos por convencion.
   ajenas mezcladas en el mismo hilo. **Solo la decision y la documentacion**; la
   implementacion, que rompe a los clientes que hoy no mandan identidad, va
   aparte. Impacto de version: ninguno todavia.
+- **Decision 0015: la sesion es una entidad, no una etiqueta.** Cierra la deuda
+  D7 en diseno. La sesion se declara -dueno, creacion, ultima actividad, estado,
+  titulo-, y **cerrar se separa de amortizar**: cerrar lo decide el reloj de
+  inactividad o un acto explicito y es de extended; amortizar es juicio de
+  conscience y no cierra nada. Un solo reloj, el del hilo, conservando las 4 h
+  de hoy pero cambiando su significado -de edad del turno a inactividad del
+  hilo-, para no mover modelo y calibracion a la vez. Titulo derivado de
+  `thread_summary`; listado por usuario, que acota y no protege. **Solo la
+  decision**; la implementacion va antes que la del ADR 0014. Impacto de
+  version: ninguno todavia.
 - Deuda de diseno **D7, la frontera del hilo no esta modelada**: `dialog` se
   archiva por reloj a las 4 h sin mirar si su sesion sigue viva, mientras una
   sesion anonima no termina nunca. Se registra sin decidir quien cierra un hilo.
