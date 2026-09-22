@@ -35,6 +35,12 @@ Notas:
   se sedimentan (el patron que revele una tarea repetida es un `fact`).
 - Los vectores de pesos y H son los del ADR 0003, configurables por registro.
 
+**Decidido el 2026-09-22 y pendiente de implementar** (ADR 0002, enmienda "no
+era memoria, era el residuo de un hilo"): `episodic` deja de ser memoria y pasa
+a ser `thread_artifacts`, de ambito SESION; `semantic` y la consolidacion de la
+Fase 4 pasan a conscience. Esta tabla describe lo declarado HOY, no lo decidido:
+se actualiza cuando el cambio este implementado.
+
 ## Tipos delegados (declarados; dueno de escritura: conscience)
 
 | Tipo | Patron | Modo de recuperacion | Scope | Contenido |

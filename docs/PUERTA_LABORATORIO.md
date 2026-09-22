@@ -155,6 +155,18 @@ construido.
 - L5 y L5r dependen de poder declarar N corpus en el instalador. Hasta entonces
   se registran como NO EJECUTABLES, nunca como PASA.
 
+## L2 se retira cuando `episodic` deje de cruzar de sesion
+
+Anotado el 2026-09-22, sin efecto todavia. L2 comprueba que un testigo dicho en
+una sesion se recupere en otra, y eso solo es posible con memoria durable de
+ambito usuario. Decidido que `episodic` pasa a ser artefacto del hilo (ADR 0002,
+enmienda del 2026-09-22), L2 pasara a medir algo que extended ya no debe hacer,
+y se retira.
+
+**Solo L2.** L3, L4a y L4b ocurren dentro de una sola sesion -lo usan sus
+sondeos-, asi que la maquinaria de procedencia y contradiccion se conserva
+entera y lo medido esta semana sigue valiendo.
+
 ## Lo que la puerta NO cubre
 
 - La veracidad general de las respuestas: solo los testigos fijados.

@@ -81,6 +81,34 @@ Sin acentos por convencion.
   (`docs/PUERTA_LABORATORIO.md` 1.3). Impacto de version: ninguno; la puerta es
   instrumental y no es contrato publico.
 
+## [No publicado]
+
+### Cambiado
+- **`episodic` no era memoria: era el residuo de un hilo.** Enmienda al ADR 0002.
+  Se decide que pasa a ser `thread_artifacts`, de **ambito sesion** en vez de
+  usuario, conservando entera la maquinaria de procedencia y contradiccion del
+  ADR 0013; que `semantic` y la consolidacion de la Fase 4 pasan a conscience; y
+  que **nada de lo que extended escriba sobrevive a su hilo**, porque curar -que
+  se recuerda y que no- es juicio. Un hilo archivado entrega al guardian los
+  turnos crudos, los artefactos con su procedencia, el resumen y magnitudes
+  contables; extended puede contar, nunca valorar. Motivo medido el 2026-09-22:
+  la recomendacion que dio el propio modelo el dia anterior encabezaba el
+  contexto de una conversacion nueva, el modelo la transcribia, y al transcribir
+  metia las palabras del interlocutor en su respuesta, con lo que la procedencia
+  caia a `unknown` y **ninguna de las cuatro puntuaciones de ese dia se
+  guardaba**; con un usuario limpio, mismo codigo y misma hora, 5 de 5. Se revoca
+  a sabiendas la opcion A del 2026-08-13 en lo que tenia de "extended sirve
+  SOLA". **Solo la decision**; la implementacion va aparte. Impacto de version:
+  ninguno todavia.
+
+### Corregido
+- Deuda **D6, el fragmento que pierde su referente**, cerrada por cambio de
+  encuadre: no era un recuerdo mal escrito, era un fragmento de hilo guardado
+  como memoria de una persona.
+- `docs/ROSTER_MEMORIA.md` y `docs/PUERTA_LABORATORIO.md` avisan de lo decidido
+  sin dar por hecho lo no implementado; la puerta anota que **L2 se retirara, y
+  solo L2**, porque es la unica linea que cruza de sesion.
+
 ## [0.3.2] - 2026-09-22
 
 ### Corregido

@@ -87,6 +87,15 @@ clave; el write-back aplica su politica (no vuelca en bruto); la capa emite traz
 
 ## Fase 4: Memoria - consolidacion (mecanismo) (ADR 0007)
 
+**ENMENDADA el 2026-09-22: esta fase sale de extended.** Decidido que `episodic`
+deja de ser memoria durable y pasa a ser artefacto del hilo (ADR 0002, enmienda
+"no era memoria, era el residuo de un hilo"), la promocion `episodic` ->
+`semantic` se queda sin sujeto: no hay episodicos que sobrevivan al hilo que los
+produjo. `semantic` y la consolidacion pasan a conscience. Lo que queda aqui del
+mecanismo es el archivado, que el ADR 0015 ya reancla al reloj del hilo. Lo de
+abajo describe la fase tal como se entrego, y se conserva porque explica de
+donde viene.
+
 Consolidacion MECANICA del gradiente estricto: `maintain` archiva `dialog` fuera
 de ventana y promociona `episodic` -> `semantic` de forma LITERAL (umbrales de
 recencia y merito), con lineage y sin borrado fisico. Todo pasa por el ejecutor
@@ -715,6 +724,16 @@ la frontera de conscience; lo segundo es mecanico y mas barato.
 Disparador: antes de que la memoria del usuario crezca, porque cada fragmento
 roto es ruido permanente. Material de referencia en `local/lab/`, hilo
 `cine_20260921`.
+
+**CERRADA el 2026-09-22 por cambio de encuadre, no por arreglo.** La deuda daba
+por sentado que el fragmento debia guardarse bien; la enmienda del ADR 0002 dice
+que no debia guardarse ASI. "La primera puntuacion es 6" no es un recuerdo mal
+escrito: es un fragmento de hilo que se guardo como si fuera memoria de una
+persona. Con `episodic` convertido en artefacto de ambito sesion, el ordinal
+vuelve a tener su referente al lado y deja de ser ruido en conversaciones
+futuras, porque no llega a ellas. Las vias candidatas que aqui se registraron
+-resolver ordinales, exigir referente resoluble, extraer campos tipados- siguen
+siendo mejoras posibles de la extraccion DENTRO del hilo, no arreglos de esto.
 
 ### D7. La frontera del hilo no esta modelada
 
