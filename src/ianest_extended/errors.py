@@ -136,6 +136,10 @@ class EngramNotFoundError(MemoryError):
     """El engrama solicitado no existe."""
 
 
+class SessionNotActiveError(MemoryError):
+    """La sesion declarada ya no admite escrituras."""
+
+
 class InvalidConsolidationEventError(MemoryError):
     """El evento de consolidacion no satisface sus invariantes."""
 

@@ -192,8 +192,9 @@ enriquecido. Cada evento lleva su `request_id` propio y el
 `downstream_request_id` de la llamada al core, que es el nombre generico del
 ente para encadenar la traza entre capas.
 
-`IANEST_EXTENDED_DIALOG_HOT_WINDOW` se expresa en segundos y vale 14400 por
-defecto, igual a la vida media inicial de `dialog`. Los umbrales de promocion
+`IANEST_EXTENDED_SESSION_INACTIVITY_SECONDS` se expresa en segundos y vale
+14400 por defecto. Conserva el valor del reloj anterior, pero ahora mide la
+inactividad del hilo completo. Los umbrales de promocion
 son `IANEST_EXTENDED_PROMOTE_MIN_STABILITY=3`,
 `IANEST_EXTENDED_PROMOTE_MIN_SCORE=0.8` y
 `IANEST_EXTENDED_PROMOTE_RECENCY_MAX=0.1`.

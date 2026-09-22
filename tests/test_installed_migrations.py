@@ -106,12 +106,14 @@ def test_wheel_install_contains_reachable_migrations(tmp_path):
                 "_default_stated_by_migration_path as stated_by; "
                 "from ianest_extended.adapters.postgres import "
                 "_default_thread_synthesis_migration_path as synthesis; "
+                "from ianest_extended.adapters.postgres import "
+                "_default_sessions_migration_path as sessions; "
                 "from ianest_extended.adapters.rag_postgres import "
                 "_default_migration_path as rag, "
                 "_default_domain_migration_path as domains; "
                 "print(json.dumps({'package': ianest_extended.__file__, "
                 "'sql': [resource().read_text(encoding='ascii') "
-                "for resource in (memory, rag, domains, stated_by, synthesis)]}))"
+                "for resource in (memory, rag, domains, stated_by, synthesis, sessions)]}))"
             ),
         ],
         cwd=tmp_path,

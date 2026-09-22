@@ -32,6 +32,11 @@ def remembered_session_id(path: Path) -> str:
             f"no se pudo leer el estado de sesion: {exc}",
             "session_state_path",
         ) from exc
+    return replace_remembered_session_id(path)
+
+
+def replace_remembered_session_id(path: Path) -> str:
+    """Genera una sesion nueva y sustituye el estado recordado por la CLI."""
     session_id = str(uuid4())
     try:
         path.parent.mkdir(parents=True, exist_ok=True)

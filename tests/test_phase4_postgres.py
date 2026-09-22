@@ -49,6 +49,20 @@ def _set_age(postgres_store, engram_id, age):
         )
 
 
+def _set_session_activity(postgres_store, identity, age):
+    timestamp = datetime.now(UTC) - age
+    with postgres_store._connect() as connection:
+        connection.execute(
+            """
+            UPDATE sessions
+            SET last_activity_at = %s,
+                created_at = LEAST(created_at, %s)
+            WHERE user_id = %s AND session_id = %s
+            """,
+            (timestamp, timestamp, identity.user_id, identity.session_id),
+        )
+
+
 def _database_snapshot(postgres_store):
     with postgres_store._connect() as connection:
         statuses = tuple(
@@ -135,7 +149,7 @@ def test_phase4_recent_or_unmerited_episodic_is_not_promoted(
     assert links == 0
 
 
-def test_phase4_old_dialog_is_archived_and_recent_stays_active(
+def test_phase4_old_dialog_stays_active_while_its_session_is_active(
     postgres_store,
     tmp_path,
 ):
@@ -167,7 +181,7 @@ def test_phase4_old_dialog_is_archived_and_recent_stays_active(
         config=ExtendedConfig(telemetry_dir=tmp_path),
     )
 
-    assert postgres_store.get_engram(old.id).status is EngramStatus.ARCHIVED
+    assert postgres_store.get_engram(old.id).status is EngramStatus.ACTIVE
     assert postgres_store.get_engram(recent.id).status is EngramStatus.ACTIVE
 
 
@@ -230,6 +244,14 @@ def test_phase4_dry_run_does_not_mutate_database(
         ),
     )
     _set_age(postgres_store, old_dialog.id, timedelta(hours=5))
+    _set_session_activity(
+        postgres_store,
+        MemoryIdentity(
+            user_id=old_dialog.user_id,
+            session_id=old_dialog.session_id,
+        ),
+        timedelta(hours=5),
+    )
     before = _database_snapshot(postgres_store)
 
     result = run_maintenance(

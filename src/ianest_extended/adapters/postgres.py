@@ -19,6 +19,7 @@ from ..errors import (
     InvalidEngramError,
     InvalidMemoryTypeError,
     SchemaMigrationRequiredError,
+    SessionNotActiveError,
     ScopeViolationError,
     UnsupportedWriteError,
     WriteAuthorityError,
@@ -38,6 +39,8 @@ from ..models import (
     RecallQuery,
     RetrievalMode,
     Scope,
+    Session,
+    SessionStatus,
     StatedBy,
     ThreadSynthesisResult,
 )
@@ -66,11 +69,17 @@ class PostgresMemoryStore:
         self._thread_synthesis_migration_path = (
             _default_thread_synthesis_migration_path()
         )
+        self._sessions_migration_path = _default_sessions_migration_path()
 
     def verify_schema(self) -> None:
         """Comprueba el esquema SIN mutarlo (migracion explicita, ADR 0011)."""
         with self._connect() as connection:
-            for relation in ("memory_types", "engrams", "memory_links"):
+            for relation in (
+                "memory_types",
+                "engrams",
+                "memory_links",
+                "sessions",
+            ):
                 exists = connection.execute(
                     "SELECT to_regclass(%s) AS relation",
                     (relation,),
@@ -138,6 +147,9 @@ class PostgresMemoryStore:
             )
             connection.execute(
                 self._thread_synthesis_migration_path.read_text(encoding="ascii")
+            )
+            connection.execute(
+                self._sessions_migration_path.read_text(encoding="ascii")
             )
             self._ensure_embedding_dimension(connection)
         for memory_type in seed_memory_types():
@@ -275,6 +287,13 @@ class PostgresMemoryStore:
         engram_id = uuid4()
         embedding = self._require_embedder().embed(request.content)
         with self._connect() as connection:
+            if memory_type.scope is Scope.SESSION:
+                self._require_writable_session(
+                    connection,
+                    user_id=key.user_id,
+                    session_id=key.session_id,
+                    touch=memory_type.name == "dialog",
+                )
             row = connection.execute(
                 """
                 INSERT INTO engrams (
@@ -308,6 +327,54 @@ class PostgresMemoryStore:
                 ),
             ).fetchone()
         return _engram_from_row(row)
+
+    @staticmethod
+    def _require_writable_session(
+        connection,
+        *,
+        user_id: str | None,
+        session_id: str | None,
+        touch: bool,
+    ) -> None:
+        assert user_id is not None
+        assert session_id is not None
+        if touch:
+            row = connection.execute(
+                """
+                INSERT INTO sessions (
+                    user_id, session_id, created_at, last_activity_at, status
+                )
+                VALUES (%s, %s, now(), now(), 'activa')
+                ON CONFLICT (user_id, session_id) DO UPDATE SET
+                    last_activity_at = CASE
+                        WHEN sessions.status = 'activa' THEN now()
+                        ELSE sessions.last_activity_at
+                    END
+                RETURNING status
+                """,
+                (user_id, session_id),
+            ).fetchone()
+        else:
+            row = connection.execute(
+                """
+                SELECT status
+                FROM sessions
+                WHERE user_id = %s AND session_id = %s
+                FOR UPDATE
+                """,
+                (user_id, session_id),
+            ).fetchone()
+            if row is None:
+                raise ScopeViolationError(
+                    f"la sesion {session_id!r} del usuario {user_id!r} no existe",
+                    "session_id",
+                )
+        status = SessionStatus(row["status"])
+        if status is not SessionStatus.ACTIVE:
+            raise SessionNotActiveError(
+                f"la sesion {session_id!r} esta {status.value} y no admite escrituras",
+                "session_id",
+            )
 
     def write_entity(
         self,
@@ -426,6 +493,19 @@ class PostgresMemoryStore:
         if row is None:
             raise EngramNotFoundError(f"engrama no encontrado: {engram_id}")
         return _engram_from_row(row)
+
+    def get_session(self, user_id: str, session_id: str) -> Session | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT user_id, session_id, created_at, last_activity_at,
+                       status, archived_at, closed_at
+                FROM sessions
+                WHERE user_id = %s AND session_id = %s
+                """,
+                (user_id, session_id),
+            ).fetchone()
+        return None if row is None else _session_from_row(row)
 
     def find_similar(
         self,
@@ -658,6 +738,12 @@ class PostgresMemoryStore:
             raise InvalidEngramError("una sintesis exige engramas fuente")
         embedding = self._require_embedder().embed(content)
         with self._connect() as connection:
+            self._require_writable_session(
+                connection,
+                user_id=key.user_id,
+                session_id=key.session_id,
+                touch=False,
+            )
             source_rows = connection.execute(
                 """
                 SELECT * FROM engrams
@@ -776,26 +862,70 @@ class PostgresMemoryStore:
         self,
         *,
         now: datetime,
-        hot_window_seconds: int,
+        inactivity_seconds: int,
     ) -> tuple[Engram, ...]:
-        if hot_window_seconds <= 0:
+        if inactivity_seconds <= 0:
             raise InvalidConsolidationEventError(
-                "hot_window_seconds debe ser mayor que cero"
+                "inactivity_seconds debe ser mayor que cero"
             )
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT *
-                FROM engrams
-                WHERE type_name = 'dialog'
-                  AND status = 'active'
-                  AND created_at < (
+                SELECT e.*
+                FROM engrams e
+                JOIN sessions s
+                  ON s.user_id = e.user_id
+                 AND s.session_id = e.session_id
+                WHERE e.type_name = 'dialog'
+                  AND e.status = 'active'
+                  AND s.status = 'activa'
+                  AND s.last_activity_at < (
                       %s::timestamptz
                       - (%s * interval '1 second')
                   )
-                ORDER BY created_at, id
+                ORDER BY e.created_at, e.id
                 """,
-                (now, hot_window_seconds),
+                (now, inactivity_seconds),
+            ).fetchall()
+        return tuple(_engram_from_row(row) for row in rows)
+
+    def archive_inactive_sessions(
+        self,
+        *,
+        now: datetime,
+        inactivity_seconds: int,
+        reason: str,
+    ) -> tuple[Engram, ...]:
+        if inactivity_seconds <= 0:
+            raise InvalidConsolidationEventError(
+                "inactivity_seconds debe ser mayor que cero"
+            )
+        if not reason.strip():
+            raise InvalidConsolidationEventError("reason no puede estar vacio")
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                WITH archived_sessions AS (
+                    UPDATE sessions
+                    SET status = 'archivada', archived_at = %s
+                    WHERE status = 'activa'
+                      AND last_activity_at < (
+                          %s::timestamptz
+                          - (%s * interval '1 second')
+                      )
+                    RETURNING user_id, session_id
+                )
+                UPDATE engrams e
+                SET status = 'archived', archived_at = %s,
+                    archived_reason = %s, version = version + 1
+                FROM archived_sessions s
+                WHERE e.user_id = s.user_id
+                  AND e.session_id = s.session_id
+                  AND e.type_name IN ('dialog', 'thread_summary')
+                  AND e.status = 'active'
+                RETURNING e.*
+                """,
+                (now, now, inactivity_seconds, now, reason),
             ).fetchall()
         return tuple(_engram_from_row(row) for row in rows)
 
@@ -1398,6 +1528,22 @@ def _engram_from_row(row: dict[str, Any]) -> Engram:
 
 def _default_thread_synthesis_migration_path() -> Traversable:
     return migration_resource("0005_thread_synthesis.sql")
+
+
+def _default_sessions_migration_path() -> Traversable:
+    return migration_resource("0006_sessions.sql")
+
+
+def _session_from_row(row: dict[str, Any]) -> Session:
+    return Session(
+        user_id=row["user_id"],
+        session_id=row["session_id"],
+        created_at=row["created_at"],
+        last_activity_at=row["last_activity_at"],
+        status=SessionStatus(row["status"]),
+        archived_at=row["archived_at"],
+        closed_at=row["closed_at"],
+    )
 
 
 def _entity_from_row(row: dict[str, Any]) -> EntityProfile:

@@ -39,6 +39,18 @@ Sin acentos por convencion.
   gatea hoy sobre fidelidad del modelo**, que la propia puerta declara fuera de
   cobertura, con una via propuesta y sin decidir. Impacto de version: ninguno.
 
+### Cambiado
+- **Entrega A de la Decision 0015: la sesion pasa a existir como entidad.** La
+  migracion `0006_sessions.sql` declara su clave `user_id` + `session_id`, sus
+  tiempos y sus estados explicitos, y backfillea los engramas existentes. Cada
+  turno da latido al hilo; `maintain` archiva por inactividad de la sesion y se
+  lleva juntos sus `dialog` y `thread_summary`, sin cerrar nada. La CLI sustituye
+  una sesion recordada ya archivada o cerrada e informa en una linea. La clave
+  `IANEST_EXTENDED_DIALOG_HOT_WINDOW` se retira sin alias y pasa a
+  `IANEST_EXTENDED_SESSION_INACTIVITY_SECONDS`, conservando el default de 14400
+  segundos. No se anaden capacidades ni subcomandos. Cambio incompatible del
+  esquema publico de configuracion en serie pre-1.0: MINOR.
+
 ### Corregido
 - `docs/DESPLIEGUE.md` decia que REST y MCP no autentican, pero no que tampoco
   exigen identidad. Un despliegue en red necesitaba ese dato para no publicar a

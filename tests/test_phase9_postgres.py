@@ -130,6 +130,15 @@ def test_phase9_maintain_archives_summary_and_never_promotes_it(
             "UPDATE engrams SET created_at = %s WHERE id = ANY(%s::uuid[])",
             (old, [user.id, model.id, summary.id]),
         )
+        connection.execute(
+            """
+            UPDATE sessions
+            SET last_activity_at = %s,
+                created_at = LEAST(created_at, %s)
+            WHERE user_id = %s AND session_id = %s
+            """,
+            (old, old, identity.user_id, identity.session_id),
+        )
 
     run_maintenance(
         store=postgres_store,

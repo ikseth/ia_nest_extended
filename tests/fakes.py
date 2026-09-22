@@ -9,6 +9,9 @@ from ianest_extended import (
     MemoryIdentity,
     RecallItem,
     SchemaMigrationRequiredError,
+    Session,
+    SessionNotActiveError,
+    SessionStatus,
     StatedBy,
     ThreadSynthesisResult,
 )
@@ -31,9 +34,48 @@ class InMemoryStore:
         self.verified = 0
         self.summary_links = {}
         self.contradiction_links = set()
+        self.sessions = {}
 
     def write(self, principal, request):
         session_scoped = request.type_name in {"dialog", "thread_summary"}
+        now = datetime.now(UTC)
+        if session_scoped:
+            key = (request.identity.user_id, request.identity.session_id)
+            session = self.sessions.get(key)
+            if request.type_name == "dialog" and session is None:
+                session = Session(
+                    user_id=key[0],
+                    session_id=key[1],
+                    created_at=now,
+                    last_activity_at=now,
+                    status=SessionStatus.ACTIVE,
+                    archived_at=None,
+                    closed_at=None,
+                )
+                self.sessions[key] = session
+            elif session is None:
+                # Varias pruebas unitarias de composicion construyen una
+                # sintesis aislada, sin ejercitar el ciclo de sesion. El
+                # adaptador PostgreSQL conserva el invariante real: alli una
+                # sintesis exige dialogos y una sesion ya declarada.
+                session = Session(
+                    user_id=key[0],
+                    session_id=key[1],
+                    created_at=now,
+                    last_activity_at=now,
+                    status=SessionStatus.ACTIVE,
+                    archived_at=None,
+                    closed_at=None,
+                )
+                self.sessions[key] = session
+            if session.status is not SessionStatus.ACTIVE:
+                raise SessionNotActiveError(
+                    f"la sesion {key[1]!r} esta {session.status.value} "
+                    "y no admite escrituras",
+                    "session_id",
+                )
+            if request.type_name == "dialog":
+                self.sessions[key] = replace(session, last_activity_at=now)
         engram = Engram(
             id=uuid4(),
             type_name=request.type_name,
@@ -53,7 +95,7 @@ class InMemoryStore:
             archived_reason=None,
             source_trace_id=request.source_trace_id,
             version=1,
-            created_at=datetime.now(UTC),
+            created_at=now,
             last_reinforced_at=None,
             stated_by=request.stated_by,
         )
@@ -278,8 +320,60 @@ class InMemoryStore:
     def verify_schema(self):
         self.verified += 1
 
-    def find_dialogs_to_archive(self, *, now, hot_window_seconds):
-        return ()
+    def get_session(self, user_id, session_id):
+        return self.sessions.get((user_id, session_id))
+
+    def find_dialogs_to_archive(self, *, now, inactivity_seconds):
+        cutoff = now.timestamp() - inactivity_seconds
+        return tuple(
+            item
+            for item in self.engrams
+            if item.type_name == "dialog"
+            and item.status is EngramStatus.ACTIVE
+            and self.sessions[(item.user_id, item.session_id)].status
+            is SessionStatus.ACTIVE
+            and self.sessions[(item.user_id, item.session_id)]
+            .last_activity_at.timestamp()
+            < cutoff
+        )
+
+    def archive_inactive_sessions(
+        self,
+        *,
+        now,
+        inactivity_seconds,
+        reason,
+    ):
+        cutoff = now.timestamp() - inactivity_seconds
+        inactive = {
+            key
+            for key, session in self.sessions.items()
+            if session.status is SessionStatus.ACTIVE
+            and session.last_activity_at.timestamp() < cutoff
+        }
+        for key in inactive:
+            self.sessions[key] = replace(
+                self.sessions[key],
+                status=SessionStatus.ARCHIVED,
+                archived_at=now,
+            )
+        archived = []
+        for index, item in enumerate(self.engrams):
+            if (
+                (item.user_id, item.session_id) in inactive
+                and item.type_name in {"dialog", "thread_summary"}
+                and item.status is EngramStatus.ACTIVE
+            ):
+                changed = replace(
+                    item,
+                    status=EngramStatus.ARCHIVED,
+                    archived_at=now,
+                    archived_reason=reason,
+                    version=item.version + 1,
+                )
+                self.engrams[index] = changed
+                archived.append(changed)
+        return tuple(archived)
 
     def find_episodic_to_promote(
         self,

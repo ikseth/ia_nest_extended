@@ -10,7 +10,7 @@ def test_config_reads_prefixed_environment(monkeypatch):
     monkeypatch.setenv("IANEST_EXTENDED_DIALOG_TOP_K", "9")
     monkeypatch.setenv("IANEST_EXTENDED_MEMORY_MIN_SIMILARITY", "0.15")
     monkeypatch.setenv("IANEST_EXTENDED_DEDUP_THRESHOLD", "0.88")
-    monkeypatch.setenv("IANEST_EXTENDED_DIALOG_HOT_WINDOW", "7200")
+    monkeypatch.setenv("IANEST_EXTENDED_SESSION_INACTIVITY_SECONDS", "7200")
     monkeypatch.setenv("IANEST_EXTENDED_PROMOTE_MIN_STABILITY", "4")
     monkeypatch.setenv("IANEST_EXTENDED_RAG_ENABLED", "false")
     monkeypatch.setenv("IANEST_EXTENDED_RAG_MIN_SCORE", "0.5")
@@ -30,7 +30,7 @@ def test_config_reads_prefixed_environment(monkeypatch):
     assert config.dialog_top_k == 9
     assert config.memory_min_similarity == 0.15
     assert config.dedup_threshold == 0.88
-    assert config.dialog_hot_window_seconds == 7200
+    assert config.session_inactivity_seconds == 7200
     assert config.promote_min_stability == 4
     assert config.rag_enabled is False
     assert config.rag_min_score == 0.5
@@ -66,6 +66,14 @@ def test_config_rejects_invalid_maintenance_values(monkeypatch):
 
     with pytest.raises(ExtendedConfigError):
         ExtendedConfig.from_env(env_file=None)
+
+
+def test_removed_dialog_hot_window_key_is_not_an_alias(monkeypatch):
+    monkeypatch.setenv("IANEST_EXTENDED_DIALOG_HOT_WINDOW", "7200")
+
+    config = ExtendedConfig.from_env(env_file=None)
+
+    assert config.session_inactivity_seconds == 4 * 60 * 60
 
 
 def test_config_rejects_invalid_rag_values(monkeypatch):

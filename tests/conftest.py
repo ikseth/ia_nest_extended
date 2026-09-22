@@ -424,6 +424,7 @@ _POSTGRES_DATA_TABLES = (
     "engrams",
     "entities",
     "memory_links",
+    "sessions",
     "rag_chunks",
     "rag_corpus_domains",
     "rag_corpora",

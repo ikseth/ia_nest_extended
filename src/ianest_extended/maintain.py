@@ -41,7 +41,7 @@ def run_maintenance(
     old_dialogs = tuple(
         store.find_dialogs_to_archive(
             now=effective_now,
-            hot_window_seconds=config.dialog_hot_window_seconds,
+            inactivity_seconds=config.session_inactivity_seconds,
         )
     )
     candidates = tuple(
@@ -61,31 +61,25 @@ def run_maintenance(
     status = "dry_run" if dry_run else "ok"
     try:
         if not dry_run:
+            archived_session_engrams = tuple(
+                store.archive_inactive_sessions(
+                    now=effective_now,
+                    inactivity_seconds=config.session_inactivity_seconds,
+                    reason="session_inactivity_elapsed",
+                )
+            )
+            result = MaintenanceResult(
+                dialog_archived=sum(
+                    item.type_name == "dialog"
+                    for item in archived_session_engrams
+                ),
+                episodic_promoted=len(candidates),
+                candidates_seen=len(candidates),
+                dry_run=False,
+            )
             executor = ConsolidationExecutor(
                 store=store,
                 telemetry=telemetry,
-            )
-            for dialog in old_dialogs:
-                executor.execute(
-                    ConsolidationEvent(
-                        trigger=ConsolidationTrigger.DECAY,
-                        principal=Principal.EXTENDED,
-                        source_ids=(dialog.id,),
-                        target_type=None,
-                        content=None,
-                        target_namespace=None,
-                        reason="dialog_hot_window_elapsed",
-                    )
-                )
-            sessions = tuple(
-                (dialog.user_id, dialog.session_id)
-                for dialog in old_dialogs
-                if dialog.user_id is not None and dialog.session_id is not None
-            )
-            store.archive_thread_summaries(
-                Principal.EXTENDED,
-                sessions=sessions,
-                reason="dialog_hot_window_elapsed",
             )
             for episodic in candidates:
                 executor.execute(
@@ -139,4 +133,3 @@ def _record_maintain(
         latency_ms=max(0, round((time.monotonic() - started) * 1000)),
         status=status,
     )
-
