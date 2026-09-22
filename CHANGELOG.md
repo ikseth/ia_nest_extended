@@ -21,10 +21,23 @@ Sin acentos por convencion.
   sesion anonima no termina nunca. Se registra sin decidir quien cierra un hilo.
   Impacto de version: ninguno.
 
+- **La medida de la Fase 9 sobre `v0.3.2`**, dos pasadas de n=9 en despliegue
+  natural: L4b 18/18, L4a 16/18, L2 17/18, L3 15/18. La correccion de la
+  sustitucion hace lo que se diseno -en los fallos de L4a el contexto compuesto
+  es correcto-, pero la puerta sigue sin pasar. Se registra ademas que **L4a
+  gatea hoy sobre fidelidad del modelo**, que la propia puerta declara fuera de
+  cobertura, con una via propuesta y sin decidir. Impacto de version: ninguno.
+
 ### Corregido
 - `docs/DESPLIEGUE.md` decia que REST y MCP no autentican, pero no que tampoco
   exigen identidad. Un despliegue en red necesitaba ese dato para no publicar a
   ciegas.
+- `docs/PLAN.md` describia la Fase 9 con la medida del 2026-09-21 como ultima,
+  cuando ya se habia corregido y vuelto a medir.
+- El ADR 0013 no recogia que la anotacion de contradiccion **solo mira hacia
+  atras**: la reafirmacion del modelo escrita en el mismo write-back, despues de
+  la correccion del interlocutor, escapa a la anotacion. Causa reproducible de
+  los fallos de L3.
 
 ## [0.3.2] - 2026-09-22
 

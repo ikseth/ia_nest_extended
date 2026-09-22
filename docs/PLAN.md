@@ -369,8 +369,9 @@ sabiendo que llegan.
 ## Fase 9: Sintesis de hilo (ADR 0007, enmienda del 2026-08-22)
 
 Estado: ABIERTA (2026-08-22). Criterio RECONCILIADO el 2026-09-12; MECANISMO
-implementado y publicado en `v0.3.0`; **medida hecha el 2026-09-21 y la fase NO
-se cierra**, por lo de abajo.
+implementado y publicado en `v0.3.0`; medido el 2026-09-21, corregido en
+`v0.3.2` y **vuelto a medir el 2026-09-22: la fase sigue sin cerrarse**, por lo
+de abajo.
 
 Reabre la sintesis de cluster que el ADR 0007 habia diferido con nombre. El
 motivo del diferimiento -"solo aporta con acumulacion de muchos episodicos
@@ -483,6 +484,40 @@ impidio cerrar una fase que "cumplia".
 Queda ademas un defecto conocido y no corregido: el prompt de sintesis produce
 ruido ("OK. LISTO.") y a veces conserva solo la version del modelo. Se separo a
 proposito del arreglo anterior -un cambio, una medida- y sigue abierto.
+
+### Lo medido el 2026-09-22 sobre `v0.3.2`, y que queda
+
+Dos pasadas de la puerta, n=9 cada una, sobre el despliegue natural de rocinante
+con la correccion de la sustitucion ya dentro:
+
+    linea                                      pasada 1   pasada 2   agregado
+    L4b  el interlocutor se corrige a si mismo    9/9        9/9       18/18
+    L4a  el interlocutor corrige al modelo        9/9        7/9       16/18
+    L2   testigo que cruza de sesion              8/9        9/9       17/18
+    L3   version del usuario antes que la suya     7/9        8/9       15/18
+
+**La correccion hace lo que se diseno.** En los dos fallos de L4a de la segunda
+pasada el contexto compuesto es correcto: la version del usuario va primera y
+etiquetada, la del modelo va segunda y anotada. Lo que falla despues es que el
+modelo responde igualmente con el testigo equivocado.
+
+Y eso deja al descubierto un problema del CRITERIO, no del mecanismo: **L4a
+gatea sobre fidelidad del modelo, que la propia puerta declara fuera de su
+cobertura**. Una linea bloqueante no puede depender de algo que el criterio dice
+no medir. Hay que reescribirla -juzgando la composicion, como se hizo con L2- o
+dejar de bloquear con ella. Sin decidir.
+
+El fallo de L2 de la primera pasada no se repitio: era variabilidad del
+extractor, no un defecto.
+
+**L3 si falla en las dos, y por una causa nueva** que no es de esta fase. En el
+turno en que el interlocutor corrige, la destilacion extrae de los dos lados: su
+version y la reafirmacion del modelo. La del modelo se escribe DESPUES, y la
+anotacion de contradiccion solo mira hacia atras, de modo que esa copia queda
+sin anotar, sin despriorizar, y puede adelantar a la version del usuario. Medido
+con las marcas de tiempo del almacen: usuario a las 08:45:55, copia sin anotar a
+las 08:45:56, copia anotada del turno anterior a las 08:45:46. Ver la enmienda
+del ADR 0013 del 2026-09-22.
 
 ## Deuda de diseno declarada
 

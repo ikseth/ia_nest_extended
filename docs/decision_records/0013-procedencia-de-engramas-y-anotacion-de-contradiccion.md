@@ -187,3 +187,32 @@ candidatos del modelo sigue siendo un contexto ruidoso, solo que ahora marcado.
 La sintesis que da DIRECCION al hilo -integrar "esto reemplazo a aquello" en vez
 de acumular items sueltos- es la sintesis de cluster diferida en el ADR 0007, y
 se aborda por su propia via.
+
+## Enmienda (2026-09-22): la anotacion solo mira hacia atras
+
+La enmienda anterior corrigio el ALCANCE de la deteccion -mismo
+`type_name`+`user_id`, sin filtrar por namespace-. Queda un hueco distinto, en
+el MOMENTO, medido con la puerta el 2026-09-22 (15 de 18 en L3, fallando en las
+dos pasadas por la misma causa).
+
+En el turno en que el interlocutor corrige, la destilacion extrae de los dos
+lados del intercambio: la version del usuario y la reafirmacion del modelo
+-"la informacion que tengo indica que la clave es X"-. La del usuario se escribe
+primero y dispara `record_contradiction`, que busca engramas del modelo YA
+existentes. La reafirmacion se escribe un instante despues, cuando esa busqueda
+ya ocurrio.
+
+Marcas de tiempo del almacen en una repeticion que falla:
+
+    08:45:46  facts/model   anotado      (afirmacion del turno anterior)
+    08:45:55  tasks/user    -            (la correccion del interlocutor)
+    08:45:56  tasks/model   SIN anotar   (reafirmacion, mismo write-back)
+
+La copia sin anotar no recibe la etiqueta ni la desprioriza el recall, asi que
+puede adelantar a la version del usuario en el contexto inyectado. El mecanismo
+del ADR 0013 no falla: se le escapa lo que aun no existia cuando miro.
+
+Sin decidir, y no de paso: anotar tambien hacia delante -que un engrama del
+modelo recien escrito busque correcciones previas del usuario- amplia una accion
+que hoy solo ocurre en un sentido, y el orden de escritura dentro de un mismo
+write-back pasaria a ser parte del contrato. Pide su propia medida.

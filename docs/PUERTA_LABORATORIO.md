@@ -3,7 +3,8 @@
 Estado: reconciliado 2026-09-12. Declarado ANTES de medir.
 Version: 1.2 - 2026-09-21 (anade L7, memoria conversacional con referente,
 derivada de un hilo real; L1 y L3 se precisaron el 2026-09-12 al implementar el
-script)
+script). Observacion del 2026-09-22 sobre L4a al final, SIN reconciliar: el
+criterio vigente sigue siendo el de 1.2.
 
 Aplica `ia_nest_meta` ADR 0010 (regla de la puerta de laboratorio): la regla
 dice que la puerta existe y que forma tiene; este documento fija el
@@ -184,6 +185,38 @@ construido.
   `--setup-exit-code`): la puerta mide un despliegue ya hecho y no invoca al
   instalador. Que ese codigo sea el de la instalacion que se esta midiendo es
   parte de la precondicion P4.
+
+## Observado el 2026-09-22: L4a puede suspender por algo que no cubre
+
+Sin reconciliar. Se registra aqui porque afecta al criterio, no al script.
+
+El reparto vigente dice que L4a y L4b juzgan la RESPUESTA "y con razon: ahi lo
+que se mide es si el CONTEXTO compuesto induce o no una contradiccion, y eso
+solo se ve en lo que el modelo termina diciendo". El argumento es bueno, pero
+tiene un modo de fallo que no se habia visto: **un contexto correcto tambien
+puede dar una respuesta equivocada**.
+
+Medido en la segunda pasada del 2026-09-22 (L4a, 7 de 9). En las dos
+repeticiones que fallan, el contexto compuesto es exactamente el que se pide:
+
+    [episodic/facts] (fuente: usuario) La clave del refugio es Ambar13cfa55b61
+    [episodic/facts] (fuente: modelo, sin verificar; hay una version del usuario
+                     sobre esto) La clave del refugio es Cobalto13cfa55b61.
+
+La version del usuario va primera y etiquetada; la del modelo, anotada. El
+modelo responde igualmente con la del modelo. Eso es **fidelidad de
+transcripcion**, que este mismo documento declara fuera de cobertura dos
+secciones mas abajo, y sin embargo aqui hace suspender a una linea bloqueante.
+
+El oraculo de L4a confunde dos causas: contexto mal compuesto y modelo
+infiel. Mientras el contexto salia mal las dos coincidian; ahora que el
+mecanismo esta corregido, se separan.
+
+Via propuesta, sin decidir: que L4a DESAMBIGUE. Cuando la respuesta falle, se
+comprueba el contexto compuesto; si el contexto es correcto, la repeticion se
+registra como fidelidad del modelo y no bloquea, igual que L2 juzga por
+`memory.recall` y deja la respuesta en la evidencia. Cambiar esto es cambiar el
+criterio, asi que no se hace de paso ni en medio de una medida.
 
 ## Reconciliado el 2026-09-12
 
