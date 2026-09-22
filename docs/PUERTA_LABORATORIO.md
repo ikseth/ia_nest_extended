@@ -1,10 +1,10 @@
 # Puerta de laboratorio de ia_nest_extended
 
-Estado: reconciliado 2026-09-12. Declarado ANTES de medir.
-Version: 1.2 - 2026-09-21 (anade L7, memoria conversacional con referente,
-derivada de un hilo real; L1 y L3 se precisaron el 2026-09-12 al implementar el
-script). Observacion del 2026-09-22 sobre L4a al final, SIN reconciliar: el
-criterio vigente sigue siendo el de 1.2.
+Estado: reconciliado 2026-09-22. Declarado ANTES de medir.
+Version: 1.3 - 2026-09-22 (L4a desambigua: bloquea por composicion, no por
+obediencia del modelo; 1.2 del 2026-09-21 anadio L7, memoria conversacional con
+referente, derivada de un hilo real; L1 y L3 se precisaron el 2026-09-12 al
+implementar el script)
 
 Aplica `ia_nest_meta` ADR 0010 (regla de la puerta de laboratorio): la regla
 dice que la puerta existe y que forma tiene; este documento fija el
@@ -159,7 +159,8 @@ construido.
 
 - La veracidad general de las respuestas: solo los testigos fijados.
 - La fidelidad de transcripcion del modelo: L2 mide lo que la capa entrega, no
-  lo que el modelo copia.
+  lo que el modelo copia, y L4a la separa de la composicion y la registra sin
+  bloquear (regla del 2026-09-22).
 - El filtro que impide destilar a `episodic` una tarea no convergida: no se
   puede forzar la no convergencia de forma reproducible.
 - Streaming y la piel MCP: solo REST, y MCP solo en lo que comprueba L1.
@@ -186,37 +187,51 @@ construido.
   instalador. Que ese codigo sea el de la instalacion que se esta midiendo es
   parte de la precondicion P4.
 
-## Observado el 2026-09-22: L4a puede suspender por algo que no cubre
+## L4a desambigua: bloquea por composicion, no por obediencia
 
-Sin reconciliar. Se registra aqui porque afecta al criterio, no al script.
+Reconciliado el 2026-09-22.
 
-El reparto vigente dice que L4a y L4b juzgan la RESPUESTA "y con razon: ahi lo
+El reparto anterior decia que L4a y L4b juzgan la RESPUESTA "y con razon: ahi lo
 que se mide es si el CONTEXTO compuesto induce o no una contradiccion, y eso
-solo se ve en lo que el modelo termina diciendo". El argumento es bueno, pero
-tiene un modo de fallo que no se habia visto: **un contexto correcto tambien
-puede dar una respuesta equivocada**.
+solo se ve en lo que el modelo termina diciendo". El argumento seguia siendo
+bueno mientras las dos causas coincidieran: hasta `v0.3.2`, siempre que la
+respuesta salia mal, el contexto tambien estaba mal.
 
-Medido en la segunda pasada del 2026-09-22 (L4a, 7 de 9). En las dos
-repeticiones que fallan, el contexto compuesto es exactamente el que se pide:
+Corregida la composicion, se separan. Medido en la segunda pasada del
+2026-09-22 (L4a, 7 de 9): en las dos repeticiones que fallan el contexto es
+exactamente el que se pide,
 
     [episodic/facts] (fuente: usuario) La clave del refugio es Ambar13cfa55b61
     [episodic/facts] (fuente: modelo, sin verificar; hay una version del usuario
                      sobre esto) La clave del refugio es Cobalto13cfa55b61.
 
-La version del usuario va primera y etiquetada; la del modelo, anotada. El
-modelo responde igualmente con la del modelo. Eso es **fidelidad de
-transcripcion**, que este mismo documento declara fuera de cobertura dos
-secciones mas abajo, y sin embargo aqui hace suspender a una linea bloqueante.
+y el modelo responde igualmente con la del modelo. Eso es **fidelidad de
+transcripcion**, que este mismo documento declara fuera de cobertura, y hacia
+suspender a una linea bloqueante por algo que la capa no gobierna.
 
-El oraculo de L4a confunde dos causas: contexto mal compuesto y modelo
-infiel. Mientras el contexto salia mal las dos coincidian; ahora que el
-mecanismo esta corregido, se separan.
+**Regla vigente.** Cuando la respuesta de L4a falla, se comprueba el contexto
+compuesto EN EL MOMENTO DE LA PREGUNTA -no el del principio del sondeo: entre
+medias pasan dos turnos y la sintesis puede haber disparado-:
 
-Via propuesta, sin decidir: que L4a DESAMBIGUE. Cuando la respuesta falle, se
-comprueba el contexto compuesto; si el contexto es correcto, la repeticion se
-registra como fidelidad del modelo y no bloquea, igual que L2 juzga por
-`memory.recall` y deja la respuesta en la evidencia. Cambiar esto es cambiar el
-criterio, asi que no se hace de paso ni en medio de una medida.
+- **contexto incorrecto** -falta la version del usuario, o no va delante, o la
+  del modelo no esta etiquetada-: la capa fallo. NO PASA, y bloquea.
+- **contexto correcto**: la repeticion se registra como `INFIDELIDAD DEL
+  MODELO`, se guarda entera en la evidencia y **no bloquea**.
+
+El oraculo del contexto es el mismo que usa L3, compartido en el codigo para
+que no puedan divergir.
+
+Con esta regla, la pasada del 2026-09-22 habria dado **L4a 9 de 9 bloqueante**
+mas dos repeticiones registradas como infidelidad. La tasa se imprime siempre,
+tambien cuando es cero, porque una subida ahi es informacion aunque no suspenda.
+
+No es una excepcion inventada para esta linea: es lo que ya se hizo con L2 -que
+dejo de juzgar la respuesta y pasa a juzgar `memory.recall`- y lo que la puerta
+hace con L4b, que mide y no bloquea, y con la tasa de anotacion de L3, que se
+registra y no se exige.
+
+Lo que esta regla NO relaja: si el contexto sale mal, L4a suspende igual que
+siempre. Lo unico que cambia es a quien se le atribuye el fallo.
 
 ## Reconciliado el 2026-09-12
 

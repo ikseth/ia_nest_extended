@@ -351,15 +351,44 @@ def test_l3_still_fails_without_model_label_or_user_first(
     assert _line(report, "L3")["verdict"] == "NO PASA"
 
 
-def test_red_verdict_keeps_wrong_l4a_evidence(gate_stub, tmp_path, capsys):
+def test_l4a_does_not_block_when_the_composed_context_was_correct(
+    gate_stub, tmp_path, capsys
+):
+    """Reconciliado el 2026-09-22: L4a bloquea por composicion, no por obediencia.
+
+    El doble compone el contexto bien -version del usuario primero y etiquetada-
+    y aun asi responde el testigo del modelo. Eso es infidelidad del modelo, que
+    la puerta declara fuera de su cobertura: se registra y no suspende.
+    """
     gate_stub.l4a_fail_on = {1, 2, 3}
+
+    code, output, report = _run(gate_stub, tmp_path, capsys)
+
+    line = _line(report, "L4a")
+    assert code == 0
+    assert line["verdict"] == "PASA"
+    assert line["composition_failures"] == 0
+    assert line["model_unfaithful"]["rate"] == "3/3"
+    assert line["attempts"][0]["verdict"] == "INFIDELIDAD DEL MODELO"
+    assert line["attempts"][0]["checks"]["composition_correct"] is True
+    assert "infidelidad del modelo 3/3" in output
+    # La evidencia de la respuesta equivocada se conserva igual que antes.
+    assert line["attempts"][0]["incorrect_witness"] in line["attempts"][0]["final_answer"]
+
+
+def test_l4a_blocks_when_the_composed_context_was_wrong(gate_stub, tmp_path, capsys):
+    """Y sigue suspendiendo cuando el fallo SI es de la capa."""
+    gate_stub.l4a_fail_on = {1, 2, 3}
+    gate_stub.l3_model_first = True
 
     code, output, report = _run(gate_stub, tmp_path, capsys)
 
     line = _line(report, "L4a")
     assert code == 1
     assert line["verdict"] == "NO PASA"
-    assert line["attempts"][0]["incorrect_witness"] in line["attempts"][0]["final_answer"]
+    assert line["composition_failures"] == 3
+    assert line["model_unfaithful"]["rate"] == "0/3"
+    assert line["attempts"][0]["checks"]["composition_correct"] is False
     assert "L4a: NO PASA" in output
 
 
@@ -386,13 +415,20 @@ def test_l4b_does_not_decide_exit_code(gate_stub, tmp_path, capsys):
 
 
 def test_repetition_requires_n_of_n(gate_stub, tmp_path, capsys):
+    """Una linea PASA con n de n: una sola repeticion mala la suspende.
+
+    Se rompe la composicion para que el fallo sea atribuible a la capa; eso
+    tumba tambien a L3, que mide lo mismo, y aqui solo se afirma sobre L4a.
+    """
     gate_stub.l4a_fail_on = {2}
+    gate_stub.l3_model_first = True
 
     code, output, report = _run(gate_stub, tmp_path, capsys)
 
     line = _line(report, "L4a")
     assert code == 1
     assert (line["passed"], line["total"], line["verdict"]) == (2, 3, "NO PASA")
+    assert line["composition_failures"] == 1
     assert "L4a: NO PASA 2/3" in output
 
 

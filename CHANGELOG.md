@@ -49,6 +49,25 @@ Sin acentos por convencion.
   la correccion del interlocutor, escapa a la anotacion. Causa reproducible de
   los fallos de L3.
 
+## [No publicado]
+
+### Cambiado
+- **L4a de la puerta desambigua: bloquea por composicion, no por obediencia del
+  modelo.** Hasta `v0.3.2` bastaba con mirar la respuesta, porque siempre que
+  salia mal el contexto tambien estaba mal. Corregida la composicion, las dos
+  causas se separan: medido el 2026-09-22, hay repeticiones con el contexto
+  exactamente como se pide -version del usuario primero y etiquetada, la del
+  modelo anotada- en las que el modelo responde igualmente la equivocada. Eso es
+  fidelidad de transcripcion, que la propia puerta declara fuera de cobertura, y
+  hacia suspender a una linea bloqueante por algo que la capa no gobierna. Ahora
+  se comprueba el contexto **en el momento de la pregunta** -no el del principio
+  del sondeo, porque entre medias la sintesis puede haber disparado-: contexto
+  incorrecto suspende igual que siempre; contexto correcto se registra como
+  `INFIDELIDAD DEL MODELO`, con su tasa impresa, y no bloquea. El oraculo del
+  contexto se comparte con L3 para que no puedan divergir. Criterio reconciliado
+  (`docs/PUERTA_LABORATORIO.md` 1.3). Impacto de version: ninguno; la puerta es
+  instrumental y no es contrato publico.
+
 ## [0.3.2] - 2026-09-22
 
 ### Corregido
