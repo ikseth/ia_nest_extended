@@ -369,8 +369,9 @@ sabiendo que llegan.
 ## Fase 9: Sintesis de hilo (ADR 0007, enmienda del 2026-08-22)
 
 Estado: ABIERTA (2026-08-22). Criterio RECONCILIADO el 2026-09-12; MECANISMO
-implementado y publicado en `v0.3.0`; **medida hecha el 2026-09-21 y la fase NO
-se cierra**, por lo de abajo.
+implementado y publicado en `v0.3.0`; medido el 2026-09-21, corregido en
+`v0.3.2` y **vuelto a medir el 2026-09-22: la fase sigue sin cerrarse**, por lo
+de abajo.
 
 Reabre la sintesis de cluster que el ADR 0007 habia diferido con nombre. El
 motivo del diferimiento -"solo aporta con acumulacion de muchos episodicos
@@ -483,6 +484,40 @@ impidio cerrar una fase que "cumplia".
 Queda ademas un defecto conocido y no corregido: el prompt de sintesis produce
 ruido ("OK. LISTO.") y a veces conserva solo la version del modelo. Se separo a
 proposito del arreglo anterior -un cambio, una medida- y sigue abierto.
+
+### Lo medido el 2026-09-22 sobre `v0.3.2`, y que queda
+
+Dos pasadas de la puerta, n=9 cada una, sobre el despliegue natural de rocinante
+con la correccion de la sustitucion ya dentro:
+
+    linea                                      pasada 1   pasada 2   agregado
+    L4b  el interlocutor se corrige a si mismo    9/9        9/9       18/18
+    L4a  el interlocutor corrige al modelo        9/9        7/9       16/18
+    L2   testigo que cruza de sesion              8/9        9/9       17/18
+    L3   version del usuario antes que la suya     7/9        8/9       15/18
+
+**La correccion hace lo que se diseno.** En los dos fallos de L4a de la segunda
+pasada el contexto compuesto es correcto: la version del usuario va primera y
+etiquetada, la del modelo va segunda y anotada. Lo que falla despues es que el
+modelo responde igualmente con el testigo equivocado.
+
+Y eso deja al descubierto un problema del CRITERIO, no del mecanismo: **L4a
+gatea sobre fidelidad del modelo, que la propia puerta declara fuera de su
+cobertura**. Una linea bloqueante no puede depender de algo que el criterio dice
+no medir. Hay que reescribirla -juzgando la composicion, como se hizo con L2- o
+dejar de bloquear con ella. Sin decidir.
+
+El fallo de L2 de la primera pasada no se repitio: era variabilidad del
+extractor, no un defecto.
+
+**L3 si falla en las dos, y por una causa nueva** que no es de esta fase. En el
+turno en que el interlocutor corrige, la destilacion extrae de los dos lados: su
+version y la reafirmacion del modelo. La del modelo se escribe DESPUES, y la
+anotacion de contradiccion solo mira hacia atras, de modo que esa copia queda
+sin anotar, sin despriorizar, y puede adelantar a la version del usuario. Medido
+con las marcas de tiempo del almacen: usuario a las 08:45:55, copia sin anotar a
+las 08:45:56, copia anotada del turno anterior a las 08:45:46. Ver la enmienda
+del ADR 0013 del 2026-09-22.
 
 ## Deuda de diseno declarada
 
@@ -680,6 +715,42 @@ la frontera de conscience; lo segundo es mecanico y mas barato.
 Disparador: antes de que la memoria del usuario crezca, porque cada fragmento
 roto es ruido permanente. Material de referencia en `local/lab/`, hilo
 `cine_20260921`.
+
+### D7. La frontera del hilo no esta modelada
+
+Descubierta el 2026-09-22 al investigar por que una sesion real del operador
+empeoro respecto al dia anterior. La identidad anonima que la destapo ya esta
+decidida (ADR 0014); esto es lo que quedo abierto debajo.
+
+Extended trabaja sobre HILOS: una conversacion identificada por su sesion y
+asociada a un usuario. Pero el hilo, como entidad, no existe en el codigo. Se
+aproxima por dos sitios, y los dos fallan en direcciones opuestas:
+
+- **Se corta por reloj.** `find_dialogs_to_archive` archiva todo `dialog` con
+  mas de `dialog_hot_window_seconds` (4 h) **sin mirar si su sesion sigue
+  viva**. Una conversacion de seis horas pierde sus dos primeras: el hilo no
+  termina cuando termina el hilo, sino cuando lo dice el reloj.
+- **No se corta nunca donde deberia.** La sesion recordada del servidor no rota,
+  asi que un hilo anonimo puede durar indefinidamente. Medido: diez horas y dos
+  conversaciones de interlocutores distintos dentro de una misma sesion.
+
+Las dos son la misma ausencia. Un temporizador de retencion no es una frontera
+de conversacion: responde a "cuanto guardo esto", no a "hasta donde llega este
+hilo".
+
+Y la pregunta que lo decide no es tecnica: **quien cierra un hilo**. La posicion
+del operador, reconciliada el 2026-09-22, es que una sesion dura lo que tenga
+que durar, y que la caducidad -si la hay- la decida quien ARCHIVE el hilo y
+destile de el, no quien conversa. Eso apunta a conscience, y conecta con la
+frontera de confianza del ADR 0007: sedimentar es juicio.
+
+DECIDIDA el 2026-09-22, ADR 0015: la sesion pasa a ser una entidad declarada.
+Cerrar -reloj de inactividad o acto explicito, de extended- se separa de
+amortizar -juicio de conscience-, porque si el cierre dependiera del guardian y
+el guardian no existe, nada se cerraria nunca. Un solo reloj, el del hilo, con
+el valor de hoy sin tocar. Pendiente de implementar, y **va antes que el
+ADR 0014**: exigir `session_id` a los clientes solo tiene sentido cuando hay
+donde consultarlo y crearlo.
 
 ### D3. La identidad como fuente conmutable
 

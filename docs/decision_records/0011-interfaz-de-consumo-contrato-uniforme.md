@@ -113,3 +113,21 @@ fundamento del core.
 ## Impacto de version
 
 Ninguno todavia: no hay contrato cortado. La decision fija QUE se versionara.
+
+## Enmienda (2026-09-22): el punto 7 hablaba de la CLI, y se aplico al servidor
+
+El punto 7 -la identidad deja de ser obligatoria- se justifico con un argumento
+que nombra su propio alcance: "la memoria conversacional **del CLI** no
+funcionaria". Es correcto ahi y sigue vigente ahi: un terminal tiene un solo
+interlocutor delante, y recordarle la sesion entre dos invocaciones no supone
+nada que no sea cierto.
+
+Lo que no se acoto entonces fue el camino de peticion de REST y MCP, que usa la
+misma resolucion de identidad y hereda por tanto los mismos defaults, incluido
+el recuerdo de sesion en un fichero del servidor. Mientras la capa escuchaba
+solo en loopback eso no tenia consecuencia observable. La tuvo en cuanto se
+publico en red, el 2026-09-21: **todo llamante anonimo pasa a ser el mismo
+usuario en el mismo hilo interminable**, medido al dia siguiente.
+
+El punto 7 queda acotado a la CLI. Para las superficies de servidor rige el
+ADR 0014: la capa no inventa interlocutores.

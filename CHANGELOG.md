@@ -3,6 +3,52 @@
 Formato basado en Keep a Changelog; SemVer (ver core `docs/VERSIONADO.md`).
 Sin acentos por convencion.
 
+## [No publicado]
+
+### Anadido
+- **Decision 0014: la capa no inventa interlocutores.** Registrado que una
+  superficie capaz de atender a mas de un interlocutor no debe suministrar
+  defaults de identidad: en REST y MCP, `user_id` y `session_id` pasan a ser
+  obligatorios y el servidor deja de recordar sesiones. La CLI conserva su
+  default, que es para quien se penso (enmienda al ADR 0011, punto 7). Motivo
+  medido en laboratorio el 2026-09-22: todo llamante anonimo era `local_operator`
+  dentro de una unica sesion que no rota, con diez horas y dos conversaciones
+  ajenas mezcladas en el mismo hilo. **Solo la decision y la documentacion**; la
+  implementacion, que rompe a los clientes que hoy no mandan identidad, va
+  aparte. Impacto de version: ninguno todavia.
+- **Decision 0015: la sesion es una entidad, no una etiqueta.** Cierra la deuda
+  D7 en diseno. La sesion se declara -dueno, creacion, ultima actividad, estado,
+  titulo-, y **cerrar se separa de amortizar**: cerrar lo decide el reloj de
+  inactividad o un acto explicito y es de extended; amortizar es juicio de
+  conscience y no cierra nada. Un solo reloj, el del hilo, conservando las 4 h
+  de hoy pero cambiando su significado -de edad del turno a inactividad del
+  hilo-, para no mover modelo y calibracion a la vez. Titulo derivado de
+  `thread_summary`; listado por usuario, que acota y no protege. **Solo la
+  decision**; la implementacion va antes que la del ADR 0014. Impacto de
+  version: ninguno todavia.
+- Deuda de diseno **D7, la frontera del hilo no esta modelada**: `dialog` se
+  archiva por reloj a las 4 h sin mirar si su sesion sigue viva, mientras una
+  sesion anonima no termina nunca. Se registra sin decidir quien cierra un hilo.
+  Impacto de version: ninguno.
+
+- **La medida de la Fase 9 sobre `v0.3.2`**, dos pasadas de n=9 en despliegue
+  natural: L4b 18/18, L4a 16/18, L2 17/18, L3 15/18. La correccion de la
+  sustitucion hace lo que se diseno -en los fallos de L4a el contexto compuesto
+  es correcto-, pero la puerta sigue sin pasar. Se registra ademas que **L4a
+  gatea hoy sobre fidelidad del modelo**, que la propia puerta declara fuera de
+  cobertura, con una via propuesta y sin decidir. Impacto de version: ninguno.
+
+### Corregido
+- `docs/DESPLIEGUE.md` decia que REST y MCP no autentican, pero no que tampoco
+  exigen identidad. Un despliegue en red necesitaba ese dato para no publicar a
+  ciegas.
+- `docs/PLAN.md` describia la Fase 9 con la medida del 2026-09-21 como ultima,
+  cuando ya se habia corregido y vuelto a medir.
+- El ADR 0013 no recogia que la anotacion de contradiccion **solo mira hacia
+  atras**: la reafirmacion del modelo escrita en el mismo write-back, despues de
+  la correccion del interlocutor, escapa a la anotacion. Causa reproducible de
+  los fallos de L3.
+
 ## [0.3.2] - 2026-09-22
 
 ### Corregido
