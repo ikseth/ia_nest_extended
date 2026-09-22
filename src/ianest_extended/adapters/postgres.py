@@ -1101,6 +1101,14 @@ class PostgresMemoryStore:
                      WHERE ml.source_id = e.id
                        AND ml.link_kind = 'contradicted_by'
                    ) AS contradicted,
+                   EXISTS (
+                     SELECT 1 FROM memory_links ml
+                     WHERE ml.link_kind = 'contradicted_by'
+                       AND (
+                         ml.source_id = e.id
+                         OR ml.target_engram_id = e.id
+                       )
+                   ) AS contradiction_involved,
                    (
                      mt.w_recency *
                        CASE
@@ -1381,6 +1389,9 @@ def _engram_from_row(row: dict[str, Any]) -> Engram:
         last_reinforced_at=row["last_reinforced_at"],
         stated_by=StatedBy(row.get("stated_by", StatedBy.UNKNOWN)),
         contradicted=bool(row.get("contradicted", False)),
+        contradiction_involved=bool(
+            row.get("contradiction_involved", False)
+        ),
         summarized_ids=tuple(row.get("summarized_ids", ())),
     )
 

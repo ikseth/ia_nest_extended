@@ -2,9 +2,10 @@
 
 Estado: fases 0-5c, 7 y 8 completas; fase 6 APARCADA (2026-08-21, con su
 motivo y su diseno escritos en ella); fase 9 ABIERTA (2026-08-22), con criterio
-reconciliado el 2026-09-12 y sin implementar. La version publicada de la capa no
-se anota aqui: la dicen `CHANGELOG.md` y los tags.
-Version: 0.4 - 2026-09-12
+reconciliado, mecanismo publicado en `v0.3.0` y medida hecha que NO la cierra.
+La version publicada de la capa no se anota aqui: la dicen `CHANGELOG.md` y los
+tags.
+Version: 0.5 - 2026-09-22
 
 Misma disciplina que el core: fases con criterio de salida falsable; no se abre
 una fase sin validar la anterior; diseno y prueba de aceptacion antes de
@@ -367,8 +368,9 @@ sabiendo que llegan.
 
 ## Fase 9: Sintesis de hilo (ADR 0007, enmienda del 2026-08-22)
 
-Estado: ABIERTA (2026-08-22), con su criterio RECONCILIADO el 2026-09-12 y su
-brazo de control ya medido. Sin implementar.
+Estado: ABIERTA (2026-08-22). Criterio RECONCILIADO el 2026-09-12; MECANISMO
+implementado y publicado en `v0.3.0`; **medida hecha el 2026-09-21 y la fase NO
+se cierra**, por lo de abajo.
 
 Reabre la sintesis de cluster que el ADR 0007 habia diferido con nombre. El
 motivo del diferimiento -"solo aporta con acumulacion de muchos episodicos
@@ -455,6 +457,32 @@ criterio y no deseo.
 Lo que este criterio NO cubre, declarado: que la sintesis sea BUENA. Se mide que
 sostiene el hilo, no su calidad. Y no exige `entities` (ADR 0004): los artefactos
 exactos siguen anclados como hoy, en engramas atomicos.
+
+### Lo medido el 2026-09-21, y por que la fase sigue abierta
+
+Con la sintesis encendida y ventana 3, en despliegue natural y con la puerta:
+
+    L4b  el interlocutor se corrige a si mismo   sin sintesis 2/15   con sintesis 9/9
+    L4a  el interlocutor corrige al modelo       sin sintesis 9/9    con sintesis 6/9
+
+**El criterio de salida se cumple** -9 de 9 contra un minimo de 8, y la
+diferencia sobre la linea base sobra-. Y aun asi la fase NO se cierra, porque la
+puerta no pasa: el mecanismo rompia una linea que antes iba perfecta.
+
+Causa, vista en los resumenes reales: la sintesis es `stated_by=unknown` y al
+sustituir retiraba del contexto los engramas que llevaban la etiqueta de
+procedencia y la anotacion de conflicto, que era justo lo que sostenia L4a.
+Corregido despues (los dos extremos de un `contradicted_by` ya no se
+sustituyen), **pendiente de volver a medir**.
+
+Leccion que conviene no perder: **el criterio que se escribio era incompleto**.
+Media si la fase resolvia su problema, no si lo resolvia sin estropear nada. La
+puerta si lo exigia, y por eso fue el instrumento -y no el criterio- el que
+impidio cerrar una fase que "cumplia".
+
+Queda ademas un defecto conocido y no corregido: el prompt de sintesis produce
+ruido ("OK. LISTO.") y a veces conserva solo la version del modelo. Se separo a
+proposito del arreglo anterior -un cambio, una medida- y sigue abierto.
 
 ## Deuda de diseno declarada
 
@@ -598,7 +626,10 @@ arranca en 0.464. Eso es **deuda de corpus**, y devolver cero es ahi el
 comportamiento correcto.
 
 Alternativas descartables si esa no basta: umbral por dominio, o umbral relativo
-al mejor resultado de cada consulta en vez de absoluto.
+al mejor resultado de cada consulta en vez de absoluto. Y una via distinta,
+registrada sin decidir: reordenar los candidatos ya recuperados con un reranker
+(`docs/mejoras_futuras/modelos_especializados.md`), que no cambia el suelo sino
+lo que sube al contexto.
 
 Cierre: dos claves opcionales, `rag_min_score_domain` y
 `rag_min_score_no_domain`, sobrescriben por regimen la base `rag_min_score` sin
@@ -640,7 +671,10 @@ almacen**, asi que el problema sobrevive a la fase.
 
 Candidatos, sin decidir: que la extraccion resuelva ordinales contra el turno al
 que pertenecen antes de escribir; o que un item sin referente resoluble no se
-escriba, al modo del anclaje lexico del ADR 0013. Lo primero pide juicio y roza
+escriba, al modo del anclaje lexico del ADR 0013. Una tercera via, registrada en
+`docs/mejoras_futuras/modelos_especializados.md`: extraer campos TIPADOS con sus
+offsets en vez de prosa -asi "la primera puntuacion es 6" se guardaria con su
+referente puesto-. Ninguna esta elegida. Lo primero pide juicio y roza
 la frontera de conscience; lo segundo es mecanico y mas barato.
 
 Disparador: antes de que la memoria del usuario crezca, porque cada fragmento

@@ -30,6 +30,7 @@ class InMemoryStore:
         self.migrated = False
         self.verified = 0
         self.summary_links = {}
+        self.contradiction_links = set()
 
     def write(self, principal, request):
         session_scoped = request.type_name in {"dialog", "thread_summary"}
@@ -134,9 +135,22 @@ class InMemoryStore:
             similarity = _word_overlap(engram.content, stated_by_user.content)
             if conflict_threshold <= similarity < dedup_threshold:
                 # El estado NO cambia: solo se anota (ADR 0013).
-                annotated = replace(engram, contradicted=True)
+                annotated = replace(
+                    engram,
+                    contradicted=True,
+                    contradiction_involved=True,
+                )
                 self.engrams[index] = annotated
+                self.contradiction_links.add((engram.id, stated_by_user.id))
                 marked.append(annotated)
+        if marked:
+            for index, engram in enumerate(self.engrams):
+                if engram.id == stated_by_user.id:
+                    self.engrams[index] = replace(
+                        engram,
+                        contradiction_involved=True,
+                    )
+                    break
         return tuple(marked)
 
     def find_thread_synthesis_window(self, *, identity, window_turns):
