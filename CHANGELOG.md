@@ -3,6 +3,29 @@
 Formato basado en Keep a Changelog; SemVer (ver core `docs/VERSIONADO.md`).
 Sin acentos por convencion.
 
+## [No publicado]
+
+### Anadido
+- **Decision 0014: la capa no inventa interlocutores.** Registrado que una
+  superficie capaz de atender a mas de un interlocutor no debe suministrar
+  defaults de identidad: en REST y MCP, `user_id` y `session_id` pasan a ser
+  obligatorios y el servidor deja de recordar sesiones. La CLI conserva su
+  default, que es para quien se penso (enmienda al ADR 0011, punto 7). Motivo
+  medido en laboratorio el 2026-09-22: todo llamante anonimo era `local_operator`
+  dentro de una unica sesion que no rota, con diez horas y dos conversaciones
+  ajenas mezcladas en el mismo hilo. **Solo la decision y la documentacion**; la
+  implementacion, que rompe a los clientes que hoy no mandan identidad, va
+  aparte. Impacto de version: ninguno todavia.
+- Deuda de diseno **D7, la frontera del hilo no esta modelada**: `dialog` se
+  archiva por reloj a las 4 h sin mirar si su sesion sigue viva, mientras una
+  sesion anonima no termina nunca. Se registra sin decidir quien cierra un hilo.
+  Impacto de version: ninguno.
+
+### Corregido
+- `docs/DESPLIEGUE.md` decia que REST y MCP no autentican, pero no que tampoco
+  exigen identidad. Un despliegue en red necesitaba ese dato para no publicar a
+  ciegas.
+
 ## [0.3.2] - 2026-09-22
 
 ### Corregido

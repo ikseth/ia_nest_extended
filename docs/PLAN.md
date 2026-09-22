@@ -681,6 +681,40 @@ Disparador: antes de que la memoria del usuario crezca, porque cada fragmento
 roto es ruido permanente. Material de referencia en `local/lab/`, hilo
 `cine_20260921`.
 
+### D7. La frontera del hilo no esta modelada
+
+Descubierta el 2026-09-22 al investigar por que una sesion real del operador
+empeoro respecto al dia anterior. La identidad anonima que la destapo ya esta
+decidida (ADR 0014); esto es lo que quedo abierto debajo.
+
+Extended trabaja sobre HILOS: una conversacion identificada por su sesion y
+asociada a un usuario. Pero el hilo, como entidad, no existe en el codigo. Se
+aproxima por dos sitios, y los dos fallan en direcciones opuestas:
+
+- **Se corta por reloj.** `find_dialogs_to_archive` archiva todo `dialog` con
+  mas de `dialog_hot_window_seconds` (4 h) **sin mirar si su sesion sigue
+  viva**. Una conversacion de seis horas pierde sus dos primeras: el hilo no
+  termina cuando termina el hilo, sino cuando lo dice el reloj.
+- **No se corta nunca donde deberia.** La sesion recordada del servidor no rota,
+  asi que un hilo anonimo puede durar indefinidamente. Medido: diez horas y dos
+  conversaciones de interlocutores distintos dentro de una misma sesion.
+
+Las dos son la misma ausencia. Un temporizador de retencion no es una frontera
+de conversacion: responde a "cuanto guardo esto", no a "hasta donde llega este
+hilo".
+
+Y la pregunta que lo decide no es tecnica: **quien cierra un hilo**. La posicion
+del operador, reconciliada el 2026-09-22, es que una sesion dura lo que tenga
+que durar, y que la caducidad -si la hay- la decida quien ARCHIVE el hilo y
+destile de el, no quien conversa. Eso apunta a conscience, y conecta con la
+frontera de confianza del ADR 0007: sedimentar es juicio.
+
+Sin decidir, y deliberadamente sin cerrojo: si el cierre es por inactividad, por
+acto explicito del cliente, o por juicio del guardian al archivar.
+
+Disparador: antes de implementar el ADR 0014, porque exigir `session_id` a los
+clientes obliga a decir que significa una sesion y cuando termina.
+
 ### D3. La identidad como fuente conmutable
 
 Las fuentes de enriquecimiento son declaradas por la capa y desactivables por
