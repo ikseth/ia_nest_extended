@@ -2,7 +2,9 @@
 
 import ast
 import json
+from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -10,7 +12,11 @@ from ianest_extended import (
     ExtendedComposition,
     ExtendedConfig,
     ExtendedService,
+    EngramWrite,
+    MemoryIdentity,
+    Principal,
     SchemaMigrationRequiredError,
+    SessionStatus,
     cli,
     remembered_session_id,
 )
@@ -107,6 +113,52 @@ def test_session_id_is_generated_once_and_remembered(tmp_path):
 
     assert first == second
     assert path.read_text(encoding="ascii").strip() == first
+
+
+def test_cli_replaces_an_archived_remembered_session_and_informs(
+    tmp_path,
+    capsys,
+):
+    config = _config(tmp_path)
+    remembered = remembered_session_id(config.session_state_path)
+    store = InMemoryStore()
+    identity = MemoryIdentity(
+        user_id=config.default_user_id,
+        session_id=remembered,
+        service=config.default_service,
+    )
+    store.write(
+        Principal.EXTENDED,
+        EngramWrite(type_name="dialog", content="turno", identity=identity),
+    )
+    key = (identity.user_id, identity.session_id)
+    store.sessions[key] = replace(
+        store.sessions[key],
+        status=SessionStatus.ARCHIVED,
+        archived_at=store.sessions[key].last_activity_at,
+    )
+    service = ExtendedService(
+        ExtendedComposition(config, memory_store=store)
+    )
+    args = SimpleNamespace(
+        user_id=None,
+        session_id=None,
+        service=None,
+        namespace=None,
+        domain=None,
+    )
+
+    resolved = cli._identity(service, config, args)
+
+    captured = capsys.readouterr()
+    assert resolved.session_id != remembered
+    assert config.session_state_path.read_text(encoding="ascii").strip() == (
+        resolved.session_id
+    )
+    assert captured.out == ""
+    assert captured.err == (
+        "La sesion recordada estaba archivada; se inicio un hilo nuevo.\n"
+    )
 
 
 # --- codigos de salida (criterio 11) --------------------------------------

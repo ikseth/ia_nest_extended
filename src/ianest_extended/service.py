@@ -34,9 +34,15 @@ from .catalog_cache import write_catalog_cache
 from .clients import CoreResult, ForwardedJson, ForwardedStream
 from .composition import ExtendedComposition
 from .config import ExtendedConfig
-from .errors import EnrichmentParameterError, ExtendedError, ExtendedRequestError
+from .errors import (
+    EnrichmentParameterError,
+    ExtendedError,
+    ExtendedRequestError,
+    ExternalServiceConnectionError,
+    SchemaMigrationRequiredError,
+)
 from .enrichment import compose_prompt
-from .identity import resolve_identity
+from .identity import replace_remembered_session_id, resolve_identity
 from .ingest import ingest_path
 from .knowledge import (
     confirm_domain,
@@ -55,6 +61,7 @@ from .models import (
     Principal,
     RetrievalMode,
     Scope,
+    SessionStatus,
     StatedBy,
 )
 from .registry import MemoryTypeRegistry
@@ -266,6 +273,54 @@ class ExtendedService:
     @property
     def config(self) -> ExtendedConfig:
         return self._composition.config
+
+    def resolve_cli_identity(
+        self,
+        *,
+        user_id: str | None = None,
+        session_id: str | None = None,
+        service: str | None = None,
+        namespace: str | None = None,
+        domain: str | None = None,
+        check_remembered: bool = True,
+    ) -> tuple[MemoryIdentity, SessionStatus | None]:
+        """Resuelve la identidad local y rota solo una sesion recordada muerta.
+
+        El segundo valor informa a la piel del estado que provoco la rotacion.
+        Una sesion explicita nunca se sustituye: el servidor gobierna su ciclo
+        de vida y la escritura devolvera el error tipado correspondiente.
+        """
+        identity = resolve_identity(
+            self.config,
+            user_id=user_id,
+            session_id=session_id,
+            service=service,
+            namespace=namespace,
+            domain=domain,
+        )
+        if (
+            not check_remembered
+            or session_id is not None
+            or identity.user_id is None
+            or identity.session_id is None
+        ):
+            return identity, None
+        try:
+            declared = self._composition.memory_store().get_session(
+                identity.user_id,
+                identity.session_id,
+            )
+        except (ExternalServiceConnectionError, SchemaMigrationRequiredError):
+            # Resolver identidad no convierte un passthrough en una operacion
+            # dependiente del almacen. Si el comando necesita memoria, su
+            # propio camino devolvera despues el error que corresponda.
+            return identity, None
+        if declared is None or declared.status is SessionStatus.ACTIVE:
+            return identity, None
+        replacement = replace_remembered_session_id(
+            self.config.session_state_path
+        )
+        return replace(identity, session_id=replacement), declared.status
 
     # --- reenvio generico --------------------------------------------------
 

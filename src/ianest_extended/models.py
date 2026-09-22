@@ -38,6 +38,12 @@ class EngramStatus(StrEnum):
     SUPERSEDED = "superseded"
 
 
+class SessionStatus(StrEnum):
+    ACTIVE = "activa"
+    ARCHIVED = "archivada"
+    CLOSED = "cerrada"
+
+
 class StatedBy(StrEnum):
     """Quien dijo lo que el engrama guarda (ADR 0013).
 
@@ -111,6 +117,17 @@ class MemoryIdentity:
             )
             if value is not None
         }
+
+
+@dataclass(frozen=True, slots=True)
+class Session:
+    user_id: str
+    session_id: str
+    created_at: datetime
+    last_activity_at: datetime
+    status: SessionStatus
+    archived_at: datetime | None
+    closed_at: datetime | None
 
 
 @dataclass(frozen=True, slots=True)

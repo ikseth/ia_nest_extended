@@ -72,7 +72,7 @@ class ExtendedConfig:
     connect_timeout_seconds: float = 30.0
     inactivity_timeout_seconds: float = 30.0
     task_timeout_seconds: float = 600.0
-    dialog_hot_window_seconds: int = 4 * 60 * 60
+    session_inactivity_seconds: int = 4 * 60 * 60
     promote_min_stability: int = 3
     promote_min_score: float = 0.8
     promote_recency_max: float = 0.1
@@ -199,9 +199,9 @@ class ExtendedConfig:
                 "TASK_TIMEOUT_SECONDS",
                 defaults.task_timeout_seconds,
             ),
-            "dialog_hot_window_seconds": _env_int(
-                "DIALOG_HOT_WINDOW",
-                defaults.dialog_hot_window_seconds,
+            "session_inactivity_seconds": _env_int(
+                "SESSION_INACTIVITY_SECONDS",
+                defaults.session_inactivity_seconds,
             ),
             "promote_min_stability": _env_int(
                 "PROMOTE_MIN_STABILITY",
@@ -270,7 +270,7 @@ class ExtendedConfig:
             "dialog_top_k",
             "episodic_top_k",
             "semantic_top_k",
-            "dialog_hot_window_seconds",
+            "session_inactivity_seconds",
             "thread_synthesis_window_turns",
             "rag_top_k",
             "rag_max_tokens",

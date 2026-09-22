@@ -188,7 +188,7 @@ def _run_unknown_capability(group: str, tokens: list[str]) -> int:
     try:
         config = ExtendedConfig.from_env(env_file=args.env_file)
         service = ExtendedService.from_config(config)
-        payload = _declared_payload(config, args)
+        payload = _declared_payload(service, config, args)
         result = service.forward(name, payload)
         return _emit_forward(result, args.json)
     except ExtendedError as exc:
@@ -253,11 +253,11 @@ def _build_unknown_capability_parser(
     return parser
 
 
-def _declared_payload(config, args) -> dict[str, Any] | None:
+def _declared_payload(service, config, args) -> dict[str, Any] | None:
     """Cuerpo solo si el operador declaro alguno; si no, peticion sin cuerpo."""
     if args.prompt is None and not args.param and not args.payload:
         return None
-    return _forward_payload(config, args)
+    return _forward_payload(service, config, args)
 
 
 # --- parser ---------------------------------------------------------------
@@ -752,7 +752,7 @@ def _capability_list(service, config, args) -> int:
 
 
 def _prompt_run(service, config, args) -> int:
-    identity = _identity(config, args)
+    identity = _identity(service, config, args)
     result = service.prompt_run(
         args.prompt,
         identity,
@@ -786,7 +786,7 @@ def _prompt_run(service, config, args) -> int:
 def _prompt_stream(service, config, args) -> int:
     stream = service.prompt_stream(
         args.prompt,
-        _identity(config, args),
+        _identity(service, config, args),
         enrich=args.enrich,
         use_memory=args.use_memory,
         use_rag=args.use_rag,
@@ -801,7 +801,7 @@ def _prompt_stream(service, config, args) -> int:
 def _reasoning_run(service, config, args) -> int:
     result = service.reasoning_run(
         args.prompt,
-        _identity(config, args),
+        _identity(service, config, args),
         enrich=args.enrich,
         use_memory=args.use_memory,
         use_rag=args.use_rag,
@@ -832,7 +832,7 @@ def _reasoning_run(service, config, args) -> int:
 def _reasoning_stream(service, config, args) -> int:
     stream = service.reasoning_stream(
         args.prompt,
-        _identity(config, args),
+        _identity(service, config, args),
         enrich=args.enrich,
         use_memory=args.use_memory,
         use_rag=args.use_rag,
@@ -853,7 +853,12 @@ def _task_run(service, config, args) -> int:
         )
     result = service.task_run(
         args.prompt,
-        _identity(config, args, include_domain=False),
+        _identity(
+            service,
+            config,
+            args,
+            include_domain=False,
+        ),
         enrich=args.enrich,
         use_memory=args.use_memory,
         use_rag=args.use_rag,
@@ -872,11 +877,17 @@ def _task_run(service, config, args) -> int:
 def _catalog_forward(service, config, args) -> int:
     """Reenvio de una declaracion descubierta, construido solo del catalogo."""
     capability = args.catalog_capability
-    payload = _catalog_payload(config, args, capability)
+    payload = _catalog_payload(config, args, capability, service=service)
     return _emit_forward(service.forward(capability["name"], payload), args.json)
 
 
-def _catalog_payload(config, args, capability: dict[str, Any]) -> dict[str, Any] | None:
+def _catalog_payload(
+    config,
+    args,
+    capability: dict[str, Any],
+    *,
+    service=None,
+) -> dict[str, Any] | None:
     params = {
         item["name"]
         for item in capability.get("params", [])
@@ -914,7 +925,23 @@ def _catalog_payload(config, args, capability: dict[str, Any]) -> dict[str, Any]
         except json.JSONDecodeError:
             payload[key] = raw
     if capability.get("identity") and "identity" not in payload:
-        payload["identity"] = _identity(config, args).to_core_dict()
+        if service is None:
+            identity = resolve_identity(
+                config,
+                user_id=getattr(args, "user_id", None),
+                session_id=getattr(args, "session_id", None),
+                service=getattr(args, "service", None),
+                namespace=getattr(args, "namespace", None),
+                domain=getattr(args, "domain", None),
+            )
+        else:
+            identity = _identity(
+                service,
+                config,
+                args,
+                check_remembered=False,
+            )
+        payload["identity"] = identity.to_core_dict()
     return payload or None
 
 
@@ -961,7 +988,7 @@ def _input_payload(args, capability) -> dict[str, Any] | None:
 
 def _memory_recall(service, config, args) -> int:
     payload = service.memory_recall(
-        _identity(config, args),
+        _identity(service, config, args),
         args.prompt,
         use_memory=args.use_memory,
         use_rag=args.use_rag,
@@ -1080,7 +1107,7 @@ def _emit_forward(result, json_output: bool) -> int:
     return 0
 
 
-def _forward_payload(config, args) -> dict[str, Any]:
+def _forward_payload(service, config, args) -> dict[str, Any]:
     payload: dict[str, Any] = {}
     if getattr(args, "payload", None):
         try:
@@ -1104,19 +1131,38 @@ def _forward_payload(config, args) -> dict[str, Any]:
     if getattr(args, "prompt", None) is not None:
         payload["prompt"] = args.prompt
     if "identity" not in payload:
-        payload["identity"] = _identity(config, args).to_core_dict()
+        payload["identity"] = _identity(
+            service,
+            config,
+            args,
+            check_remembered=False,
+        ).to_core_dict()
     return payload
 
 
-def _identity(config, args, *, include_domain: bool = True):
-    return resolve_identity(
-        config,
+def _identity(
+    service,
+    config,
+    args,
+    *,
+    include_domain: bool = True,
+    check_remembered: bool = True,
+):
+    identity, replaced_status = service.resolve_cli_identity(
         user_id=getattr(args, "user_id", None),
         session_id=getattr(args, "session_id", None),
         service=getattr(args, "service", None),
         namespace=getattr(args, "namespace", None),
         domain=getattr(args, "domain", None) if include_domain else None,
+        check_remembered=check_remembered,
     )
+    if replaced_status is not None:
+        print(
+            f"La sesion recordada estaba {replaced_status.value}; "
+            "se inicio un hilo nuevo.",
+            file=sys.stderr,
+        )
+    return identity
 
 
 # --- salida ---------------------------------------------------------------

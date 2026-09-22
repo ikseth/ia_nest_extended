@@ -13,6 +13,7 @@ from .models import (
     Engram,
     EngramWrite,
     EntityProfile,
+    MemoryIdentity,
     MemoryType,
     Principal,
     RecallItem,
@@ -20,6 +21,7 @@ from .models import (
     RagChunk,
     RagChunkWrite,
     RagIngestResult,
+    Session,
     ThreadSynthesisResult,
 )
 
@@ -70,6 +72,9 @@ class MemoryStore(Protocol):
 
     def get_engram(self, engram_id: UUID) -> Engram:
         """Obtiene un engrama por identificador."""
+
+    def get_session(self, user_id: str, session_id: str) -> Session | None:
+        """Obtiene la entidad de sesion por su clave compuesta."""
 
     def find_similar(
         self,
@@ -134,9 +139,18 @@ class MemoryStore(Protocol):
         self,
         *,
         now: datetime,
-        hot_window_seconds: int,
+        inactivity_seconds: int,
     ) -> Sequence[Engram]:
-        """Lista dialogos activos fuera de la ventana caliente."""
+        """Lista dialogos de sesiones activas cuyo reloj ha vencido."""
+
+    def archive_inactive_sessions(
+        self,
+        *,
+        now: datetime,
+        inactivity_seconds: int,
+        reason: str,
+    ) -> Sequence[Engram]:
+        """Archiva sesiones inactivas y sus dialogos/sintesis atomicamente."""
 
     def find_episodic_to_promote(
         self,

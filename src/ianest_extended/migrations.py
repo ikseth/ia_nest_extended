@@ -12,6 +12,7 @@ MIGRATION_NAMES = (
     "0003_rag_domains.sql",
     "0004_stated_by.sql",
     "0005_thread_synthesis.sql",
+    "0006_sessions.sql",
 )
 
 
