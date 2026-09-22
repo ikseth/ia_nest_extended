@@ -2,9 +2,11 @@ import json
 
 from ianest_extended import (
     CoreResult,
+    EngramWrite,
     ExtendedConfig,
     MemoryEnricher,
     MemoryIdentity,
+    Principal,
     StatedBy,
     TelemetryWriter,
 )
@@ -148,3 +150,81 @@ def test_window_replacement_provenance_composition_cost_and_trace(tmp_path):
     assert event["counters"]["items_summarized"] >= 8
     assert event["model"] == "summary-model"
     assert event["status"] == "ok"
+
+
+def test_summary_keeps_both_contradiction_sides_and_replaces_the_rest(tmp_path):
+    store = InMemoryStore()
+    identity = _identity()
+    model = store.write(
+        Principal.EXTENDED,
+        EngramWrite(
+            type_name="episodic",
+            content="la clave del refugio es Cobalto",
+            identity=identity,
+            namespace="facts",
+            stated_by=StatedBy.MODEL,
+        ),
+    )
+    user = store.write(
+        Principal.EXTENDED,
+        EngramWrite(
+            type_name="episodic",
+            content="la clave del refugio es Ambar",
+            identity=identity,
+            namespace="facts",
+            stated_by=StatedBy.USER,
+        ),
+    )
+    store.record_contradiction(
+        Principal.EXTENDED,
+        stated_by_user=user,
+        conflict_threshold=0.5,
+        dedup_threshold=0.92,
+    )
+    ordinary = store.write(
+        Principal.EXTENDED,
+        EngramWrite(
+            type_name="episodic",
+            content="el inventario tiene tres mantas",
+            identity=identity,
+            namespace="facts",
+            stated_by=StatedBy.USER,
+        ),
+    )
+    store.write_thread_summary(
+        Principal.EXTENDED,
+        identity=identity,
+        content="La clave vigente es Ambar y hay tres mantas.",
+        source_ids=(model.id, user.id, ordinary.id),
+        source_trace_id="summary",
+    )
+    enricher = _enricher(
+        tmp_path,
+        store,
+        SynthesisCore(),
+        thread_synthesis_enabled=True,
+    )
+
+    context = enricher.recall(identity, "cual es la clave?").context
+
+    assert "[thread_summary/thread]" in context
+    assert "el inventario tiene tres mantas" not in context
+    user_line = (
+        "[episodic/facts] (fuente: usuario) "
+        "la clave del refugio es Ambar"
+    )
+    model_line = (
+        "[episodic/facts] (fuente: modelo, sin verificar; "
+        "hay una version del usuario sobre esto) "
+        "la clave del refugio es Cobalto"
+    )
+    assert user_line in context
+    assert model_line in context
+    assert context.index(user_line) < context.index(model_line)
+
+    constrained = enricher.recall(
+        identity,
+        "cual es la clave?",
+        token_budget=35,
+    ).context
+    assert estimate_tokens(constrained) <= 35

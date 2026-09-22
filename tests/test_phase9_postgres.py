@@ -7,6 +7,7 @@ from ianest_extended import (
     EngramStatus,
     EngramWrite,
     ExtendedConfig,
+    MemoryEnricher,
     MemoryIdentity,
     Principal,
     RecallQuery,
@@ -160,6 +161,105 @@ def test_phase9_maintain_archives_summary_and_never_promotes_it(
             (summary.id,),
         ).fetchone()["count"]
     assert promoted == 0
+
+
+def test_phase9_recall_composes_summary_with_both_contradiction_sides(
+    postgres_store,
+    tmp_path,
+):
+    identity = _identity()
+    model = postgres_store.write(
+        Principal.EXTENDED,
+        EngramWrite(
+            type_name="episodic",
+            content="la clave del refugio es Cobalto",
+            identity=identity,
+            namespace="facts",
+            stated_by=StatedBy.MODEL,
+        ),
+    )
+    user = postgres_store.write(
+        Principal.EXTENDED,
+        EngramWrite(
+            type_name="episodic",
+            content="la clave del refugio es Ambar",
+            identity=identity,
+            namespace="facts",
+            stated_by=StatedBy.USER,
+        ),
+    )
+    ordinary = postgres_store.write(
+        Principal.EXTENDED,
+        EngramWrite(
+            type_name="episodic",
+            content="el inventario tiene tres mantas",
+            identity=identity,
+            namespace="facts",
+            stated_by=StatedBy.USER,
+        ),
+    )
+    dimension = postgres_store._embedder.dimension
+    user_vector = [1.0, 0.0] + [0.0] * (dimension - 2)
+    model_vector = [0.8, 0.6] + [0.0] * (dimension - 2)
+    with postgres_store._connect() as connection:
+        connection.execute(
+            "UPDATE engrams SET embedding = %s::vector WHERE id = %s",
+            (str(user_vector), user.id),
+        )
+        connection.execute(
+            "UPDATE engrams SET embedding = %s::vector WHERE id = %s",
+            (str(model_vector), model.id),
+        )
+    postgres_store.record_contradiction(
+        Principal.EXTENDED,
+        stated_by_user=postgres_store.get_engram(user.id),
+        conflict_threshold=0.70,
+        dedup_threshold=0.92,
+    )
+    # El enlace ya esta fijado. Igualar ahora los vectores aisla la prueba de
+    # orden: la version mas reciente del usuario debe quedar delante sin que
+    # la consulta concreta favorezca semanticamente a uno de los dos lados.
+    with postgres_store._connect() as connection:
+        connection.execute(
+            "UPDATE engrams SET embedding = %s::vector WHERE id = %s",
+            (str(user_vector), model.id),
+        )
+    postgres_store.write_thread_summary(
+        Principal.EXTENDED,
+        identity=identity,
+        content="La clave vigente es Ambar y hay tres mantas.",
+        source_ids=(model.id, user.id, ordinary.id),
+        source_trace_id="summary",
+    )
+    enricher = MemoryEnricher(
+        store=postgres_store,
+        core=None,
+        telemetry=TelemetryWriter(tmp_path),
+        config=ExtendedConfig(
+            telemetry_dir=tmp_path,
+            embedding_dimension=dimension,
+            rag_enabled=False,
+            memory_min_similarity=0.0,
+            thread_synthesis_enabled=True,
+        ),
+    )
+
+    context = enricher.recall(identity, "cual es la clave?").context
+
+    assert "[thread_summary/thread]" in context
+    assert "el inventario tiene tres mantas" not in context
+    user_line = (
+        "[episodic/facts] (fuente: usuario) "
+        "la clave del refugio es Ambar"
+    )
+    model_line = (
+        "[episodic/facts] (fuente: modelo, sin verificar; "
+        "hay una version del usuario sobre esto) "
+        "la clave del refugio es Cobalto"
+    )
+    assert user_line in context
+    assert model_line in context
+    assert context.index(user_line) < context.index(model_line)
 
 
 def test_migrate_is_idempotent_with_summarizes_links_present(postgres_store):

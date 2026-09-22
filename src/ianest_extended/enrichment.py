@@ -406,11 +406,18 @@ class MemoryEnricher:
                     )
                 )
             )
+        contradiction_ids = {
+            item.engram.id
+            for item in (*episodic, *dialog)
+            if item.engram is not None
+            and item.engram.contradiction_involved
+        }
         summarized_ids = {
             source_id
             for item in thread_summary
             if item.engram is not None
             for source_id in item.engram.summarized_ids
+            if source_id not in contradiction_ids
         }
         visible_episodic = tuple(
             item

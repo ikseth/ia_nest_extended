@@ -164,6 +164,11 @@ class Engram:
     # El usuario dijo algo muy proximo a esto. No afirma que sea falso: afirma
     # que hay otra version, y por eso el recall lo despriorza (ADR 0013).
     contradicted: bool = False
+    # Participa en cualquiera de los dos extremos de un enlace
+    # `contradicted_by`. A diferencia de `contradicted`, esta senal tambien es
+    # cierta para la version del usuario y solo gobierna la sustitucion por una
+    # sintesis; no cambia su etiqueta ni su relevancia.
+    contradiction_involved: bool = False
     # Solo `thread_summary` lo rellena. Son los engramas a los que apunta con
     # enlaces `summarizes`; la fuente de verdad sigue siendo memory_links.
     summarized_ids: tuple[UUID, ...] = ()

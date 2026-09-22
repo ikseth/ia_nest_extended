@@ -55,6 +55,16 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+### Corregido
+- **La sintesis de hilo ya no tapa la procedencia que resuelve una
+  contradiccion.** Al componer el recall, los dos extremos de cada enlace
+  `contradicted_by` quedan fuera del conjunto que la sintesis sustituye: el
+  resumen, la version del usuario y el candidato anotado del modelo coexisten,
+  con sus etiquetas y orden intactos. Los demas engramas resumidos se siguen
+  sustituyendo y el recorte por presupuesto no cambia. Con la sintesis apagada
+  el camino es identico. No se modifica el prompt de sintesis. Correccion
+  compatible: PATCH.
+
 ### Anadido
 - Linea **L7** en la puerta de laboratorio, **memoria conversacional con
   referente**, derivada de una sesion real y no de una sonda: cuatro turnos con
