@@ -31,6 +31,9 @@ FAIL = "NO PASA"
 NULL = "NULA"
 NOT_EXECUTABLE = "NO EJECUTABLE"
 OUTSIDE = "FUERA DEL SCRIPT"
+# L4a: la respuesta sale mal pero el contexto que compuso la capa era correcto.
+# No es un fallo de la capa y no bloquea (reconciliado el 2026-09-22).
+UNFAITHFUL = "INFIDELIDAD DEL MODELO"
 
 L5_PROBES = (
     ("linux", "como abro un puerto en el cortafuegos de mi servidor"),
@@ -292,6 +295,48 @@ def _attempt_l2(rest: RestRecorder, user_id: str, repetition: int) -> dict[str, 
     return evidence
 
 
+def _composition_checks(
+    recall_payload: dict[str, Any],
+    correct: str,
+    incorrect: str,
+) -> dict[str, Any]:
+    """Que dice el contexto que la capa compuso, sin mirar lo que respondio.
+
+    Es el oraculo de L3, y L4a lo reusa para saber a quien atribuir un fallo:
+    si esto sale bien y la respuesta sale mal, el fallo no es de la capa.
+    """
+    context = recall_payload.get("context")
+    context = context if isinstance(context, str) else ""
+    normalized_context = _normalized(context)
+    correct_index = normalized_context.find(_normalized(correct))
+    incorrect_index = normalized_context.find(_normalized(incorrect))
+    incorrect_lines = [line for line in context.splitlines() if _contains(line, incorrect)]
+    return {
+        "model_label": any(
+            _contains(line, "fuente: modelo, sin verificar") for line in incorrect_lines
+        ),
+        "contradicted_by_annotation": any(
+            _contains(line, "hay una version del usuario sobre esto")
+            for line in incorrect_lines
+        ),
+        "user_version_before_model_version": (
+            correct_index >= 0 and incorrect_index > correct_index
+        ),
+        "incorrect_lines": incorrect_lines,
+    }
+
+
+def _composition_is_correct(
+    recall_payload: dict[str, Any],
+    correct: str,
+    incorrect: str,
+) -> bool:
+    checks = _composition_checks(recall_payload, correct, incorrect)
+    return bool(
+        checks["model_label"] and checks["user_version_before_model_version"]
+    )
+
+
 def _attempt_l3_l4a(
     rest: RestRecorder,
     user_id: str,
@@ -339,20 +384,11 @@ def _attempt_l3_l4a(
             f"La clave del refugio es {correct}.",
         )
         recall_payload = _recall(rest, user_id, session_id, "Cual es la clave del refugio?")
-        context = recall_payload.get("context")
-        context = context if isinstance(context, str) else ""
-        normalized_context = _normalized(context)
-        correct_index = normalized_context.find(_normalized(correct))
-        incorrect_index = normalized_context.find(_normalized(incorrect))
-        incorrect_lines = [line for line in context.splitlines() if _contains(line, incorrect)]
-        model_label = any(
-            _contains(line, "fuente: modelo, sin verificar") for line in incorrect_lines
-        )
-        contradiction_label = any(
-            _contains(line, "hay una version del usuario sobre esto")
-            for line in incorrect_lines
-        )
-        ordered = correct_index >= 0 and incorrect_index > correct_index
+        checks = _composition_checks(recall_payload, correct, incorrect)
+        incorrect_lines = checks["incorrect_lines"]
+        model_label = checks["model_label"]
+        contradiction_label = checks["contradicted_by_annotation"]
+        ordered = checks["user_version_before_model_version"]
         l3_passed = model_label and ordered
         evidence_l3.update(
             {
@@ -374,26 +410,36 @@ def _attempt_l3_l4a(
 
         turn_2 = _prompt(rest, user_id, session_id, "Responde solo OK.")
         turn_3 = _prompt(rest, user_id, session_id, "Responde solo LISTO.")
-        turn_4 = _prompt(
-            rest,
-            user_id,
-            session_id,
-            "Cual es la clave del refugio? Escribe solo la clave correcta.",
-        )
+        final_question = "Cual es la clave del refugio? Escribe solo la clave correcta."
+        # El contexto se vuelve a leer AQUI, no vale el del principio: entre
+        # medias han pasado dos turnos y la sintesis de la Fase 9 puede haber
+        # disparado. Lo que hay que juzgar es lo que la capa entrega en el
+        # momento de la pregunta.
+        final_recall = _recall(rest, user_id, session_id, final_question)
+        context_ok = _composition_is_correct(final_recall, correct, incorrect)
+        turn_4 = _prompt(rest, user_id, session_id, final_question)
         answer = _response_text(turn_4)
         has_correct = _contains(answer, correct)
         has_incorrect = _contains(answer, incorrect)
         l4a_passed = has_correct and not has_incorrect
+        if l4a_passed:
+            verdict_l4a = PASS
+        elif context_ok:
+            verdict_l4a = UNFAITHFUL
+        else:
+            verdict_l4a = FAIL
         evidence_l4a.update(
             {
                 "recall": recall_payload,
+                "final_recall": final_recall,
                 "turns": [turn_1, turn_2, turn_3, turn_4],
                 "final_answer": answer,
                 "checks": {
                     "contains_correct": has_correct,
                     "contains_incorrect": has_incorrect,
+                    "composition_correct": context_ok,
                 },
-                "verdict": PASS if l4a_passed else FAIL,
+                "verdict": verdict_l4a,
             }
         )
     except GateHttpError as exc:
@@ -585,6 +631,34 @@ def _aggregate(
         "passed": passed,
         "total": total,
         "blocking": blocking,
+        "attempts": attempts,
+    }
+
+
+def _aggregate_l4a(attempts: list[dict[str, Any]]) -> dict[str, Any]:
+    """L4a bloquea por composicion, no por obediencia del modelo.
+
+    Reconciliado el 2026-09-22. Hasta v0.3.2 bastaba con mirar la respuesta:
+    siempre que salia mal, el contexto tambien estaba mal. Corregida la
+    composicion, las dos causas se separan, y suspender por la segunda haria
+    que la puerta bloqueara por algo que declara no medir.
+    """
+    passed = sum(item.get("verdict") == PASS for item in attempts)
+    unfaithful = sum(item.get("verdict") == UNFAITHFUL for item in attempts)
+    total = len(attempts)
+    composition_failures = total - passed - unfaithful
+    return {
+        "line": "L4a",
+        "verdict": PASS if composition_failures == 0 else FAIL,
+        "passed": passed,
+        "total": total,
+        "blocking": True,
+        "composition_failures": composition_failures,
+        "model_unfaithful": {
+            "observed": unfaithful,
+            "total": total,
+            "rate": f"{unfaithful}/{total}",
+        },
         "attempts": attempts,
     }
 
@@ -896,7 +970,7 @@ def execute_gate(
         [
             _aggregate("L2", l2_attempts),
             l3_line,
-            _aggregate("L4a", l4a_attempts),
+            _aggregate_l4a(l4a_attempts),
             _aggregate("L4b", l4b_attempts, blocking=False),
             _aggregate("L5", l5_attempts),
             _aggregate("L5r", l5r_attempts),
@@ -928,7 +1002,11 @@ def _failure_summary(line: dict[str, Any]) -> str:
         return ""
     if "passed" in line:
         failed = next(
-            (item for item in line["attempts"] if item.get("verdict") != PASS),
+            (
+                item
+                for item in line["attempts"]
+                if item.get("verdict") not in (PASS, UNFAITHFUL)
+            ),
             {},
         )
         if failed.get("probes"):
@@ -977,6 +1055,8 @@ def print_report(report: dict[str, Any]) -> None:
         annotation = ""
         if line["line"] == "L3":
             annotation = f" (anotacion {line['annotation']['rate']})"
+        if line["line"] == "L4a":
+            annotation = f" (infidelidad del modelo {line['model_unfaithful']['rate']})"
         label = (
             " [brazo sin sintesis de Fase 9; no bloquea]"
             if line["line"] == "L4b"
