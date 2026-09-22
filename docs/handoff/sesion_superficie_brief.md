@@ -68,6 +68,29 @@ gana al fichero recordado.
 ya existen. `session new` ademas **pasa a ser la sesion recordada**, que es el
 sentido de crearla desde la CLI.
 
+## Tres detalles de contrato, resueltos (2026-09-22)
+
+Preguntados por el implementador y decididos por el disenador. Van aqui porque
+son superficie publica y no deben inferirse.
+
+1. **Titulo: 80 caracteres**, cortando en frontera de palabra y sin puntos
+   suspensivos decorativos. Es lo que cabe en una linea de listado junto al id,
+   los tiempos y el estado. No se hace configurable: un parametro mas para esto
+   no se paga solo.
+
+2. **`session.list` filtra por `status`, no por un `include_archived`.** Valores
+   `activa`, `archivada`, `cerrada` y `todas`; por defecto `activa`. El motivo
+   es el mismo que el del punto 3 del ADR 0015: los estados son tres y se
+   declaran, asi que un booleano ya nace corto -no sabria expresar `cerrada`- y
+   habria que sustituirlo en cuanto conscience exista.
+
+3. **`session.new` acepta un `session_id` opcional del cliente.** Si viene y
+   esta libre, se crea con el; si viene y ya existe para ese usuario, error
+   tipado que lo dice; si no viene, lo genera el servidor. Es coherente con el
+   punto 6 del ADR 0015 -el cliente elige el id, el servidor es dueno del ciclo
+   de vida- y con lo que el operador ya hace a mano al llamar a su sesion
+   `cine_20260926`.
+
 ## Lo que NO entra
 
 - **Exigir `user_id` y `session_id` en REST/MCP**: es el ADR 0014, entrega C, y
