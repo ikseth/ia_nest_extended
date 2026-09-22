@@ -3,6 +3,18 @@
 Formato basado en Keep a Changelog; SemVer (ver core `docs/VERSIONADO.md`).
 Sin acentos por convencion.
 
+## [No publicado]
+
+### Corregido
+- **La sintesis de hilo ya no tapa la procedencia que resuelve una
+  contradiccion.** Al componer el recall, los dos extremos de cada enlace
+  `contradicted_by` quedan fuera del conjunto que la sintesis sustituye: el
+  resumen, la version del usuario y el candidato anotado del modelo coexisten,
+  con sus etiquetas y orden intactos. Los demas engramas resumidos se siguen
+  sustituyendo y el recorte por presupuesto no cambia. Con la sintesis apagada
+  el camino es identico. No se modifica el prompt de sintesis. Correccion
+  compatible: PATCH.
+
 ## [0.3.1] - 2026-09-21
 
 ### Corregido
@@ -20,6 +32,24 @@ Sin acentos por convencion.
 ## [0.3.0] - 2026-09-21
 
 ### Anadido
+- Linea **L7** en la puerta de laboratorio, **memoria conversacional con
+  referente**, derivada de una sesion real y no de una sonda: cuatro turnos con
+  puntuaciones por ordinal y una pregunta final por una pieza concreta. Gatea
+  sobre la pregunta estrecha -testigo correcto, prohibidos los valores de lo
+  nunca puntuado- y REGISTRA aparte la variante de lista completa por lineas
+  acertadas, inventadas y omitidas, que es mas informativa pero tambien mas
+  ruidosa. **No bloquea todavia**: mide la deuda D6, que esta abierta y
+  declarada; bloqueara cuando se cierre. Impacto de version: ninguno.
+- Deuda de diseno **D6, el fragmento que pierde su referente**, observada en una
+  sesion REAL del operador y no en una sonda. La destilacion guardo engramas como
+  "la primera puntuacion es 6": correctos en su turno y ruido fuera de el, porque
+  el ordinal perdio aquello a lo que se referia. Como `episodic` es de ambito
+  usuario, esos fragmentos son candidatos en cualquier conversacion futura del
+  mismo interlocutor. Efecto medido en el mismo hilo: al pedir la lista de
+  peliculas valoradas, la respuesta acerto tres, invento tres y omitio dos. **No
+  es lo que persigue la Fase 9** -aquello es incoherencia entre versiones; esto
+  es perdida de referente-, y la sintesis lo mitiga en lo inyectado sin retirarlo
+  del almacen. Impacto de version: ninguno.
 - **Fase 9, sintesis de hilo (mecanismo).** Tipo de memoria nuevo
   `thread_summary`: estricto, escrito por extended, de ambito SESION y con
   namespace propio. Al terminar el write-back de un turno, y solo con
@@ -52,38 +82,6 @@ Sin acentos por convencion.
   hilo" y es lo que impide que un resumen alucinado se vuelva memoria duradera.
   La linea base del brazo sin sintesis ya esta medida y no se vuelve a discutir:
   2 aciertos de 15. Impacto de version: ninguno.
-
-## [No publicado]
-
-### Corregido
-- **La sintesis de hilo ya no tapa la procedencia que resuelve una
-  contradiccion.** Al componer el recall, los dos extremos de cada enlace
-  `contradicted_by` quedan fuera del conjunto que la sintesis sustituye: el
-  resumen, la version del usuario y el candidato anotado del modelo coexisten,
-  con sus etiquetas y orden intactos. Los demas engramas resumidos se siguen
-  sustituyendo y el recorte por presupuesto no cambia. Con la sintesis apagada
-  el camino es identico. No se modifica el prompt de sintesis. Correccion
-  compatible: PATCH.
-
-### Anadido
-- Linea **L7** en la puerta de laboratorio, **memoria conversacional con
-  referente**, derivada de una sesion real y no de una sonda: cuatro turnos con
-  puntuaciones por ordinal y una pregunta final por una pieza concreta. Gatea
-  sobre la pregunta estrecha -testigo correcto, prohibidos los valores de lo
-  nunca puntuado- y REGISTRA aparte la variante de lista completa por lineas
-  acertadas, inventadas y omitidas, que es mas informativa pero tambien mas
-  ruidosa. **No bloquea todavia**: mide la deuda D6, que esta abierta y
-  declarada; bloqueara cuando se cierre. Impacto de version: ninguno.
-- Deuda de diseno **D6, el fragmento que pierde su referente**, observada en una
-  sesion REAL del operador y no en una sonda. La destilacion guardo engramas como
-  "la primera puntuacion es 6": correctos en su turno y ruido fuera de el, porque
-  el ordinal perdio aquello a lo que se referia. Como `episodic` es de ambito
-  usuario, esos fragmentos son candidatos en cualquier conversacion futura del
-  mismo interlocutor. Efecto medido en el mismo hilo: al pedir la lista de
-  peliculas valoradas, la respuesta acerto tres, invento tres y omitio dos. **No
-  es lo que persigue la Fase 9** -aquello es incoherencia entre versiones; esto
-  es perdida de referente-, y la sintesis lo mitiga en lo inyectado sin retirarlo
-  del almacen. Impacto de version: ninguno.
 
 ## [0.2.3] - 2026-09-12
 

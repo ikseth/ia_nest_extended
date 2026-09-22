@@ -94,6 +94,11 @@ Lo que cambia es el recall, que al verlo anotado (a) lo etiqueta -"hay una
 version del usuario sobre esto"- y (b) lo despriorza al recortar por
 presupuesto, de modo que cae antes que sus hermanos no anotados.
 
+La banda es hoy similitud coseno, y su margen entre "contradice" y "comparte
+tema" es de centesimas. Una via registrada sin decidir para quitarle ese peso:
+inferencia de lenguaje natural, que clasifica implicacion o contradiccion con
+direccion en vez de distancia (`docs/mejoras_futuras/modelos_especializados.md`).
+
 Por que anotar y no retirar: la separacion medida entre "contradice" y "comparte
 tema" es de centesimas con el embedder del lab
 (`local/lab/2026-08-22_banda_de_conflicto.md`), y ese margen no sostiene una
