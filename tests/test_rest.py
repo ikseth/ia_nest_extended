@@ -129,6 +129,39 @@ def test_own_routes_only_use_core_for_their_declared_work(tmp_path):
     assert core.calls == [("list_domains", None)]
 
 
+def test_session_capabilities_respond_through_rest(tmp_path):
+    config = _config(tmp_path)
+    service = ExtendedService(
+        ExtendedComposition(config, memory_store=InMemoryStore())
+    )
+    app = create_app(config, service)
+    identity = {"user_id": "rest-user"}
+
+    created = _request(
+        app,
+        "POST",
+        "/session/new",
+        json_body={"identity": identity, "session_id": "rest-thread"},
+    )
+    listed = _request(
+        app,
+        "POST",
+        "/session/list",
+        json_body={"identity": identity},
+    )
+    shown = _request(
+        app,
+        "POST",
+        "/session/show",
+        json_body={"identity": identity, "session_id": "rest-thread"},
+    )
+
+    assert created.status_code == listed.status_code == shown.status_code == 200
+    assert created.json()["session"]["session_id"] == "rest-thread"
+    assert listed.json()["sessions"][0]["session_id"] == "rest-thread"
+    assert shown.json()["session"] == created.json()["session"]
+
+
 def test_overridden_prompt_is_enriched_while_direct_core_prompt_is_not(tmp_path):
     """Criterio 3: prompt.run REST usa el vertical enriquecido del servicio."""
     config = _config(tmp_path, memory_enabled=True)

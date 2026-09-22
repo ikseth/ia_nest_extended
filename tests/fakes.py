@@ -10,6 +10,7 @@ from ianest_extended import (
     RecallItem,
     SchemaMigrationRequiredError,
     Session,
+    SessionAlreadyExistsError,
     SessionNotActiveError,
     SessionStatus,
     StatedBy,
@@ -321,7 +322,52 @@ class InMemoryStore:
         self.verified += 1
 
     def get_session(self, user_id, session_id):
-        return self.sessions.get((user_id, session_id))
+        session = self.sessions.get((user_id, session_id))
+        if session is None:
+            return None
+        summaries = [
+            item
+            for item in self.engrams
+            if item.type_name == "thread_summary"
+            and item.user_id == user_id
+            and item.session_id == session_id
+        ]
+        title = max(summaries, key=lambda item: item.created_at).content if summaries else None
+        return replace(session, title=title)
+
+    def list_sessions(self, user_id, status=SessionStatus.ACTIVE):
+        sessions = [
+            self.get_session(*key)
+            for key, session in self.sessions.items()
+            if key[0] == user_id and (status is None or session.status is status)
+        ]
+        return tuple(
+            sorted(
+                sessions,
+                key=lambda item: (item.last_activity_at, item.session_id),
+                reverse=True,
+            )
+        )
+
+    def create_session(self, user_id, session_id):
+        key = (user_id, session_id)
+        if key in self.sessions:
+            raise SessionAlreadyExistsError(
+                f"la sesion {session_id!r} ya existe para el usuario {user_id!r}",
+                "session_id",
+            )
+        now = datetime.now(UTC)
+        session = Session(
+            user_id=user_id,
+            session_id=session_id,
+            created_at=now,
+            last_activity_at=now,
+            status=SessionStatus.ACTIVE,
+            archived_at=None,
+            closed_at=None,
+        )
+        self.sessions[key] = session
+        return session
 
     def find_dialogs_to_archive(self, *, now, inactivity_seconds):
         cutoff = now.timestamp() - inactivity_seconds

@@ -140,6 +140,14 @@ class SessionNotActiveError(MemoryError):
     """La sesion declarada ya no admite escrituras."""
 
 
+class SessionNotFoundError(MemoryError):
+    """La sesion solicitada no existe para el usuario indicado."""
+
+
+class SessionAlreadyExistsError(MemoryError):
+    """El identificador de sesion ya existe para el usuario indicado."""
+
+
 class InvalidConsolidationEventError(MemoryError):
     """El evento de consolidacion no satisface sus invariantes."""
 

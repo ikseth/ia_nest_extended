@@ -214,7 +214,13 @@ def test_exit_code_one_on_typed_error(
     captured = capsys.readouterr()
     assert code == 1
     assert captured.out == ""
-    assert captured.err.startswith("EnrichmentParameterError (use_rag): ")
+    # El aviso de sesion de la entrega B tambien va por stderr y precede al
+    # error, asi que se comprueba que la linea del error ESTA, no que sea la
+    # primera. Lo que sigue siendo inviolable es que stdout quede limpio.
+    assert (
+        "EnrichmentParameterError (use_rag): "
+        "enriquecimiento desactivado junto a 'use_rag' activado"
+    ) in captured.err
 
 
 def test_exit_code_one_with_json_error_payload(

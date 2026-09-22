@@ -6,6 +6,15 @@ Sin acentos por convencion.
 ## [No publicado]
 
 ### Anadido
+- **Entrega B de la Decision 0015: superficie de sesiones.** Se anaden las
+  capacidades propias `session.list`, `session.show` y `session.new` por CLI,
+  REST y MCP. El listado queda acotado por `user_id` y filtra por estado; el
+  titulo se deriva del `thread_summary` mas reciente, recortado a 80 caracteres
+  en frontera de palabra, sin inventarlo cuando falta. La CLI anuncia por
+  stderr la sesion de los comandos que usan memoria, recuerda la creada con
+  `session new` y admite `IANEST_EXTENDED_SESSION_ID` con precedencia
+  `--session-id` > variable > fichero. Adicion de contrato: MINOR en la serie
+  pre-1.0.
 - **Decision 0014: la capa no inventa interlocutores.** Registrado que una
   superficie capaz de atender a mas de un interlocutor no debe suministrar
   defaults de identidad: en REST y MCP, `user_id` y `session_id` pasan a ser

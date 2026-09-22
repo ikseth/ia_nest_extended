@@ -11,6 +11,7 @@ def test_config_reads_prefixed_environment(monkeypatch):
     monkeypatch.setenv("IANEST_EXTENDED_MEMORY_MIN_SIMILARITY", "0.15")
     monkeypatch.setenv("IANEST_EXTENDED_DEDUP_THRESHOLD", "0.88")
     monkeypatch.setenv("IANEST_EXTENDED_SESSION_INACTIVITY_SECONDS", "7200")
+    monkeypatch.setenv("IANEST_EXTENDED_SESSION_ID", "parallel-thread")
     monkeypatch.setenv("IANEST_EXTENDED_PROMOTE_MIN_STABILITY", "4")
     monkeypatch.setenv("IANEST_EXTENDED_RAG_ENABLED", "false")
     monkeypatch.setenv("IANEST_EXTENDED_RAG_MIN_SCORE", "0.5")
@@ -31,6 +32,7 @@ def test_config_reads_prefixed_environment(monkeypatch):
     assert config.memory_min_similarity == 0.15
     assert config.dedup_threshold == 0.88
     assert config.session_inactivity_seconds == 7200
+    assert config.cli_session_id == "parallel-thread"
     assert config.promote_min_stability == 4
     assert config.rag_enabled is False
     assert config.rag_min_score == 0.5

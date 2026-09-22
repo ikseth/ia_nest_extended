@@ -168,6 +168,29 @@ def test_server_starts_offline_with_own_tools_and_declares_gap(tmp_path):
     assert "streaming por MCP esta fuera de alcance" in server.instructions
 
 
+def test_session_capabilities_respond_through_mcp(tmp_path):
+    config = _config(tmp_path)
+    service = ExtendedService(
+        ExtendedComposition(config, memory_store=InMemoryStore())
+    )
+    server = create_server(config, service)
+    identity = {"user_id": "mcp-user"}
+
+    created = server.tools["session.new"].fn(
+        session_id="mcp-thread",
+        identity=identity,
+    )
+    listed = server.tools["session.list"].fn(identity=identity)
+    shown = server.tools["session.show"].fn(
+        session_id="mcp-thread",
+        identity=identity,
+    )
+
+    assert created["session"]["session_id"] == "mcp-thread"
+    assert listed["sessions"][0]["session_id"] == "mcp-thread"
+    assert shown["session"] == created["session"]
+
+
 def test_offline_capability_list_reports_the_missing_downstream_catalog(
     tmp_path,
 ):

@@ -125,6 +125,18 @@ def test_overridden_capability_appears_once_with_extended_declaration(tmp_path):
     assert prompts[0]["summary"] == "ejecuta un prompt enriquecido"
 
 
+def test_session_capabilities_are_declared_as_own_on_all_three_surfaces():
+    declared = {
+        item.name: item
+        for item in LOCAL_CAPABILITIES
+        if item.name.startswith("session.")
+    }
+
+    assert set(declared) == {"session.list", "session.new", "session.show"}
+    assert all(item.provenance == "own" for item in declared.values())
+    assert all(item.cli and item.rest and item.mcp for item in declared.values())
+
+
 def test_capability_list_writes_the_catalog_cache(tmp_path):
     """Retrabajo, criterio 5: capability list deja la cache local actualizada.
 
