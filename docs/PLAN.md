@@ -513,8 +513,10 @@ modelo responde igualmente con el testigo equivocado.
 Y eso deja al descubierto un problema del CRITERIO, no del mecanismo: **L4a
 gatea sobre fidelidad del modelo, que la propia puerta declara fuera de su
 cobertura**. Una linea bloqueante no puede depender de algo que el criterio dice
-no medir. Hay que reescribirla -juzgando la composicion, como se hizo con L2- o
-dejar de bloquear con ella. Sin decidir.
+no medir. DECIDIDO el 2026-09-22 (`docs/PUERTA_LABORATORIO.md` 1.3): L4a
+bloquea por COMPOSICION. Contexto incorrecto en el momento de la pregunta
+suspende como siempre; contexto correcto con respuesta equivocada se registra
+como `INFIDELIDAD DEL MODELO`, con su tasa, y no bloquea.
 
 El fallo de L2 de la primera pasada no se repitio: era variabilidad del
 extractor, no un defecto.
