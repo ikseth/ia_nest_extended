@@ -179,10 +179,16 @@ def _declared_parameters(capability: dict[str, Any]) -> list[dict[str, Any]]:
             {
                 "name": "identity",
                 "type": "object",
-                "required": False,
+                # ADR 0014: obligatoria en las superficies de servidor. Se
+                # declara como tal para que el cliente lo vea en la firma y no
+                # lo descubra con un error en ejecucion.
+                "required": True,
                 "choices": None,
                 "default": None,
-                "summary": "contexto de identidad del request",
+                "summary": (
+                    "identidad del request; obligatoria 'user_id', y "
+                    "'session_id' salvo en las capacidades de sesion"
+                ),
             }
         )
     return parameters

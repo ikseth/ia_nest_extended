@@ -38,16 +38,20 @@ por lo que el operador no activa ningun venv ni depende del directorio actual.
 
 REST y MCP no tienen autenticacion. Sus defaults escuchan solo en loopback.
 
-Y hoy tampoco exigen identidad, que es lo que hace peligrosa su publicacion en
-red: una peticion sin `user_id` se atribuye a `local_operator` -el default de
-configuracion-, y una peticion sin `session_id` se adjudica a una sesion que el
-servicio genero una vez y guarda en un fichero, sin rotarla jamas. Dos clientes
-anonimos distintos son, para la capa, **el mismo interlocutor en el mismo
-hilo**: medido en el laboratorio el 2026-09-22, diez horas y dos conversaciones
-ajenas dentro de una misma sesion. Mientras esto siga asi, publicar mas alla de
-loopback exige que TODO cliente mande su identidad. El ADR 0014 decide dejar de
-suministrar esos defaults en las superficies de servidor; hasta que se
-implemente, es responsabilidad del despliegue.
+Lo que si hacen desde el ADR 0014 es **negarse a inventar quien llama**: una
+peticion a REST o MCP sin `identity.user_id` -o sin `identity.session_id`, salvo
+en las capacidades de sesion- se rechaza con error tipado que nombra el campo.
+El servidor tampoco recuerda sesiones: el fichero de estado es de la CLI, que es
+para quien se penso.
+
+Antes no era asi, y por eso se decidio: una peticion sin `user_id` se atribuia a
+`local_operator`, y una sin `session_id` caia en una sesion que el servicio
+genero una vez y no rotaba jamas. Dos clientes anonimos distintos eran, para la
+capa, **el mismo interlocutor en el mismo hilo**: medido en el laboratorio el
+2026-09-22, diez horas y dos conversaciones ajenas dentro de una misma sesion.
+
+Rechazar no es autenticar. La capa deja de suponer una identidad; **no verifica
+la que recibe**, y eso sigue siendo trabajo de la frontera.
 
 ## Un comando
 

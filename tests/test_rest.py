@@ -120,7 +120,12 @@ def test_own_routes_only_use_core_for_their_declared_work(tmp_path):
         app,
         "POST",
         "/memory/recall",
-        json_body={"prompt": "hola", "use_memory": False, "use_rag": False},
+        json_body={
+                "prompt": "hola",
+                "use_memory": False,
+                "use_rag": False,
+                "identity": {"user_id": "rest-user", "session_id": "rest-thread"},
+            },
     )
     status = _request(app, "GET", "/knowledge/status")
 
@@ -326,7 +331,15 @@ def test_own_error_has_extended_origin_and_type(tmp_path):
         create_app(_config(tmp_path), service),
         "POST",
         "/prompt/run",
-        json_body={"prompt": "hola", "enrich": False, "use_rag": True},
+        json_body={
+            "prompt": "hola",
+            "enrich": False,
+            "use_rag": True,
+            # ADR 0014: la identidad ya no se supone en las superficies de
+            # servidor, asi que sin ella el error seria el de identidad y no
+            # el que esta prueba quiere observar.
+            "identity": {"user_id": "rest-user", "session_id": "rest-thread"},
+        },
     )
 
     assert response.status_code == 400

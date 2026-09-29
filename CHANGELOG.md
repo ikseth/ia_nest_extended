@@ -5,6 +5,24 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+### Cambiado
+- **Entrega C del ADR 0014: REST y MCP dejan de inventar interlocutores.** Una
+  peticion sin `identity.user_id` -o sin `identity.session_id`, salvo en
+  `session.list`, `session.show` y `session.new`, donde el sujeto es el usuario
+  y exigir una sesion para poder CREARLA no tendria salida- se rechaza con error
+  tipado que nombra el campo y dice como salir del paso. El servidor deja de
+  recordar sesiones: el fichero de estado vuelve a ser solo de la CLI, que
+  conserva sus defaults. En MCP la `identity` pasa a declararse **obligatoria en
+  la firma**, para que el cliente lo vea y no lo descubra en ejecucion.
+
+  **Rompe a los clientes que hoy no mandan identidad.** Migracion: enviar
+  `identity.user_id`, y un `identity.session_id` propio -creado con
+  `session.new`, de la entrega B- en todo lo demas. Cambio incompatible de
+  contrato en serie pre-1.0: MINOR.
+
+  Rechazar no es autenticar: la capa deja de suponer una identidad, no verifica
+  la que recibe.
+
 ### Anadido
 - **Entrega B de la Decision 0015: superficie de sesiones.** Se anaden las
   capacidades propias `session.list`, `session.show` y `session.new` por CLI,
