@@ -12,6 +12,12 @@ Sin acentos por convencion.
   como parte de la tarea. Se registra con su brief
   (`docs/handoff/eco_task_run_brief.md`), reconciliado el 2026-09-29. Impacto de
   version: ninguno todavia.
+- Deuda de diseno **D9, el troceado resta relevancia y la reingesta no poda**:
+  el solape de cada fragmento arranca a mitad de palabra y de tema (medido,
+  hasta 0.127 de similitud perdida), y reingerir un corpus nunca borra los
+  fragmentos que ya no existen. Se registra con su brief
+  (`docs/handoff/troceado_y_poda_brief.md`), reconciliado el 2026-09-29.
+  Impacto de version: ninguno todavia.
 
 ## [0.4.0] - 2026-09-29
 
