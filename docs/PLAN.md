@@ -772,6 +772,32 @@ Un solo reloj, el del hilo, con el valor de hoy sin tocar. Pendiente de implemen
 ADR 0014**: exigir `session_id` a los clientes solo tiene sentido cuando hay
 donde consultarlo y crearlo.
 
+### D8. `task.run` enriquecido re-responde el historial
+
+Descubierta el 2026-09-29 en seis hilos reales del operador por `task.run`: en
+cinco, la respuesta de un turno empieza repitiendo las de turnos anteriores -a
+veces tambien la pregunta, literal- y se corta a media palabra.
+
+El mecanismo esta en como la Fase 7b compone la llamada, no en el modelo:
+
+- el plan se pide con la pregunta SOLA, asi que el planificador no sabe de que
+  va el hilo y "continua" o "el plato del jueves" se planifican a ciegas;
+- el contexto de memoria entero se antepone a la pregunta y eso es el
+  `objective` del core, que el combinador recibe como `Task:`. Ve respuestas
+  anteriores dentro de la tarea y las vuelve a producir; con el presupuesto de
+  salida del perfil, se corta.
+
+Reproducido con las mismas preguntas en dos sesiones limpias: por `task.run`,
+eco en los turnos 2 y 3 y corte en el 3; por `prompt.run`, que compone el
+contexto para un solo modelo, respuestas limpias y en contexto.
+
+La memoria de un hilo sirve para ENTENDER la pregunta, no es parte de la tarea.
+Diseno propuesto, pendiente de reconciliar: reescribir la pregunta como peticion
+autonoma a partir del hilo antes de planificar, y que planificador, RAG,
+subtareas y combinador trabajen sobre ella. Es efimera: `dialog` sigue guardando
+las palabras literales del interlocutor. Brief:
+`docs/handoff/eco_task_run_brief.md`.
+
 ### D3. La identidad como fuente conmutable
 
 Las fuentes de enriquecimiento son declaradas por la capa y desactivables por
