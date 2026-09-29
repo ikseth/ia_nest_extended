@@ -40,7 +40,7 @@ pregunta como peticion autonoma** a partir de ese contexto antes de planificar,
 y que todo lo que va al core -plan, subtareas, combinacion- use esa peticion y
 **nunca el contexto de memoria crudo**.
 
-## Decisiones de diseno (a reconciliar antes de implementar)
+## Decisiones de diseno (reconciliadas el 2026-09-29; no las reabras)
 
 ### 1. La reescritura: entrada, salida y cuando ocurre
 
@@ -76,7 +76,7 @@ la peticion autonoma.
 ### 4. Si la reescritura falla, se degrada hacia la pregunta, no hacia el eco
 
 Error de la llamada, respuesta vacia, o respuesta mas larga que un limite
-acotado (propuesta: 4 veces la pregunta mas 400 caracteres): se usa la pregunta
+acotado (4 veces la longitud de la pregunta mas 400 caracteres): se usa la pregunta
 literal SIN contexto y se registra la degradacion en la traza. Nunca se vuelve a
 anteponer el contexto crudo. El turno sigue adelante.
 

@@ -10,7 +10,7 @@ Sin acentos por convencion.
   medido en seis hilos reales del operador y reproducido frente a `prompt.run`.
   El plan se pide sin el hilo y el contexto de memoria crudo llega al combinador
   como parte de la tarea. Se registra con su brief
-  (`docs/handoff/eco_task_run_brief.md`), pendiente de reconciliar. Impacto de
+  (`docs/handoff/eco_task_run_brief.md`), reconciliado el 2026-09-29. Impacto de
   version: ninguno todavia.
 
 ## [0.4.0] - 2026-09-29
