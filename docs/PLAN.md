@@ -792,11 +792,13 @@ eco en los turnos 2 y 3 y corte en el 3; por `prompt.run`, que compone el
 contexto para un solo modelo, respuestas limpias y en contexto.
 
 La memoria de un hilo sirve para ENTENDER la pregunta, no es parte de la tarea.
-Diseno propuesto, pendiente de reconciliar: reescribir la pregunta como peticion
+Diseno RECONCILIADO el 2026-09-29: reescribir la pregunta como peticion
 autonoma a partir del hilo antes de planificar, y que planificador, RAG,
 subtareas y combinador trabajen sobre ella. Es efimera: `dialog` sigue guardando
-las palabras literales del interlocutor. Brief:
-`docs/handoff/eco_task_run_brief.md`.
+las palabras literales del interlocutor. Sin clave de activacion, por ser la
+correccion de un defecto; una reescritura mas larga que 4 veces la pregunta mas
+400 caracteres se descarta; y sin enmienda de ADR, porque corrige la Fase 7b sin
+cambiar ninguna decision. Brief: `docs/handoff/eco_task_run_brief.md`.
 
 ### D3. La identidad como fuente conmutable
 
