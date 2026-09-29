@@ -3,7 +3,7 @@
 Formato basado en Keep a Changelog; SemVer (ver core `docs/VERSIONADO.md`).
 Sin acentos por convencion.
 
-## [No publicado]
+## [0.4.0] - 2026-09-29
 
 ### Cambiado
 - **Entrega C del ADR 0014: REST y MCP dejan de inventar interlocutores.** Una
@@ -89,7 +89,7 @@ Sin acentos por convencion.
   la correccion del interlocutor, escapa a la anotacion. Causa reproducible de
   los fallos de L3.
 
-## [No publicado]
+## [0.4.0] - 2026-09-29
 
 ### Cambiado
 - **L4a de la puerta desambigua: bloquea por composicion, no por obediencia del
@@ -108,7 +108,7 @@ Sin acentos por convencion.
   (`docs/PUERTA_LABORATORIO.md` 1.3). Impacto de version: ninguno; la puerta es
   instrumental y no es contrato publico.
 
-## [No publicado]
+## [0.4.0] - 2026-09-29
 
 ### Cambiado
 - **`episodic` no era memoria: era el residuo de un hilo.** Enmienda al ADR 0002.
