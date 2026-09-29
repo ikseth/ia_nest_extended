@@ -800,6 +800,26 @@ correccion de un defecto; una reescritura mas larga que 4 veces la pregunta mas
 400 caracteres se descarta; y sin enmienda de ADR, porque corrige la Fase 7b sin
 cambiar ninguna decision. Brief: `docs/handoff/eco_task_run_brief.md`.
 
+### D9. El troceado resta relevancia y la reingesta no poda
+
+Descubierta el 2026-09-28 al ampliar el corpus del laboratorio (19 -> 34 corpus,
+57 -> 288 chunks). Dos defectos del sustrato RAG, independientes del umbral:
+
+- **El solape empieza a mitad de palabra y de tema.** `chunk_text` retrocede un
+  15 por ciento sin buscar frontera, asi que cada fragmento arranca con la cola
+  cortada del anterior y su embedding mezcla dos asuntos. Medido con el
+  embebedor en diez casos: el parrafo solo puntua hasta 0.127 mas que su
+  fragmento, 0.03 de media; en un caso eso basta para que el parrafo que
+  responde no se recupere.
+- **Reingerir nunca borra.** La ingesta hace upsert por fichero y ordinal: si un
+  corpus encoge, o un fichero se renombra o se retira, sus fragmentos viejos se
+  siguen recuperando para siempre.
+
+Van juntos y en ese orden de dependencia: corregir el troceado mueve las
+fronteras, y sin poda la reingesta dejaria los fragmentos viejos junto a los
+nuevos. RECONCILIADO el 2026-09-29. Brief:
+`docs/handoff/troceado_y_poda_brief.md`.
+
 ### D3. La identidad como fuente conmutable
 
 Las fuentes de enriquecimiento son declaradas por la capa y desactivables por
