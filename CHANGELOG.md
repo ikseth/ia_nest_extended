@@ -23,6 +23,50 @@ Sin acentos por convencion.
   Rechazar no es autenticar: la capa deja de suponer una identidad, no verifica
   la que recibe.
 
+- **Entrega A de la Decision 0015: la sesion pasa a existir como entidad.** La
+  migracion `0006_sessions.sql` declara su clave `user_id` + `session_id`, sus
+  tiempos y sus estados explicitos, y backfillea los engramas existentes. Cada
+  turno da latido al hilo; `maintain` archiva por inactividad de la sesion y se
+  lleva juntos sus `dialog` y `thread_summary`, sin cerrar nada. La CLI sustituye
+  una sesion recordada ya archivada o cerrada e informa en una linea. La clave
+  `IANEST_EXTENDED_DIALOG_HOT_WINDOW` se retira sin alias y pasa a
+  `IANEST_EXTENDED_SESSION_INACTIVITY_SECONDS`, conservando el default de 14400
+  segundos. No se anaden capacidades ni subcomandos. Cambio incompatible del
+  esquema publico de configuracion en serie pre-1.0: MINOR.
+
+- **L4a de la puerta desambigua: bloquea por composicion, no por obediencia del
+  modelo.** Hasta `v0.3.2` bastaba con mirar la respuesta, porque siempre que
+  salia mal el contexto tambien estaba mal. Corregida la composicion, las dos
+  causas se separan: medido el 2026-09-22, hay repeticiones con el contexto
+  exactamente como se pide -version del usuario primero y etiquetada, la del
+  modelo anotada- en las que el modelo responde igualmente la equivocada. Eso es
+  fidelidad de transcripcion, que la propia puerta declara fuera de cobertura, y
+  hacia suspender a una linea bloqueante por algo que la capa no gobierna. Ahora
+  se comprueba el contexto **en el momento de la pregunta** -no el del principio
+  del sondeo, porque entre medias la sintesis puede haber disparado-: contexto
+  incorrecto suspende igual que siempre; contexto correcto se registra como
+  `INFIDELIDAD DEL MODELO`, con su tasa impresa, y no bloquea. El oraculo del
+  contexto se comparte con L3 para que no puedan divergir. Criterio reconciliado
+  (`docs/PUERTA_LABORATORIO.md` 1.3). Impacto de version: ninguno; la puerta es
+  instrumental y no es contrato publico.
+
+- **`episodic` no era memoria: era el residuo de un hilo.** Enmienda al ADR 0002.
+  Se decide que pasa a ser `thread_artifacts`, de **ambito sesion** en vez de
+  usuario, conservando entera la maquinaria de procedencia y contradiccion del
+  ADR 0013; que `semantic` y la consolidacion de la Fase 4 pasan a conscience; y
+  que **nada de lo que extended escriba sobrevive a su hilo**, porque curar -que
+  se recuerda y que no- es juicio. Un hilo archivado entrega al guardian los
+  turnos crudos, los artefactos con su procedencia, el resumen y magnitudes
+  contables; extended puede contar, nunca valorar. Motivo medido el 2026-09-22:
+  la recomendacion que dio el propio modelo el dia anterior encabezaba el
+  contexto de una conversacion nueva, el modelo la transcribia, y al transcribir
+  metia las palabras del interlocutor en su respuesta, con lo que la procedencia
+  caia a `unknown` y **ninguna de las cuatro puntuaciones de ese dia se
+  guardaba**; con un usuario limpio, mismo codigo y misma hora, 5 de 5. Se revoca
+  a sabiendas la opcion A del 2026-08-13 en lo que tenia de "extended sirve
+  SOLA". **Solo la decision**; la implementacion va aparte. Impacto de version:
+  ninguno todavia.
+
 ### Anadido
 - **Entrega B de la Decision 0015: superficie de sesiones.** Se anaden las
   capacidades propias `session.list`, `session.show` y `session.new` por CLI,
@@ -58,25 +102,12 @@ Sin acentos por convencion.
   archiva por reloj a las 4 h sin mirar si su sesion sigue viva, mientras una
   sesion anonima no termina nunca. Se registra sin decidir quien cierra un hilo.
   Impacto de version: ninguno.
-
 - **La medida de la Fase 9 sobre `v0.3.2`**, dos pasadas de n=9 en despliegue
   natural: L4b 18/18, L4a 16/18, L2 17/18, L3 15/18. La correccion de la
   sustitucion hace lo que se diseno -en los fallos de L4a el contexto compuesto
   es correcto-, pero la puerta sigue sin pasar. Se registra ademas que **L4a
   gatea hoy sobre fidelidad del modelo**, que la propia puerta declara fuera de
   cobertura, con una via propuesta y sin decidir. Impacto de version: ninguno.
-
-### Cambiado
-- **Entrega A de la Decision 0015: la sesion pasa a existir como entidad.** La
-  migracion `0006_sessions.sql` declara su clave `user_id` + `session_id`, sus
-  tiempos y sus estados explicitos, y backfillea los engramas existentes. Cada
-  turno da latido al hilo; `maintain` archiva por inactividad de la sesion y se
-  lleva juntos sus `dialog` y `thread_summary`, sin cerrar nada. La CLI sustituye
-  una sesion recordada ya archivada o cerrada e informa en una linea. La clave
-  `IANEST_EXTENDED_DIALOG_HOT_WINDOW` se retira sin alias y pasa a
-  `IANEST_EXTENDED_SESSION_INACTIVITY_SECONDS`, conservando el default de 14400
-  segundos. No se anaden capacidades ni subcomandos. Cambio incompatible del
-  esquema publico de configuracion en serie pre-1.0: MINOR.
 
 ### Corregido
 - `docs/DESPLIEGUE.md` decia que REST y MCP no autentican, pero no que tampoco
@@ -88,47 +119,6 @@ Sin acentos por convencion.
   atras**: la reafirmacion del modelo escrita en el mismo write-back, despues de
   la correccion del interlocutor, escapa a la anotacion. Causa reproducible de
   los fallos de L3.
-
-## [0.4.0] - 2026-09-29
-
-### Cambiado
-- **L4a de la puerta desambigua: bloquea por composicion, no por obediencia del
-  modelo.** Hasta `v0.3.2` bastaba con mirar la respuesta, porque siempre que
-  salia mal el contexto tambien estaba mal. Corregida la composicion, las dos
-  causas se separan: medido el 2026-09-22, hay repeticiones con el contexto
-  exactamente como se pide -version del usuario primero y etiquetada, la del
-  modelo anotada- en las que el modelo responde igualmente la equivocada. Eso es
-  fidelidad de transcripcion, que la propia puerta declara fuera de cobertura, y
-  hacia suspender a una linea bloqueante por algo que la capa no gobierna. Ahora
-  se comprueba el contexto **en el momento de la pregunta** -no el del principio
-  del sondeo, porque entre medias la sintesis puede haber disparado-: contexto
-  incorrecto suspende igual que siempre; contexto correcto se registra como
-  `INFIDELIDAD DEL MODELO`, con su tasa impresa, y no bloquea. El oraculo del
-  contexto se comparte con L3 para que no puedan divergir. Criterio reconciliado
-  (`docs/PUERTA_LABORATORIO.md` 1.3). Impacto de version: ninguno; la puerta es
-  instrumental y no es contrato publico.
-
-## [0.4.0] - 2026-09-29
-
-### Cambiado
-- **`episodic` no era memoria: era el residuo de un hilo.** Enmienda al ADR 0002.
-  Se decide que pasa a ser `thread_artifacts`, de **ambito sesion** en vez de
-  usuario, conservando entera la maquinaria de procedencia y contradiccion del
-  ADR 0013; que `semantic` y la consolidacion de la Fase 4 pasan a conscience; y
-  que **nada de lo que extended escriba sobrevive a su hilo**, porque curar -que
-  se recuerda y que no- es juicio. Un hilo archivado entrega al guardian los
-  turnos crudos, los artefactos con su procedencia, el resumen y magnitudes
-  contables; extended puede contar, nunca valorar. Motivo medido el 2026-09-22:
-  la recomendacion que dio el propio modelo el dia anterior encabezaba el
-  contexto de una conversacion nueva, el modelo la transcribia, y al transcribir
-  metia las palabras del interlocutor en su respuesta, con lo que la procedencia
-  caia a `unknown` y **ninguna de las cuatro puntuaciones de ese dia se
-  guardaba**; con un usuario limpio, mismo codigo y misma hora, 5 de 5. Se revoca
-  a sabiendas la opcion A del 2026-08-13 en lo que tenia de "extended sirve
-  SOLA". **Solo la decision**; la implementacion va aparte. Impacto de version:
-  ninguno todavia.
-
-### Corregido
 - Deuda **D6, el fragmento que pierde su referente**, cerrada por cambio de
   encuadre: no era un recuerdo mal escrito, era un fragmento de hilo guardado
   como memoria de una persona.
