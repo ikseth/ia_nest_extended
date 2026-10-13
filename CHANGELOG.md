@@ -5,6 +5,18 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+## [0.5.1] - 2026-10-13
+
+### Corregido
+- **D9: el troceado respeta los parrafos.** Los parrafos que caben en la
+  ventana se empaquetan enteros, en orden y sin solape; solo un parrafo mayor
+  que la ventana conserva el troceado y el solape de `v0.5.0`, aislado de sus
+  vecinos. Tras actualizar hay que **reingerir cada corpus completo** para
+  aplicar las nuevas fronteras. Motivo, medido sobre `v0.5.0` en el
+  laboratorio: con ventana fija un fragmento mezclaba el final de un tema con
+  el principio de otro, y la bateria de sondas del corpus se quedaba en 73/74.
+  Correccion de comportamiento sin cambio de contrato: PATCH.
+
 ## [0.5.0] - 2026-10-13
 
 Codigo del hito v0.5.0 (`docs/PLAN.md`): las tres deudas que el laboratorio

@@ -62,31 +62,60 @@ def test_chunk_text_never_splits_normal_words_and_covers_input(text):
     )
 
 
-def test_chunk_text_aligns_overlap_to_natural_boundaries():
-    text = "\n\n".join(
+def test_chunk_text_keeps_paragraphs_whole_without_overlap():
+    paragraphs = tuple(
         f"Parrafo {index}. Primera idea numero {index}. Segunda idea numero {index}."
         for index in range(8)
     )
+    text = "\n\n".join(paragraphs)
 
     chunks = chunk_text(text, chunk_tokens=20, overlap=0.5)
 
-    assert len(chunks) > 1
-    assert all(
-        chunk.startswith(("Parrafo ", "Primera idea ", "Segunda idea "))
-        for chunk in chunks[1:]
-    )
+    assert chunks == paragraphs
 
 
-def test_chunk_text_prefers_paragraph_boundary_inside_overlap():
-    text = (
-        "Inicio uno. Frase dos.\n\n"
-        "Parrafo preferido contiene muchas palabras para continuar con mas "
-        "texto hasta terminar."
+def test_chunk_text_greedily_packs_complete_paragraphs():
+    paragraphs = (
+        "Primer parrafo completo.",
+        "Segundo parrafo tambien completo.",
+        "Tercer parrafo queda para despues.",
+        "Cuarto parrafo.",
     )
+    text = "\n\n".join(paragraphs)
 
     chunks = chunk_text(text, chunk_tokens=20, overlap=0.8)
 
-    assert chunks[1].startswith("Parrafo preferido")
+    assert chunks == (
+        f"{paragraphs[0]}\n\n{paragraphs[1]}",
+        f"{paragraphs[2]}\n\n{paragraphs[3]}",
+    )
+
+
+def test_chunk_text_isolates_oversized_paragraph_from_neighbors():
+    before = "Parrafo anterior corto."
+    giant = " ".join(f"termino{index}" for index in range(30))
+    after = "Parrafo siguiente corto."
+    giant_chunks = chunk_text(giant, chunk_tokens=10, overlap=0.3)
+
+    chunks = chunk_text(
+        f"{before}\n\n{giant}\n\n{after}",
+        chunk_tokens=10,
+        overlap=0.3,
+    )
+
+    assert chunks == (before, *giant_chunks, after)
+
+
+def test_chunk_text_without_blank_lines_matches_v050_output():
+    text = "Linea inicial con palabras. Sigue en la misma linea y termina aqui."
+
+    chunks = chunk_text(text, chunk_tokens=10, overlap=0.3)
+
+    assert chunks == (
+        "Linea inicial con palabras. Sigue",
+        "Sigue en la misma linea y termina",
+        "y termina aqui.",
+    )
 
 
 def test_chunk_text_without_overlap_boundary_continues_at_previous_end():

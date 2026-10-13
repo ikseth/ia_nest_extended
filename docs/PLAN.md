@@ -882,6 +882,13 @@ fronteras, y sin poda la reingesta dejaria los fragmentos viejos junto a los
 nuevos. RECONCILIADO el 2026-09-29. Brief:
 `docs/handoff/troceado_y_poda_brief.md`.
 
+Medido sobre `v0.5.0` el 2026-10-13: la poda funciona y ya no se parten
+palabras, pero la bateria de sondas sigue en 73/74. Con ventana de tamano fijo
+un fragmento es "cola de un tema mas cabeza de otro" con cualquier regla de
+solape, y retocar el solape solo cambia que sonda falla. Cierre en `v0.5.1`: un
+fragmento son parrafos enteros, y solo se parte el parrafo que no cabe. Brief:
+`docs/handoff/troceado_por_parrafos_brief.md`.
+
 ### D10. Un fallo de telemetria tumba la peticion
 
 Descubierta el 2026-09-30, y repetida despues. La telemetria es un fichero por
