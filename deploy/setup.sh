@@ -722,6 +722,7 @@ provision_store
 prepare_venv
 migrate_schema
 ingest_corpus
+chown -R "${VALUES[OPERATOR_USER]}" "$STATE_DIR"
 install_commands
 install_services
 verify_runtime

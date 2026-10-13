@@ -504,6 +504,58 @@ def test_setup_waits_for_ports_and_units_have_restart_and_network_ordering():
     assert "systemctl enable \"$rest_unit\" \"$mcp_unit\"" in source
 
 
+def test_setup_restores_state_owner_after_cli_and_before_service_start(tmp_path):
+    config, env, install_root, _, log_path = _deployment(tmp_path)
+    config.write_text(
+        config.read_text(encoding="ascii")
+        .replace("SERVICE_INSTALL=false", "SERVICE_INSTALL=true")
+        .replace("SERVICE_ENABLE=false", "SERVICE_ENABLE=true"),
+        encoding="ascii",
+    )
+    fake_path = Path(env["PATH"].split(":", 1)[0])
+    _write_executable(
+        fake_path / "chown",
+        "#!/usr/bin/env bash\n"
+        "printf 'chown:%s\\n' \"$*\" >> \"$FAKE_CALL_LOG\"\n",
+    )
+    _write_executable(
+        fake_path / "systemctl",
+        "#!/usr/bin/env bash\n"
+        "printf 'systemctl:%s\\n' \"$*\" >> \"$FAKE_CALL_LOG\"\n",
+    )
+
+    result = subprocess.run(
+        [str(SETUP), "--config", str(config)],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    calls = log_path.read_text(encoding="ascii").splitlines()
+    operator_user = next(
+        line.split("=", 1)[1]
+        for line in config.read_text(encoding="ascii").splitlines()
+        if line.startswith("OPERATOR_USER=")
+    )
+    last_cli = max(
+        index for index, call in enumerate(calls) if "knowledge " in call
+    )
+    restored = max(
+        index
+        for index, call in enumerate(calls)
+        if call
+        == f"chown:-R {operator_user} "
+        f"{install_root}/state/extended/test"
+    )
+    service_start = next(
+        index
+        for index, call in enumerate(calls)
+        if call.startswith("systemctl:restart ")
+    )
+    assert last_cli < restored < service_start
+
+
 def test_provisioned_store_restarts_unless_explicitly_stopped():
     compose = (ROOT / "deploy" / "postgres.compose.yaml").read_text(
         encoding="ascii"
