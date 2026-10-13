@@ -128,9 +128,11 @@ CORPUS_DOMAINS=linux,codigo
 ```
 
 El instalador ejecuta `knowledge ingest` con cada dominio declarado y despues
-`knowledge confirm` para cada vinculo. La operacion es idempotente por corpus,
-referencia de fuente y ordinal de chunk. `knowledge status` permite comprobar
-los vinculos confirmados.
+`knowledge confirm` para cada vinculo. Cada ingesta declara el contenido
+completo del corpus: hace upsert por referencia de fuente y ordinal y poda, en
+la misma transaccion, lo que ya no aparece. Por eso el instalador reingiere la
+ruta completa y una segunda ejecucion deja el mismo estado. `knowledge status`
+permite comprobar los vinculos confirmados.
 
 Para declarar N corpus se usa `CORPUS_MANIFEST`, excluyente con
 `CORPUS_PATH`, `CORPUS_NAME` y `CORPUS_DOMAINS`. Declarar el manifiesto junto a
@@ -156,7 +158,8 @@ Los corpus se procesan en el orden declarado. Cada uno se ingiere con todos sus
 dominios y despues se confirma cada vinculo. Si una ingesta o confirmacion falla,
 el instalador aborta nombrando el corpus y conserva la causa del comando. No es
 una transaccion: lo ya ingerido permanece. Repetir el setup despues de corregir
-el fallo no duplica chunks ni vinculos por la idempotencia indicada arriba.
+el fallo no duplica chunks ni vinculos, y cada corpus reingerido queda igual a
+su ruta declarada.
 
 ## Comandos y servicios
 

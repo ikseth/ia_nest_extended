@@ -198,6 +198,25 @@ class PostgresRagStore:
                         chunk.ordinal,
                     ),
                 )
+            incoming_source_refs = [chunk.source_ref for chunk in chunks]
+            incoming_ordinals = [chunk.ordinal for chunk in chunks]
+            deleted = connection.execute(
+                """
+                DELETE FROM rag_chunks AS stored
+                WHERE stored.corpus_id = %s
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM unnest(
+                          %s::text[],
+                          %s::integer[]
+                      ) AS incoming(source_ref, ordinal)
+                      WHERE incoming.source_ref = stored.source_ref
+                        AND incoming.ordinal = stored.ordinal
+                  )
+                RETURNING stored.id
+                """,
+                (corpus_id, incoming_source_refs, incoming_ordinals),
+            ).fetchall()
         updated = sum(
             (chunk.source_ref, chunk.ordinal) in existing for chunk in chunks
         )
@@ -207,6 +226,7 @@ class PostgresRagStore:
             domains=normalized_domains,
             inserted=len(chunks) - updated,
             updated=updated,
+            deleted=len(deleted),
         )
 
     def retrieve(

@@ -24,8 +24,8 @@ def test_phase5b_multi_domain_ingest_is_idempotent(postgres_rag_store):
         chunks=chunks,
     )
 
-    assert (first.inserted, first.updated) == (1, 0)
-    assert (second.inserted, second.updated) == (0, 1)
+    assert (first.inserted, first.updated, first.deleted) == (1, 0, 0)
+    assert (second.inserted, second.updated, second.deleted) == (0, 1, 0)
     with postgres_rag_store._connect() as connection:
         links = connection.execute(
             """

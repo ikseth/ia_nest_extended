@@ -1627,6 +1627,7 @@ class ExtendedService:
             "domains": list(result.domains),
             "chunks_new": result.inserted,
             "chunks_updated": result.updated,
+            "chunks_deleted": result.deleted,
         }
 
     def knowledge_status(self) -> dict[str, Any]:

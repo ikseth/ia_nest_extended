@@ -195,7 +195,7 @@ class RagStore(Protocol):
         chunks: Sequence[RagChunkWrite],
         description: str = "",
     ) -> RagIngestResult:
-        """Crea corpus, vinculos manuales y hace upsert de chunks."""
+        """Sustituye el contenido del corpus en una sola transaccion."""
 
     def retrieve(
         self,

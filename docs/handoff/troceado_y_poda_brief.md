@@ -46,8 +46,12 @@ exactamente los fragmentos del texto ingerido, ni uno mas.
 ### 1. Fronteras del troceado
 
 - El FINAL de un fragmento se decide como hoy: el ultimo salto de linea en la
-  segunda mitad de la ventana; si no hay, el ultimo espacio; si tampoco, el
-  corte duro.
+  segunda mitad de la ventana; si no hay, el ultimo espacio de esa mitad. Si
+  tampoco (aclarado el 2026-10-13, a pregunta del codificador): se busca hacia
+  atras en la PRIMERA mitad, ultimo salto de linea y si no ultimo espacio, y el
+  fragmento sale corto. El corte duro queda solo para cuando no hay ninguna
+  frontera en toda la ventana. Prevalece la palabra entera sobre el tamano del
+  fragmento; un fragmento nunca es vacio y el troceado siempre avanza.
 - El INICIO del siguiente fragmento sale, como hoy, de retroceder
   `overlap_chars` desde ese final, y a partir de ahi **avanza hasta la primera
   frontera**, en este orden de preferencia, dentro del tramo de solape: inicio de

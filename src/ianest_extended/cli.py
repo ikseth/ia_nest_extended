@@ -1118,7 +1118,8 @@ def _knowledge_ingest(service, config, args) -> int:
         f"corpus={payload['corpus_name']} "
         f"domains={','.join(payload['domains']) or '(global)'} "
         f"chunks_new={payload['chunks_new']} "
-        f"chunks_updated={payload['chunks_updated']}"
+        f"chunks_updated={payload['chunks_updated']} "
+        f"chunks_deleted={payload['chunks_deleted']}"
     )
     return _emit(payload, args.json, text=text)
 

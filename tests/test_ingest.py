@@ -19,15 +19,108 @@ class DomainCatalog:
         return ("general", "linux", "codigo")
 
 
-def test_chunk_text_uses_overlap_without_empty_chunks():
-    chunks = chunk_text(
-        "uno dos tres cuatro cinco seis siete ocho nueve diez " * 10,
-        chunk_tokens=20,
-        overlap=0.15,
-    )
+def _chunk_spans(text, chunks):
+    content = text.strip()
+    spans = []
+    search_from = 0
+    for chunk in chunks:
+        position = content.find(chunk, search_from)
+        if position < 0:
+            position = content.find(chunk)
+        assert position >= 0
+        spans.append((position, position + len(chunk)))
+        search_from = position + 1
+    return content, spans
+
+
+@pytest.mark.parametrize(
+    "text",
+    (
+        "\n\n".join(
+            f"Parrafo {index}. Primera idea {index}. Segunda idea {index}."
+            for index in range(12)
+        ),
+        " ".join(f"palabra{index:02d}" for index in range(50)),
+    ),
+)
+def test_chunk_text_never_splits_normal_words_and_covers_input(text):
+    chunks = chunk_text(text, chunk_tokens=20, overlap=0.5)
+    content, spans = _chunk_spans(text, chunks)
+    covered = [False] * len(content)
 
     assert len(chunks) > 1
-    assert all(chunk.strip() for chunk in chunks)
+    assert all(chunks)
+    assert all(len(chunk) <= 70 for chunk in chunks)
+    for start, end in spans:
+        assert start == 0 or content[start - 1].isspace()
+        assert end == len(content) or content[end].isspace()
+        covered[start:end] = [True] * (end - start)
+    assert all(
+        is_covered
+        for char, is_covered in zip(content, covered)
+        if not char.isspace()
+    )
+
+
+def test_chunk_text_aligns_overlap_to_natural_boundaries():
+    text = "\n\n".join(
+        f"Parrafo {index}. Primera idea numero {index}. Segunda idea numero {index}."
+        for index in range(8)
+    )
+
+    chunks = chunk_text(text, chunk_tokens=20, overlap=0.5)
+
+    assert len(chunks) > 1
+    assert all(
+        chunk.startswith(("Parrafo ", "Primera idea ", "Segunda idea "))
+        for chunk in chunks[1:]
+    )
+
+
+def test_chunk_text_prefers_paragraph_boundary_inside_overlap():
+    text = (
+        "Inicio uno. Frase dos.\n\n"
+        "Parrafo preferido contiene muchas palabras para continuar con mas "
+        "texto hasta terminar."
+    )
+
+    chunks = chunk_text(text, chunk_tokens=20, overlap=0.8)
+
+    assert chunks[1].startswith("Parrafo preferido")
+
+
+def test_chunk_text_without_overlap_boundary_continues_at_previous_end():
+    giant = "x" * 65
+    chunks = chunk_text(
+        f"prefijo {giant} final",
+        chunk_tokens=20,
+        overlap=0.5,
+    )
+
+    assert chunks == ("prefijo", giant, "final")
+
+
+def test_chunk_text_splits_only_a_word_larger_than_the_window_and_terminates():
+    chunks = chunk_text("x" * 180, chunk_tokens=20, overlap=0.9)
+
+    assert chunks == ("x" * 70, "x" * 70, "x" * 40)
+
+
+def test_chunk_text_does_not_split_a_word_equal_to_the_window():
+    word = "x" * 70
+
+    chunks = chunk_text(f"prefijo {word} final", chunk_tokens=20, overlap=0.5)
+
+    assert chunks == ("prefijo", word, "final")
+
+
+def test_chunk_text_is_deterministic():
+    text = " ".join(f"termino{index}" for index in range(40))
+
+    first = chunk_text(text, chunk_tokens=20, overlap=0.15)
+    second = chunk_text(text, chunk_tokens=20, overlap=0.15)
+
+    assert second == first
 
 
 def test_ingest_directory_uses_stable_relative_source_refs(

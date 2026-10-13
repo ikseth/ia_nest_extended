@@ -239,6 +239,11 @@ quien dijo un contenido.
 | `knowledge.retrieve` | recuperacion RAG suelta, sin inferencia | prevista |
 | `knowledge.corpus.list` | corpus y sus vinculos, para presentacion | prevista |
 
+`knowledge.ingest` recibe el contenido completo de un corpus y lo sustituye de
+forma atomica: los fragmentos ausentes del lote se podan solo de ese corpus. Su
+respuesta publica `corpus_name`, `domains`, `chunks_new`, `chunks_updated` y
+`chunks_deleted`; la CLI presenta los tres contadores con esos mismos nombres.
+
 Las dos previstas existen para el consumo de `ia_nest_web`; no se implementan
 hasta que ese consumidor las ejerza (core ADR 0035: una costura sin consumidor
 real se pudre).

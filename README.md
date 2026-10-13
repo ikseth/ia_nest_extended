@@ -178,7 +178,10 @@ incorrecto, que imprime la ayuda del grupo.
 `knowledge ingest` acepta un fichero o un directorio curado de `.txt`/`.md`.
 `--domain` se puede repetir y cada valor se valida contra `domain.list`; si se
 omite, el corpus queda sin vinculos y solo participa en recuperacion global. La
-ingesta es idempotente por corpus, vinculo de dominio, `source_ref` y ordinal.
+ingesta sustituye el contenido completo del corpus: actualiza por `source_ref` y
+ordinal y poda los fragmentos que no estan en el lote. Para ampliarlo hay que
+reingerir su ruta completa, no solo el fichero nuevo. La salida declara
+`chunks_new`, `chunks_updated` y `chunks_deleted`.
 `prompt run` recupera solo corpus con vinculo confirmado al dominio explicito;
 con `--auto-domain` (o `AUTO_DOMAIN=true`) pide antes `domain.route` al core
 cuando el caller no declara dominio. Cada consulta RAG emite `rag.retrieve` y su
