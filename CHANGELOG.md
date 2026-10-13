@@ -18,6 +18,10 @@ Sin acentos por convencion.
   fragmentos que ya no existen. Se registra con su brief
   (`docs/handoff/troceado_y_poda_brief.md`), reconciliado el 2026-09-29.
   Impacto de version: ninguno todavia.
+- **Hito v0.5.0**, reconciliado el 2026-10-13: alcance cerrado con cinco
+  criterios de salida (D8, D9, D10, RAG fase A y puerta), y la sintesis de hilo
+  fuera y apagada mientras dure. Se registra la deuda **D10, un fallo de
+  telemetria tumba la peticion**. Impacto de version: ninguno todavia.
 
 ## [0.4.0] - 2026-09-29
 
