@@ -51,6 +51,15 @@ Fuera del hito, a sabiendas:
   incremental y el reranker. Son el hito siguiente, y la fase A es lo que dira
   cuales hacen falta.
 - `episodic` como artefacto de sesion (enmienda al ADR 0002), ya decidido.
+- **La CLI como cliente del servicio.** Hoy la CLI construye la capa en su
+  propio proceso (Fase 7a): comparte codigo con REST y MCP, pero no proceso, ni
+  usuario, ni el codigo que el servicio tiene cargado. De ahi sale D10, y de ahi
+  que una medida hecha por CLI no pruebe lo desplegado. Direccion decidida el
+  2026-10-13: conversar y consultar se sirve desde un unico proceso, el
+  servicio; solo la administracion (migrar, ingerir) corre en local. Es la
+  primera pieza del hito siguiente. Ninguna pieza de este hito se rehace por
+  ello: D8 y D9 viven bajo las pieles, D10 hace falta en las dos arquitecturas,
+  y la fase A y la ingesta son administracion.
 
 Regla del hito: lo que se descubra por el camino y no bloquee uno de los cinco
 criterios se anota como aparcado y NO se trabaja.
@@ -871,10 +880,12 @@ distinto del de servicio, el servicio ya no puede anadir, y como el fallo de
 escritura se propaga, **toda peticion a REST y MCP falla con error interno**
 hasta el dia siguiente.
 
-Son dos defectos: la telemetria es observacion y un fallo al escribirla no debe
-fallar la peticion; y el despliegue deja un directorio de estado compartido por
-dos usuarios sin garantizar que ambos puedan escribir. Pendiente de brief;
-entra en el hito v0.5.0.
+La causa de fondo es que la CLI y el servicio son dos procesos que escriben el
+mismo estado local (ver "La CLI como cliente del servicio" en el hito v0.5.0).
+RECONCILIADO el 2026-10-13, en corto y sin blindajes: la telemetria es
+observacion y un fallo al escribirla no falla la peticion; el instalador
+devuelve el estado al usuario de servicio tras usar la CLI; y la CLI se usa
+como ese usuario. Brief: `docs/handoff/d10_telemetria_no_tumba_brief.md`.
 
 ### D3. La identidad como fuente conmutable
 
