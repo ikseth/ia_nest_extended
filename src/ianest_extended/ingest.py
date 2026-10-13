@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+import re
+from bisect import bisect_left
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 
 from .clients import CoreClient
@@ -13,6 +15,8 @@ from .ports import RagStore
 
 CHARS_PER_TOKEN = 3.5
 SUPPORTED_SUFFIXES = {".md", ".txt"}
+_PARAGRAPH_BOUNDARY = re.compile(r"(?:\r?\n[ \t]*){2,}")
+_SENTENCE_BOUNDARY = re.compile(r"[.?!] ")
 
 
 def chunk_text(
@@ -30,24 +34,72 @@ def chunk_text(
         return ()
     chunk_chars = max(1, math.floor(chunk_tokens * CHARS_PER_TOKEN))
     overlap_chars = math.floor(chunk_chars * overlap)
+    overlap_boundaries = _overlap_boundaries(content)
     chunks: list[str] = []
     start = 0
     while start < len(content):
-        end = min(len(content), start + chunk_chars)
-        if end < len(content):
-            boundary = content.rfind("\n", start + (chunk_chars // 2), end)
-            if boundary <= start:
-                boundary = content.rfind(" ", start + (chunk_chars // 2), end)
-            if boundary > start:
-                end = boundary
+        while start < len(content) and content[start].isspace():
+            start += 1
+        if start >= len(content):
+            break
+        end = _chunk_end(content, start, chunk_chars)
         chunk = content[start:end].strip()
         if chunk:
             chunks.append(chunk)
         if end >= len(content):
             break
-        next_start = max(start + 1, end - overlap_chars)
-        start = next_start
+        overlap_start = max(start + 1, end - overlap_chars)
+        start = _overlap_boundary(
+            overlap_boundaries,
+            overlap_start,
+            end,
+        ) or end
     return tuple(chunks)
+
+
+def _chunk_end(content: str, start: int, chunk_chars: int) -> int:
+    end = min(len(content), start + chunk_chars)
+    if end >= len(content):
+        return end
+
+    middle = start + (chunk_chars // 2)
+    for lower, upper in ((middle, end), (start, middle)):
+        for separator in ("\n", " "):
+            boundary = content.rfind(separator, lower, upper)
+            if boundary > start:
+                return boundary
+    return end
+
+
+def _overlap_boundaries(content: str) -> tuple[tuple[int, ...], ...]:
+    return (
+        tuple(match.end() for match in _PARAGRAPH_BOUNDARY.finditer(content)),
+        tuple(index + 1 for index in _separator_positions(content, "\n")),
+        tuple(match.end() for match in _SENTENCE_BOUNDARY.finditer(content)),
+        tuple(index + 1 for index in _separator_positions(content, " ")),
+    )
+
+
+def _overlap_boundary(
+    boundaries: tuple[tuple[int, ...], ...],
+    start: int,
+    end: int,
+) -> int | None:
+    if start >= end:
+        return None
+
+    for positions in boundaries:
+        index = bisect_left(positions, start)
+        if index < len(positions) and positions[index] < end:
+            return positions[index]
+    return None
+
+
+def _separator_positions(content: str, separator: str) -> Iterator[int]:
+    position = content.find(separator)
+    while position >= 0:
+        yield position
+        position = content.find(separator, position + 1)
 
 
 def ingest_path(

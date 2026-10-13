@@ -6,6 +6,15 @@ Sin acentos por convencion.
 ## [No publicado]
 
 ### Corregido
+- **D9: troceado en frontera y reingesta que poda.** El final de cada fragmento
+  conserva la busqueda por salto de linea y espacio, ahora tambien hacia atras
+  en la primera mitad antes de permitir un corte duro; el inicio siguiente
+  alinea el solape maximo a parrafo, linea, frase o palabra. Ingerir un corpus
+  sustituye sus fragmentos en la misma transaccion del upsert y poda los que ya
+  no aparecen, sin tocar otros corpus. `knowledge.ingest` publica
+  `chunks_deleted` en REST, MCP y CLI. Tras actualizar hay que **reingerir cada
+  corpus completo** para que el nuevo troceado y la poda surtan efecto. Campo
+  aditivo de contrato publico en serie pre-1.0: **MINOR**.
 - **D8: `task.run` enriquecido deja de re-responder el historial.** Cuando el
   recall aporta memoria, la pregunta se reescribe primero como peticion
   autonoma y esa peticion alimenta `task.plan`, las subtareas y la combinacion;

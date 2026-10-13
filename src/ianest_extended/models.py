@@ -281,6 +281,7 @@ class RagIngestResult:
     domains: tuple[str, ...]
     inserted: int
     updated: int
+    deleted: int
 
 
 @dataclass(frozen=True, slots=True)

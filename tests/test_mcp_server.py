@@ -8,6 +8,7 @@ import json
 import sys
 from types import ModuleType, SimpleNamespace
 from typing import Any, get_args
+from uuid import uuid4
 
 import httpx
 import pytest
@@ -21,6 +22,7 @@ from ianest_extended import (
     ExtendedService,
     ForwardedJson,
     LOCAL_CAPABILITIES,
+    RagIngestResult,
 )
 from ianest_extended import cli
 from ianest_extended.catalog_cache import write_catalog_cache
@@ -142,6 +144,72 @@ def test_mcp_rest_and_cli_have_parity_with_declared_parameters(
     mcp_payload = server.tools["memory.recall"].fn(**arguments, identity=identity)
 
     assert mcp_payload == rest_payload == cli_payload
+
+
+class _IngestResultStore:
+    def verify_schema(self):
+        return None
+
+    def ingest(self, *, corpus_name, domains, chunks, description=""):
+        return RagIngestResult(
+            corpus_id=uuid4(),
+            corpus_name=corpus_name,
+            domains=tuple(domains),
+            inserted=2,
+            updated=3,
+            deleted=4,
+        )
+
+
+def test_knowledge_ingest_publishes_deleted_chunks_in_all_three_skins(
+    tmp_path,
+    capsys,
+):
+    source = tmp_path / "manual.md"
+    source.write_text("contenido", encoding="utf-8")
+    config = _config(tmp_path)
+    service = ExtendedService(
+        ExtendedComposition(config, rag_store=_IngestResultStore())
+    )
+    server = create_server(config, service)
+    arguments = {
+        "corpus": "manual",
+        "domain": [],
+        "source_ref": None,
+        "path": str(source),
+    }
+
+    cli._knowledge_ingest(
+        service,
+        config,
+        SimpleNamespace(
+            corpus="manual",
+            domain=[],
+            source_ref=None,
+            path=source,
+            json=False,
+        ),
+    )
+    cli_text = capsys.readouterr().out.strip()
+    rest_payload = _request(
+        create_app(config, service),
+        "POST",
+        "/knowledge/ingest",
+        json_body=arguments,
+    ).json()
+    mcp_payload = server.tools["knowledge.ingest"].fn(**arguments)
+
+    expected = {
+        "corpus_name": "manual",
+        "domains": [],
+        "chunks_new": 2,
+        "chunks_updated": 3,
+        "chunks_deleted": 4,
+    }
+    assert rest_payload == mcp_payload == expected
+    assert cli_text.endswith(
+        "chunks_new=2 chunks_updated=3 chunks_deleted=4"
+    )
 
 
 class _OfflineCore:
