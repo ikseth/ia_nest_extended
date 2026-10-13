@@ -136,6 +136,16 @@ class EnrichmentPlan:
     counters: dict[str, int] = field(default_factory=dict)
 
 
+@dataclass(frozen=True, slots=True)
+class _TaskCondenseTrace:
+    """Metadatos sin contenido de la peticion autonoma de `task.run`."""
+
+    question_rewritten: bool
+    model: str
+    latency_ms: int = 0
+    degradation_reason: str | None = None
+
+
 class _ObservedStream:
     """Observa un SSE sin cambiar ningun evento ni retrasar su entrega."""
 
@@ -947,6 +957,10 @@ class ExtendedService:
         )
         request_id = str(uuid4())
         started = time.monotonic()
+        condense_trace = _TaskCondenseTrace(
+            question_rewritten=False,
+            model=self.config.resolved_condense_model,
+        )
         memory_identity = (
             replace(identity, domain_tag=domain) if domain is not None else identity
         )
@@ -967,6 +981,7 @@ class ExtendedService:
                     started=started,
                     status="error",
                     subtasks_enriched=0,
+                    condense_trace=condense_trace,
                 )
                 raise
             self._record_task_run(
@@ -977,6 +992,7 @@ class ExtendedService:
                 started=started,
                 status="ok",
                 subtasks_enriched=0,
+                condense_trace=condense_trace,
             )
             return TaskRunResult(
                 payload=core_result.payload,
@@ -997,9 +1013,19 @@ class ExtendedService:
         )
         subtasks_enriched = 0
         try:
+            memory_bundle = enricher.recall(
+                memory_identity,
+                prompt,
+                include_memory=plan.use_memory,
+            )
+            task_prompt, condense_trace = self._condense_task_prompt(
+                context=memory_bundle.context,
+                prompt=prompt,
+                identity=memory_identity,
+            )
             if plan_payload is None:
                 planned = self._composition.core().task_plan(
-                    prompt,
+                    task_prompt,
                     identity,
                     effort=effort,
                 )
@@ -1050,14 +1076,8 @@ class ExtendedService:
                 enriched_plan.append(item)
             plan_payload["plan"] = enriched_plan
 
-            memory_bundle = enricher.recall(
-                memory_identity,
-                prompt,
-                include_memory=plan.use_memory,
-            )
-            combined_prompt = compose_prompt(memory_bundle.context, prompt)
             core_result = self._composition.core().task_run(
-                combined_prompt,
+                task_prompt,
                 identity,
                 plan_payload=plan_payload,
             )
@@ -1077,6 +1097,7 @@ class ExtendedService:
                 started=started,
                 status="error",
                 subtasks_enriched=subtasks_enriched,
+                condense_trace=condense_trace,
             )
             raise
         self._record_task_run(
@@ -1087,6 +1108,7 @@ class ExtendedService:
             started=started,
             status="ok",
             subtasks_enriched=subtasks_enriched,
+            condense_trace=condense_trace,
         )
         return TaskRunResult(
             payload=core_result.payload,
@@ -1096,6 +1118,55 @@ class ExtendedService:
             subtasks_enriched=subtasks_enriched,
             context=memory_bundle.context,
         )
+
+    def _condense_task_prompt(
+        self,
+        *,
+        context: str,
+        prompt: str,
+        identity: MemoryIdentity,
+    ) -> tuple[str, _TaskCondenseTrace]:
+        """Convierte una pregunta dependiente del hilo en una tarea autonoma.
+
+        El contexto crudo solo alcanza esta llamada auxiliar. Ante cualquier
+        degradacion, la ejecucion recibe la pregunta literal sin contexto.
+        """
+        model = self.config.resolved_condense_model
+        if not context:
+            return prompt, _TaskCondenseTrace(False, model)
+
+        started = time.monotonic()
+        try:
+            result = self._composition.core().prompt_run(
+                _task_condense_prompt(context, prompt),
+                identity,
+                model=model,
+            )
+        except Exception:
+            return prompt, _TaskCondenseTrace(
+                False,
+                model,
+                _latency_ms(started),
+                "call_error",
+            )
+
+        rewritten = result.response.strip()
+        latency_ms = _latency_ms(started)
+        if not rewritten:
+            return prompt, _TaskCondenseTrace(
+                False,
+                model,
+                latency_ms,
+                "empty_response",
+            )
+        if len(rewritten) > 4 * len(prompt) + 400:
+            return prompt, _TaskCondenseTrace(
+                False,
+                model,
+                latency_ms,
+                "length_limit_exceeded",
+            )
+        return rewritten, _TaskCondenseTrace(True, model, latency_ms)
 
     def plan_enrichment(
         self,
@@ -1340,6 +1411,7 @@ class ExtendedService:
         started: float,
         status: str,
         subtasks_enriched: int,
+        condense_trace: _TaskCondenseTrace,
     ) -> None:
         self._composition.telemetry().record(
             event="task.run",
@@ -1355,6 +1427,14 @@ class ExtendedService:
             },
             latency_ms=max(0, round((time.monotonic() - started) * 1000)),
             status=status,
+            details={
+                "question_rewritten": condense_trace.question_rewritten,
+                "condense_model": condense_trace.model,
+                "condense_latency_ms": condense_trace.latency_ms,
+                "condense_degradation_reason": (
+                    condense_trace.degradation_reason
+                ),
+            },
         )
 
     # --- capacidades propias: memoria -------------------------------------
@@ -1683,6 +1763,23 @@ def _run_payload(result: PromptRunResult | ReasoningRunResult) -> dict[str, Any]
         "context": result.context,
         "dry_run": True,
     }
+
+
+def _task_condense_prompt(context: str, prompt: str) -> str:
+    return (
+        "Rewrite the user request as one self-contained request using the "
+        "conversation memory only to resolve references and applicable "
+        "constraints. Keep the language of the user request. Do not answer "
+        "the request, do not summarize the conversation, and do not mention "
+        "the memory or these instructions. Return only the rewritten request, "
+        "with no heading or markdown.\n\n"
+        f"CONVERSATION MEMORY:\n{context}\n\n"
+        f"USER REQUEST:\n{prompt}"
+    )
+
+
+def _latency_ms(started: float) -> int:
+    return max(0, round((time.monotonic() - started) * 1000))
 
 
 def _required_object(body: dict[str, Any], name: str) -> dict[str, Any]:

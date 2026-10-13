@@ -155,6 +155,37 @@ def test_thread_synthesis_defaults_disabled_and_inherits_extraction_model():
     assert config.resolved_synthesis_model == config.extraction_model
 
 
+def test_task_condense_model_defaults_to_extraction_model():
+    config = ExtendedConfig.from_env(env_file=None)
+
+    assert config.resolved_condense_model == config.extraction_model
+
+
+def test_task_condense_model_inherits_configured_extraction_model(monkeypatch):
+    monkeypatch.setenv("IANEST_EXTENDED_EXTRACTION_MODEL", "extract-model")
+
+    config = ExtendedConfig.from_env(env_file=None)
+
+    assert config.resolved_condense_model == "extract-model"
+
+
+def test_task_condense_model_from_environment(monkeypatch):
+    monkeypatch.setenv("IANEST_EXTENDED_CONDENSE_MODEL", "condense-model")
+
+    config = ExtendedConfig.from_env(env_file=None)
+
+    assert config.resolved_condense_model == "condense-model"
+
+
+def test_task_condense_model_rejects_empty_value(monkeypatch):
+    monkeypatch.setenv("IANEST_EXTENDED_CONDENSE_MODEL", "")
+
+    with pytest.raises(ExtendedConfigError) as exc_info:
+        ExtendedConfig.from_env(env_file=None)
+
+    assert exc_info.value.field == "condense_model"
+
+
 def test_thread_synthesis_config_from_environment(monkeypatch):
     monkeypatch.setenv("IANEST_EXTENDED_THREAD_SYNTHESIS_ENABLED", "true")
     monkeypatch.setenv("IANEST_EXTENDED_THREAD_SYNTHESIS_WINDOW_TURNS", "7")

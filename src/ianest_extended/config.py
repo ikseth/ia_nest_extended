@@ -40,6 +40,7 @@ class ExtendedConfig:
     embedding_model: str = "bge-m3"
     embedding_dimension: int = 1024
     extraction_model: str = "qwen_tech"
+    condense_model: str | None = None
     synthesis_model: str | None = None
     telemetry_dir: Path = Path("telemetry")
     session_state_path: Path = field(default_factory=default_session_state_path)
@@ -118,6 +119,10 @@ class ExtendedConfig:
             "extraction_model": _env(
                 "EXTRACTION_MODEL",
                 defaults.extraction_model,
+            ),
+            "condense_model": _env(
+                "CONDENSE_MODEL",
+                _env("EXTRACTION_MODEL", defaults.extraction_model),
             ),
             "synthesis_model": _env(
                 "SYNTHESIS_MODEL",
@@ -345,6 +350,11 @@ class ExtendedConfig:
                 "synthesis_model no puede estar vacio",
                 "synthesis_model",
             )
+        if self.condense_model is not None and not self.condense_model.strip():
+            raise ExtendedConfigError(
+                "condense_model no puede estar vacio",
+                "condense_model",
+            )
         if self.cli_session_id is not None and not self.cli_session_id.strip():
             raise ExtendedConfigError(
                 "cli_session_id no puede estar vacio",
@@ -354,6 +364,10 @@ class ExtendedConfig:
     @property
     def resolved_synthesis_model(self) -> str:
         return self.synthesis_model or self.extraction_model
+
+    @property
+    def resolved_condense_model(self) -> str:
+        return self.condense_model or self.extraction_model
 
     def rag_score_floor(self, domain: str | None) -> tuple[str, float]:
         """Resuelve el regimen D5 desde el dominio efectivo del almacen."""

@@ -99,13 +99,23 @@ conserva las herramientas propias y declara el hueco ajeno.
 Esta capa reexpone el contrato del core del rango declarado en
 `docs/DEPENDENCIAS.md`, **sin alterar su semantica**. Las capacidades
 sobreescritas conservan la forma de peticion y de respuesta del core; lo unico
-que cambia es que el prompt ejecutado lleva contexto recuperado.
+que cambia es que la ejecucion usa contexto recuperado. En `task.run`, la forma
+concreta es la peticion autonoma descrita abajo, no el contexto crudo.
 
 En `task.run`, el enriquecimiento por subtarea requiere suministrar al core el
 plan obtenido antes con `task.plan`. Ese camino no re-planifica: si EVALUATE lo
 pide, el core corta con `replan_unavailable`. Desactivar el enriquecimiento
 recupera el passthrough sin plan y, con el, la capacidad de re-planificacion.
 No hay reintento automatico sin plan: seria no determinista y duplicaria coste.
+
+Cuando el recall de memoria aporta contexto, `task.run` lo usa para reescribir
+la pregunta como una peticion autonoma ANTES de planificar. `task.plan`, las
+subtareas y la combinacion trabajan sobre esa peticion; el contexto crudo no
+forma parte del objetivo del core. La reescritura es efimera: el write-back
+conserva la pregunta literal. Si la llamada falla, devuelve texto vacio o supera
+cuatro veces la longitud de la pregunta mas 400 caracteres, la ejecucion usa la
+pregunta literal sin contexto. Sin contexto, con memoria desactivada o con el
+enriquecimiento desactivado no hay llamada de reescritura.
 
 `prompt.stream` y `reasoning.stream` recuperan y componen antes de abrir el
 flujo. Desde ese momento retransmiten cada evento del core sin anadir, quitar ni
@@ -168,6 +178,17 @@ La sintesis de hilo (Fase 9) se gobierna con
 `memory_type.list` sigue publicando el tipo `thread_summary`, que se declara
 siempre: declarar un tipo y no escribirlo es la forma que esta capa ya usa con
 las memorias delegadas.
+
+La reescritura previa de `task.run` usa
+`IANEST_EXTENDED_CONDENSE_MODEL`. La clave es opcional y, si no se declara,
+toma `IANEST_EXTENDED_EXTRACTION_MODEL`; declararla vacia es error de
+configuracion. No existe clave de activacion.
+
+El evento `task.run` declara `question_rewritten`, `condense_model`,
+`condense_latency_ms` y `condense_degradation_reason`. El ultimo vale
+`call_error`, `empty_response` o `length_limit_exceeded` cuando se usa la
+pregunta literal como degradacion, y nulo en los demas casos. Ninguno de esos
+campos contiene la pregunta, la reescritura ni el contexto.
 
 Cada evento `rag.retrieve` declara `score_regime` (`domain` o `no_domain`) y
 `min_score`, ademas del dominio efectivo. La calibracion puede asi observar la
