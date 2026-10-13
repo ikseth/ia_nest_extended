@@ -5,13 +5,18 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+### Corregido
+- **D8: `task.run` enriquecido deja de re-responder el historial.** Cuando el
+  recall aporta memoria, la pregunta se reescribe primero como peticion
+  autonoma y esa peticion alimenta `task.plan`, las subtareas y la combinacion;
+  el contexto crudo deja de viajar como objetivo. La reescritura es efimera:
+  write-back conserva la pregunta literal, y error, vacio o exceso de longitud
+  degradan a esa pregunta sin contexto. La traza publica solo metadatos. Se
+  anade la clave opcional `IANEST_EXTENDED_CONDENSE_MODEL`, que hereda el modelo
+  de extraccion y rechaza el valor vacio. Adicion de configuracion publica en
+  serie pre-1.0: **MINOR**.
+
 ### Anadido
-- Deuda de diseno **D8, `task.run` enriquecido re-responde el historial**:
-  medido en seis hilos reales del operador y reproducido frente a `prompt.run`.
-  El plan se pide sin el hilo y el contexto de memoria crudo llega al combinador
-  como parte de la tarea. Se registra con su brief
-  (`docs/handoff/eco_task_run_brief.md`), reconciliado el 2026-09-29. Impacto de
-  version: ninguno todavia.
 - Deuda de diseno **D9, el troceado resta relevancia y la reingesta no poda**:
   el solape de cada fragmento arranca a mitad de palabra y de tema (medido,
   hasta 0.127 de similitud perdida), y reingerir un corpus nunca borra los

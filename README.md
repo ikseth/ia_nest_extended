@@ -76,6 +76,10 @@ instalacion puede exponer `qwen_tech` aunque el tag servido sea `qwen2.5:7b`.
 El instalador usa `qwen_tech` como ejemplo configurable y, si el core esta
 alcanzable durante la configuracion interactiva, muestra los IDs disponibles.
 
+`IANEST_EXTENDED_CONDENSE_MODEL` permite usar otro ID para convertir las
+preguntas dependientes del hilo de `task.run` en peticiones autonomas. Si no se
+declara, usa `IANEST_EXTENDED_EXTRACTION_MODEL`; un valor vacio es invalido.
+
 Pytest toma `IANEST_EXTENDED_TEST_DSN` solo como DSN semilla. Su fixture deriva
 y crea `<dbname>_test`, instala ahi pgvector y ejecuta la migracion. La base
 indicada por `IANEST_EXTENDED_DATABASE_DSN` es la base runtime y pytest nunca
