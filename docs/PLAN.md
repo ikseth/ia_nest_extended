@@ -5,7 +5,7 @@ motivo y su diseno escritos en ella); fase 9 ABIERTA (2026-08-22), con criterio
 reconciliado, mecanismo publicado en `v0.3.0` y medida hecha que NO la cierra.
 La version publicada de la capa no se anota aqui: la dicen `CHANGELOG.md` y los
 tags.
-Version: 0.5 - 2026-09-22
+Version: 0.6 - 2026-10-13
 
 Misma disciplina que el core: fases con criterio de salida falsable; no se abre
 una fase sin validar la anterior; diseno y prueba de aceptacion antes de
@@ -13,6 +13,47 @@ implementar. Memoria primero (la necesita conscience).
 
 El fin de la memoria y su frontera con conscience estan en
 `docs/VISION_MEMORIA.md`; el mecanismo, en ADR 0002.
+
+## Hito v0.5.0: el ente conversa y consulta su enciclopedia
+
+RECONCILIADO el 2026-10-13. Existe para cerrar, no para abrir: desde `v0.4.0`
+el laboratorio encontro defectos mas deprisa de lo que se entregaban sus
+arreglos. El alcance es CERRADO y cada pieza tiene un criterio de salida
+falsable; el hito termina cuando se cumplen los cinco, no antes ni despues.
+
+    pieza                        criterio de salida
+    D8  eco de task.run          los seis hilos reales del operador del 2026-09-29,
+                                 repetidos por task.run: ningun turno reproduce una
+                                 respuesta anterior y todos terminan sin corte
+    D9  troceado y poda          la bateria de sondas del corpus sin fallos, y la
+                                 reingesta de un corpus acortado borra lo obsoleto
+    D10 telemetria               REST y MCP siguen respondiendo aunque otro usuario
+                                 haya creado antes el fichero de telemetria del dia
+    RAG fase A                   fuentes abiertas (articulos vitales de Wikipedia en
+                                 espanol, tldr-pages, manual de Debian) ingeridas con
+                                 guiones repetibles y medidas con la bateria de
+                                 cultura general de fuente oficial
+    puerta de laboratorio        PASA, cruzada por dos ejecutores
+
+El objetivo numerico de la fase A se fija al empezar el hito, tras depurar el
+oraculo de la bateria. La linea base ya esta medida: con el corpus de hoy el
+contexto solo trae la respuesta en una fraccion minima de las preguntas, y el
+modelo acierta lo mismo con RAG que sin el.
+
+Fuera del hito, a sabiendas:
+
+- **La sintesis de hilo (Fase 9).** Es lo unico que hizo fallar la puerta sobre
+  `v0.4.0` y tiene dos modos de fallo medidos: elegir la version del modelo y
+  copiar el item mas largo hasta agotar su salida. Durante el hito va APAGADA en
+  el laboratorio por su clave de configuracion; se retoma despues, con el
+  criterio de disparo por presupuesto como candidato.
+- Escalar el corpus mas alla de la fase A, el indice vectorial, la ingesta
+  incremental y el reranker. Son el hito siguiente, y la fase A es lo que dira
+  cuales hacen falta.
+- `episodic` como artefacto de sesion (enmienda al ADR 0002), ya decidido.
+
+Regla del hito: lo que se descubra por el camino y no bloquee uno de los cinco
+criterios se anota como aparcado y NO se trabaja.
 
 ## Fase 0: Semilla (esta)
 
@@ -821,6 +862,19 @@ Van juntos y en ese orden de dependencia: corregir el troceado mueve las
 fronteras, y sin poda la reingesta dejaria los fragmentos viejos junto a los
 nuevos. RECONCILIADO el 2026-09-29. Brief:
 `docs/handoff/troceado_y_poda_brief.md`.
+
+### D10. Un fallo de telemetria tumba la peticion
+
+Descubierta el 2026-09-30, y repetida despues. La telemetria es un fichero por
+dia que crea el primero que escribe. Si lo crea la CLI ejecutada por un usuario
+distinto del de servicio, el servicio ya no puede anadir, y como el fallo de
+escritura se propaga, **toda peticion a REST y MCP falla con error interno**
+hasta el dia siguiente.
+
+Son dos defectos: la telemetria es observacion y un fallo al escribirla no debe
+fallar la peticion; y el despliegue deja un directorio de estado compartido por
+dos usuarios sin garantizar que ambos puedan escribir. Pendiente de brief;
+entra en el hito v0.5.0.
 
 ### D3. La identidad como fuente conmutable
 
