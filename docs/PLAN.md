@@ -35,10 +35,20 @@ falsable; el hito termina cuando se cumplen los cinco, no antes ni despues.
                                  cultura general de fuente oficial
     puerta de laboratorio        PASA, cruzada por dos ejecutores
 
-El objetivo numerico de la fase A se fija al empezar el hito, tras depurar el
-oraculo de la bateria. La linea base ya esta medida: con el corpus de hoy el
-contexto solo trae la respuesta en una fraccion minima de las preguntas, y el
-modelo acierta lo mismo con RAG que sin el.
+Objetivo numerico de la fase A, FIJADO el 2026-10-13 sobre la bateria de 96
+con el oraculo depurado. Son numeros de criterio, no de prediccion: no se sabe
+cuanta respuesta hay en las fuentes hasta ingerirlas.
+
+    medida                                   linea base   objetivo
+    el contexto trae la respuesta               6/96      >= 48/96
+    acierta con RAG                            73/96      >= 80/96
+    acierta sin RAG y falla con RAG               3        <= 3
+
+(Sin RAG acierta 71/96: hoy el corpus casi no aporta a estas preguntas.)
+
+Vale para cerrar el hito, y solo para eso: cumplirlo NO da el corpus por bueno.
+La mejora del corpus sigue pendiente despues de la fase A y es trabajo del hito
+siguiente, que la propia medida orientara.
 
 Fuera del hito, a sabiendas:
 
