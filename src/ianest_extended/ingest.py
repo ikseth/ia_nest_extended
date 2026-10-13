@@ -34,6 +34,44 @@ def chunk_text(
         return ()
     chunk_chars = max(1, math.floor(chunk_tokens * CHARS_PER_TOKEN))
     overlap_chars = math.floor(chunk_chars * overlap)
+
+    if _PARAGRAPH_BOUNDARY.search(content) is None:
+        return _fixed_window_chunks(content, chunk_chars, overlap_chars)
+
+    paragraphs = tuple(
+        paragraph.strip()
+        for paragraph in _PARAGRAPH_BOUNDARY.split(content)
+        if paragraph.strip()
+    )
+    chunks: list[str] = []
+    current = ""
+    for paragraph in paragraphs:
+        if len(paragraph) > chunk_chars:
+            if current:
+                chunks.append(current)
+                current = ""
+            chunks.extend(
+                _fixed_window_chunks(paragraph, chunk_chars, overlap_chars)
+            )
+            continue
+
+        candidate = f"{current}\n\n{paragraph}" if current else paragraph
+        if len(candidate) <= chunk_chars:
+            current = candidate
+        else:
+            chunks.append(current)
+            current = paragraph
+
+    if current:
+        chunks.append(current)
+    return tuple(chunks)
+
+
+def _fixed_window_chunks(
+    content: str,
+    chunk_chars: int,
+    overlap_chars: int,
+) -> tuple[str, ...]:
     overlap_boundaries = _overlap_boundaries(content)
     chunks: list[str] = []
     start = 0
