@@ -5,14 +5,24 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+## [0.5.0] - 2026-10-13
+
+Codigo del hito v0.5.0 (`docs/PLAN.md`): las tres deudas que el laboratorio
+encontro sobre `v0.4.0`. **MINOR** porque D9 cambia de forma incompatible lo que
+hace `knowledge.ingest`: ingerir un corpus pasa a SUSTITUIR su contenido, asi
+que ya no se amplia un corpus ingiriendo solo el fichero nuevo. El resto son
+adiciones compatibles y correcciones.
+
+**Al actualizar:** reingerir cada corpus completo (la pasada del instalador ya
+lo hace), y usar la CLI instalada como `OPERATOR_USER`.
+
 ### Corregido
 - **D10: la telemetria no tumba la peticion.** Los fallos al serializar o
   escribir una linea se contienen en `TelemetryWriter`, con un unico aviso por
   proceso para cada pareja de ruta y clase de error, sin reintento ni contenido
   del evento. El setup devuelve el directorio de estado a `OPERATOR_USER`
   despues de ingerir el corpus, y la documentacion explicita que la CLI
-  instalada se usa como ese usuario. Sin cambio de contrato publico; impacto de
-  version: **PATCH**.
+  instalada se usa como ese usuario. Sin cambio de contrato publico.
 - **D9: troceado en frontera y reingesta que poda.** El final de cada fragmento
   conserva la busqueda por salto de linea y espacio, ahora tambien hacia atras
   en la primera mitad antes de permitir un corte duro; el inicio siguiente
@@ -20,8 +30,7 @@ Sin acentos por convencion.
   sustituye sus fragmentos en la misma transaccion del upsert y poda los que ya
   no aparecen, sin tocar otros corpus. `knowledge.ingest` publica
   `chunks_deleted` en REST, MCP y CLI. Tras actualizar hay que **reingerir cada
-  corpus completo** para que el nuevo troceado y la poda surtan efecto. Campo
-  aditivo de contrato publico en serie pre-1.0: **MINOR**.
+  corpus completo** para que el nuevo troceado y la poda surtan efecto.
 - **D8: `task.run` enriquecido deja de re-responder el historial.** Cuando el
   recall aporta memoria, la pregunta se reescribe primero como peticion
   autonoma y esa peticion alimenta `task.plan`, las subtareas y la combinacion;
@@ -29,8 +38,7 @@ Sin acentos por convencion.
   write-back conserva la pregunta literal, y error, vacio o exceso de longitud
   degradan a esa pregunta sin contexto. La traza publica solo metadatos. Se
   anade la clave opcional `IANEST_EXTENDED_CONDENSE_MODEL`, que hereda el modelo
-  de extraccion y rechaza el valor vacio. Adicion de configuracion publica en
-  serie pre-1.0: **MINOR**.
+  de extraccion y rechaza el valor vacio.
 
 ### Anadido
 - Deuda de diseno **D9, el troceado resta relevancia y la reingesta no poda**:
