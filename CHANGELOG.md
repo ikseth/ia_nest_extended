@@ -6,6 +6,13 @@ Sin acentos por convencion.
 ## [No publicado]
 
 ### Corregido
+- **D10: la telemetria no tumba la peticion.** Los fallos al serializar o
+  escribir una linea se contienen en `TelemetryWriter`, con un unico aviso por
+  proceso para cada pareja de ruta y clase de error, sin reintento ni contenido
+  del evento. El setup devuelve el directorio de estado a `OPERATOR_USER`
+  despues de ingerir el corpus, y la documentacion explicita que la CLI
+  instalada se usa como ese usuario. Sin cambio de contrato publico; impacto de
+  version: **PATCH**.
 - **D9: troceado en frontera y reingesta que poda.** El final de cada fragmento
   conserva la busqueda por salto de linea y espacio, ahora tambien hacia atras
   en la primera mitad antes de permitir un corte duro; el inicio siguiente

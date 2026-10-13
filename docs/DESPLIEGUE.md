@@ -171,6 +171,10 @@ ianest-extended-rest
 ianest-extended-mcp --transport sse
 ```
 
+La CLI instalada se usa como `OPERATOR_USER`; usarla como otro usuario puede
+dejar ficheros de estado que el servicio no pueda escribir, y ese dia el
+servicio no registra telemetria.
+
 `SERVICE_INSTALL` controla si se escriben las units REST y MCP.
 `SERVICE_ENABLE` controla aparte si se habilitan para reinicio y se arrancan.
 Las units esperan `network-online.target`, corren como `OPERATOR_USER` y usan

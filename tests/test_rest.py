@@ -25,6 +25,7 @@ from ianest_extended import (
     MemoryIdentity,
     Principal,
     SseEvent,
+    TelemetryWriter,
 )
 from ianest_extended import cli
 from ianest_extended.rest import _stream_events, create_app
@@ -207,6 +208,50 @@ def test_overridden_prompt_is_enriched_while_direct_core_prompt_is_not(tmp_path)
     assert response.status_code == 200
     assert "contexto recordado" in core.calls[0][1]
     assert core.calls[1] == ("prompt_run", "pregunta")
+
+
+def test_prompt_run_service_and_rest_survive_broken_telemetry(tmp_path):
+    regular_parent = tmp_path / "regular-parent"
+    regular_parent.write_text("not a directory", encoding="ascii")
+    config = _config(tmp_path)
+    identity = MemoryIdentity(
+        user_id="rest-user",
+        session_id="rest-session",
+        service="test",
+    )
+    healthy = ExtendedService(
+        ExtendedComposition(
+            config,
+            core=_CoreSpy(),
+            memory_store=InMemoryStore(),
+            telemetry=TelemetryWriter(tmp_path / "healthy-telemetry"),
+        )
+    )
+    broken = ExtendedService(
+        ExtendedComposition(
+            config,
+            core=_CoreSpy(),
+            memory_store=InMemoryStore(),
+            telemetry=TelemetryWriter(regular_parent / "telemetry"),
+        )
+    )
+
+    expected = healthy.prompt_run("pregunta", identity, enrich=False)
+    actual = broken.prompt_run("pregunta", identity, enrich=False)
+    response = _request(
+        create_app(config, broken),
+        "POST",
+        "/prompt/run",
+        json_body={
+            "prompt": "pregunta",
+            "enrich": False,
+            "identity": identity.to_core_dict(),
+        },
+    )
+
+    assert actual.payload["response"] == expected.payload["response"]
+    assert response.status_code == 200
+    assert response.json()["response"] == expected.payload["response"]
 
 
 class _RouteProxy:
