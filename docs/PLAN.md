@@ -74,7 +74,7 @@ Fuera del hito, a sabiendas:
 Regla del hito: lo que se descubra por el camino y no bloquee uno de los cinco
 criterios se anota como aparcado y NO se trabaja.
 
-### Estado al 2026-10-14: codigo cerrado, laboratorio pendiente
+### Estado al 2026-10-14: codigo cerrado, fase A medida, puerta pendiente
 
     pieza            estado
     D8               CERRADA en v0.5.2 (lectura del criterio, abajo)
@@ -82,11 +82,39 @@ criterios se anota como aparcado y NO se trabaja.
                      325 -> 312 al reingerir
     D10              CERRADA en v0.5.0: con el fichero del dia creado por root,
                      REST y MCP responden y el journal lo avisa
-    RAG fase A       pendiente; solo laboratorio, sin codigo
+    RAG fase A       CERRADA como hecha, medida y repetible; objetivo NO
+                     cumplido, por decision del operador (abajo)
     puerta           pendiente; solo laboratorio
 
 Las tres deudas se midieron en el laboratorio sobre la version desplegada. La
-fase A y la puerta no necesitan codigo: el hito se retoma por ahi.
+puerta no necesita codigo: el hito se retoma por ahi.
+
+**Fase A, medida el 2026-10-14 sobre `v0.5.2`.** Ingeridos los 1.000 articulos
+vitales de Wikipedia en espanol (991 con articulo), tldr-pages en espanol y el
+Manual del Administrador de Debian: de 312 a ~67.000 fragmentos, con guiones
+repetibles (descarga, conversion, ingesta y medida). Bateria de 96:
+
+    medida                                   base   fase A   objetivo
+    el contexto trae la respuesta               6      47      >= 48
+    acierta con RAG                            73      72      >= 80
+    acierta sin RAG y falla con RAG             3      10      <= 3
+
+No se cumple, y el por que es lo que vale de la medida:
+
+- Cuando el contexto trae la respuesta, el RAG acierta 44 de 47.
+- Cuando no la trae, ESTORBA: 28 aciertos con RAG frente a 33 sin el. Con un
+  corpus grande siempre hay fragmentos por encima del suelo que no responden
+  (las frases de cortesia ya puntuan hasta 0.598). Es D5 a escala.
+- El 80 no es alcanzable con este corpus: aunque el RAG no estorbara nunca, el
+  techo es 44 + 33 = 77. Faltan temas que no estan entre los 1.000 vitales.
+- Coste a esta escala: ingesta de 81 minutos con cuatro procesos en paralelo
+  (el cuello es una peticion de embedding por fragmento) y unos 2 s por
+  busqueda sin indice vectorial.
+
+El operador da la fase A por cerrada asi el 2026-10-14. Lo que falta pasa al
+hito siguiente: filtrar el contexto que no responde (reranker, ya registrado
+en `docs/mejoras_futuras/modelos_especializados.md`), cobertura (lista de
+10.000), indice vectorial e ingesta por lotes. El orden se decide al abrirlo.
 
 **Lectura del criterio de D8, decidida por el operador el 2026-10-14.** Pasada
 final sobre `v0.5.2`, 23 turnos: 0 errores, 0 cortes, 0 turnos que re-respondan
