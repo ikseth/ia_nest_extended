@@ -5,7 +5,7 @@ motivo y su diseno escritos en ella); fase 9 ABIERTA (2026-08-22), con criterio
 reconciliado, mecanismo publicado en `v0.3.0` y medida hecha que NO la cierra.
 La version publicada de la capa no se anota aqui: la dicen `CHANGELOG.md` y los
 tags.
-Version: 0.6 - 2026-10-13
+Version: 0.7 - 2026-10-14
 
 Misma disciplina que el core: fases con criterio de salida falsable; no se abre
 una fase sin validar la anterior; diseno y prueba de aceptacion antes de
@@ -73,6 +73,38 @@ Fuera del hito, a sabiendas:
 
 Regla del hito: lo que se descubra por el camino y no bloquee uno de los cinco
 criterios se anota como aparcado y NO se trabaja.
+
+### Estado al 2026-10-14: codigo cerrado, laboratorio pendiente
+
+    pieza            estado
+    D8               CERRADA en v0.5.2 (lectura del criterio, abajo)
+    D9               CERRADA en v0.5.1: sondas 74/74 con y sin dominio; poda
+                     325 -> 312 al reingerir
+    D10              CERRADA en v0.5.0: con el fichero del dia creado por root,
+                     REST y MCP responden y el journal lo avisa
+    RAG fase A       pendiente; solo laboratorio, sin codigo
+    puerta           pendiente; solo laboratorio
+
+Las tres deudas se midieron en el laboratorio sobre la version desplegada. La
+fase A y la puerta no necesitan codigo: el hito se retoma por ahi.
+
+**Lectura del criterio de D8, decidida por el operador el 2026-10-14.** Pasada
+final sobre `v0.5.2`, 23 turnos: 0 errores, 0 cortes, 0 turnos que re-respondan
+el historial. Queda un turno que devuelve el mismo menu que el anterior: el
+planificador del CORE reduce "una nueva lista, incluyendo la receta" a "crear
+una lista de cenas" y el modelo copia el fragmento del corpus. No es el
+historial. Se da D8 por cumplido leyendo el criterio como lo que D8 corrige
+(ningun turno re-responde el historial, ninguno se corta, ninguno falla). Fuera
+del criterio, tambien por decision del operador: una lista enumerable que no
+cabe en el presupuesto de las subtareas (los ~90 emperadores bizantinos con
+fechas), que es el caso del modo `coverage` del core.
+
+Al core, como peticiones de cambio pendientes de abrir: su planificador emite a
+veces planes con dependencias circulares (extended reintenta una vez desde
+`v0.5.2`), y descarta a veces parte de la peticion al descomponerla.
+
+En el laboratorio, el combinador de `task.run` usa un perfil propio de 1536
+tokens de salida; `prompt.run` sigue con el de 512.
 
 ## Fase 0: Semilla (esta)
 
@@ -862,6 +894,13 @@ correccion de un defecto; una reescritura mas larga que 4 veces la pregunta mas
 400 caracteres se descarta; y sin enmienda de ADR, porque corrige la Fase 7b sin
 cambiar ninguna decision. Brief: `docs/handoff/eco_task_run_brief.md`.
 
+CERRADA el 2026-10-14 en `v0.5.2`. Medida sobre `v0.5.0` y `v0.5.1`: el eco
+desaparece, pero la reescritura no siempre salia autonoma ("una nueva lista
+incluyendo la receta") y el planificador del core emitia planes con ciclo una
+vez por pasada. Cierre: texto de reescritura en espanol con reglas, probado en
+el laboratorio, y un reintento acotado del plan. Brief:
+`docs/handoff/reescritura_autonoma_brief.md`. Lectura del criterio, en el hito.
+
 ### D9. El troceado resta relevancia y la reingesta no poda
 
 Descubierta el 2026-09-28 al ampliar el corpus del laboratorio (19 -> 34 corpus,
@@ -889,6 +928,9 @@ solape, y retocar el solape solo cambia que sonda falla. Cierre en `v0.5.1`: un
 fragmento son parrafos enteros, y solo se parte el parrafo que no cabe. Brief:
 `docs/handoff/troceado_por_parrafos_brief.md`.
 
+CERRADA el 2026-10-14: con `v0.5.1` en el laboratorio, sondas 74/74 con y sin
+dominio, y la reingesta borro los 13 fragmentos sobrantes (325 -> 312).
+
 ### D10. Un fallo de telemetria tumba la peticion
 
 Descubierta el 2026-09-30, y repetida despues. La telemetria es un fichero por
@@ -903,6 +945,11 @@ RECONCILIADO el 2026-10-13, en corto y sin blindajes: la telemetria es
 observacion y un fallo al escribirla no falla la peticion; el instalador
 devuelve el estado al usuario de servicio tras usar la CLI; y la CLI se usa
 como ese usuario. Brief: `docs/handoff/d10_telemetria_no_tumba_brief.md`.
+
+CERRADA el 2026-10-13 en `v0.5.0`: en el laboratorio, con el fichero de
+telemetria del dia creado por root, REST y MCP respondieron y el journal dejo
+una linea de aviso; devuelto el fichero al usuario de servicio, la siguiente
+peticion escribio sin reiniciar.
 
 ### D3. La identidad como fuente conmutable
 
