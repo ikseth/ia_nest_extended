@@ -107,6 +107,11 @@ plan obtenido antes con `task.plan`. Ese camino no re-planifica: si EVALUATE lo
 pide, el core corta con `replan_unavailable`. Desactivar el enriquecimiento
 recupera el passthrough sin plan y, con el, la capacidad de re-planificacion.
 No hay reintento automatico sin plan: seria no determinista y duplicaria coste.
+Unica excepcion acotada: si el plan que esta capa pidio a `task.plan` provoca
+`PlanDependencyError` (el planificador del core emitio dependencias circulares),
+se pide un plan nuevo UNA vez, sin repetir la reescritura; un segundo error se
+propaga intacto, y con plan suministrado por el cliente no se reintenta. La
+telemetria lo declara en `plan_retried`.
 
 Cuando el recall de memoria aporta contexto, `task.run` lo usa para reescribir
 la pregunta como una peticion autonoma ANTES de planificar. `task.plan`, las
@@ -187,8 +192,10 @@ configuracion. No existe clave de activacion.
 El evento `task.run` declara `question_rewritten`, `condense_model`,
 `condense_latency_ms` y `condense_degradation_reason`. El ultimo vale
 `call_error`, `empty_response` o `length_limit_exceeded` cuando se usa la
-pregunta literal como degradacion, y nulo en los demas casos. Ninguno de esos
-campos contiene la pregunta, la reescritura ni el contexto.
+pregunta literal como degradacion, y nulo en los demas casos. Declara tambien
+`plan_retried`, verdadero si hubo que pedir el plan otra vez por
+`PlanDependencyError`. Ninguno de esos campos contiene la pregunta, la
+reescritura ni el contexto.
 
 Cada evento `rag.retrieve` declara `score_regime` (`domain` o `no_domain`) y
 `min_score`, ademas del dominio efectivo. La calibracion puede asi observar la
