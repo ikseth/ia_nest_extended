@@ -5,6 +5,20 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+## [0.5.2] - 2026-10-14
+
+### Corregido
+- **D8: la reescritura de `task.run` sale autonoma.** El prompt de reescritura
+  usa el texto reconciliado y, cuando un plan pedido por extended provoca
+  `PlanDependencyError`, se pide y ejecuta un plan nuevo una sola vez sin
+  repetir la reescritura. Los planes suministrados y los demas errores conservan
+  su comportamiento. La telemetria anade `plan_retried` (campo aditivo).
+  Motivo, medido sobre `v0.5.1` en el laboratorio con los seis hilos del
+  operador: el eco habia desaparecido, pero el texto anterior devolvia a veces
+  peticiones no autonomas ("una nueva lista incluyendo la receta") y el turno
+  repetia el anterior; y el planificador del core emite a veces planes con
+  ciclo (una vez por pasada). PATCH.
+
 ## [0.5.1] - 2026-10-13
 
 ### Corregido

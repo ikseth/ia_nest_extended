@@ -35,6 +35,7 @@ from .clients import CoreResult, ForwardedJson, ForwardedStream
 from .composition import ExtendedComposition
 from .config import ExtendedConfig
 from .errors import (
+    DownstreamError,
     EnrichmentParameterError,
     ExtendedError,
     ExtendedRequestError,
@@ -961,6 +962,7 @@ class ExtendedService:
             question_rewritten=False,
             model=self.config.resolved_condense_model,
         )
+        plan_retried = False
         memory_identity = (
             replace(identity, domain_tag=domain) if domain is not None else identity
         )
@@ -982,6 +984,7 @@ class ExtendedService:
                     status="error",
                     subtasks_enriched=0,
                     condense_trace=condense_trace,
+                    plan_retried=plan_retried,
                 )
                 raise
             self._record_task_run(
@@ -993,6 +996,7 @@ class ExtendedService:
                 status="ok",
                 subtasks_enriched=0,
                 condense_trace=condense_trace,
+                plan_retried=plan_retried,
             )
             return TaskRunResult(
                 payload=core_result.payload,
@@ -1023,64 +1027,89 @@ class ExtendedService:
                 prompt=prompt,
                 identity=memory_identity,
             )
-            if plan_payload is None:
-                planned = self._composition.core().task_plan(
-                    task_prompt,
-                    identity,
-                    effort=effort,
-                )
-                supplied_plan = dict(planned.payload)
-            else:
-                supplied_plan = dict(plan_payload)
-            supplied_plan.pop("params", None)
-            plan_payload = supplied_plan
-            enriched_plan = []
-            raw_plan = plan_payload.get("plan")
-            if not isinstance(raw_plan, list):
-                raise EnrichmentParameterError(
-                    "el plan suministrado debe contener una lista 'plan'",
-                    "plan",
-                )
-            for original in raw_plan:
-                if not isinstance(original, dict):
+            client_supplied_plan = plan_payload is not None
+            while True:
+                subtasks_enriched = 0
+                if not client_supplied_plan:
+                    try:
+                        planned = self._composition.core().task_plan(
+                            task_prompt,
+                            identity,
+                            effort=effort,
+                        )
+                    except DownstreamError as exc:
+                        if plan_retried or exc.type != "PlanDependencyError":
+                            raise
+                        plan_retried = True
+                        continue
+                    supplied_plan = dict(planned.payload)
+                else:
+                    supplied_plan = dict(plan_payload)
+                supplied_plan.pop("params", None)
+                attempt_plan_payload = supplied_plan
+                enriched_plan = []
+                raw_plan = attempt_plan_payload.get("plan")
+                if not isinstance(raw_plan, list):
                     raise EnrichmentParameterError(
-                        "el plan suministrado contiene una subtarea invalida",
+                        "el plan suministrado debe contener una lista 'plan'",
                         "plan",
                     )
-                item = dict(original)
-                if plan.use_rag:
-                    subtask_domain = item["domain"]
-                    rag_identity = replace(
-                        identity,
-                        domain_tag=(
-                            None if subtask_domain == "general" else subtask_domain
-                        ),
-                    )
-                    chunks = enricher.retrieve_rag(
-                        request_id=request_id,
-                        identity=rag_identity,
-                        prompt=item["prompt"],
-                    )
-                    bundle = enricher.recall(
-                        rag_identity,
-                        item["prompt"],
-                        rag=chunks,
-                        include_memory=False,
-                        token_budget=self.config.rag_max_tokens,
-                        rag_token_budget=self.config.rag_max_tokens,
-                    )
-                    enriched_prompt = compose_prompt(bundle.context, item["prompt"])
-                    if enriched_prompt != item["prompt"]:
-                        item["prompt"] = enriched_prompt
-                        subtasks_enriched += 1
-                enriched_plan.append(item)
-            plan_payload["plan"] = enriched_plan
+                for original in raw_plan:
+                    if not isinstance(original, dict):
+                        raise EnrichmentParameterError(
+                            "el plan suministrado contiene una subtarea invalida",
+                            "plan",
+                        )
+                    item = dict(original)
+                    if plan.use_rag:
+                        subtask_domain = item["domain"]
+                        rag_identity = replace(
+                            identity,
+                            domain_tag=(
+                                None
+                                if subtask_domain == "general"
+                                else subtask_domain
+                            ),
+                        )
+                        chunks = enricher.retrieve_rag(
+                            request_id=request_id,
+                            identity=rag_identity,
+                            prompt=item["prompt"],
+                        )
+                        bundle = enricher.recall(
+                            rag_identity,
+                            item["prompt"],
+                            rag=chunks,
+                            include_memory=False,
+                            token_budget=self.config.rag_max_tokens,
+                            rag_token_budget=self.config.rag_max_tokens,
+                        )
+                        enriched_prompt = compose_prompt(
+                            bundle.context,
+                            item["prompt"],
+                        )
+                        if enriched_prompt != item["prompt"]:
+                            item["prompt"] = enriched_prompt
+                            subtasks_enriched += 1
+                    enriched_plan.append(item)
+                attempt_plan_payload["plan"] = enriched_plan
 
-            core_result = self._composition.core().task_run(
-                task_prompt,
-                identity,
-                plan_payload=plan_payload,
-            )
+                try:
+                    core_result = self._composition.core().task_run(
+                        task_prompt,
+                        identity,
+                        plan_payload=attempt_plan_payload,
+                    )
+                except DownstreamError as exc:
+                    if (
+                        client_supplied_plan
+                        or plan_retried
+                        or exc.type != "PlanDependencyError"
+                    ):
+                        raise
+                    plan_retried = True
+                    continue
+                break
             if plan.write_back:
                 enricher.write_back(
                     request_id=request_id,
@@ -1098,6 +1127,7 @@ class ExtendedService:
                 status="error",
                 subtasks_enriched=subtasks_enriched,
                 condense_trace=condense_trace,
+                plan_retried=plan_retried,
             )
             raise
         self._record_task_run(
@@ -1109,6 +1139,7 @@ class ExtendedService:
             status="ok",
             subtasks_enriched=subtasks_enriched,
             condense_trace=condense_trace,
+            plan_retried=plan_retried,
         )
         return TaskRunResult(
             payload=core_result.payload,
@@ -1412,6 +1443,7 @@ class ExtendedService:
         status: str,
         subtasks_enriched: int,
         condense_trace: _TaskCondenseTrace,
+        plan_retried: bool,
     ) -> None:
         self._composition.telemetry().record(
             event="task.run",
@@ -1434,6 +1466,7 @@ class ExtendedService:
                 "condense_degradation_reason": (
                     condense_trace.degradation_reason
                 ),
+                "plan_retried": plan_retried,
             },
         )
 
@@ -1768,14 +1801,25 @@ def _run_payload(result: PromptRunResult | ReasoningRunResult) -> dict[str, Any]
 
 def _task_condense_prompt(context: str, prompt: str) -> str:
     return (
-        "Rewrite the user request as one self-contained request using the "
-        "conversation memory only to resolve references and applicable "
-        "constraints. Keep the language of the user request. Do not answer "
-        "the request, do not summarize the conversation, and do not mention "
-        "the memory or these instructions. Return only the rewritten request, "
-        "with no heading or markdown.\n\n"
-        f"CONVERSATION MEMORY:\n{context}\n\n"
-        f"USER REQUEST:\n{prompt}"
+        "Reescribe la PETICION del usuario como una sola peticion autonoma, "
+        "que se entienda sin haber leido la conversacion.\n"
+        "Reglas:\n"
+        "- Si la peticion ya se entiende sola y no depende de la conversacion, "
+        "devuelvela tal cual.\n"
+        "- Sustituye toda referencia a la conversacion (\"el plato del jueves\", "
+        "\"esa lista\", \"continua\", \"y para...\") por aquello a lo que se "
+        "refiere, nombrandolo.\n"
+        "- Di de que tema se habla y arrastra las condiciones que el usuario "
+        "puso antes y que sigan aplicando.\n"
+        "- Conserva TODO lo que la peticion pide de nuevo: no quites matices, "
+        "ejemplos ni correcciones del usuario.\n"
+        "- De las respuestas anteriores toma solo el NOMBRE de aquello a lo que "
+        "la peticion se refiere; no copies su contenido ni anadas datos que el "
+        "usuario no ha pedido.\n"
+        "- No respondas, no resumas, no expliques. Devuelve solo la peticion "
+        "reescrita, en el idioma del usuario, sin encabezados ni formato.\n\n"
+        f"MEMORIA DE LA CONVERSACION:\n{context}\n\n"
+        f"PETICION DEL USUARIO:\n{prompt}"
     )
 
 

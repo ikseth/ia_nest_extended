@@ -8,6 +8,7 @@ import pytest
 
 from ianest_extended import (
     CoreResult,
+    DownstreamError,
     EngramWrite,
     ExtendedComposition,
     ExtendedConfig,
@@ -20,6 +21,7 @@ from ianest_extended import (
 )
 from ianest_extended.enrichment import estimate_tokens
 from ianest_extended.cli import _build_parser
+from ianest_extended.service import _task_condense_prompt
 
 from .fakes import InMemoryRagStore, InMemoryStore
 
@@ -124,7 +126,7 @@ class CondenseCore(Phase7bCore):
 
     def prompt_run(self, prompt, identity, model=None, domain=None):
         self.calls.append(("prompt.run", prompt, identity, model, domain))
-        if prompt.startswith("Rewrite the user request"):
+        if prompt.startswith("Reescribe la PETICION del usuario"):
             if self.condense_error is not None:
                 raise self.condense_error
             response = self.rewritten
@@ -140,6 +142,55 @@ class CondenseCore(Phase7bCore):
                 "trace": {
                     "request_id": request_id,
                     "finish_reason": "stop",
+                },
+            },
+        )
+
+
+class PlanRetryCore(CondenseCore):
+    def __init__(self, *, plan_errors=(), run_errors=()):
+        super().__init__()
+        self.plan_errors = list(plan_errors)
+        self.run_errors = list(run_errors)
+        self.plan_calls = 0
+
+    def task_plan(self, prompt, identity, *, effort=None):
+        self.calls.append(("task.plan", prompt, identity, effort))
+        self.plan_calls += 1
+        if self.plan_errors:
+            raise self.plan_errors.pop(0)
+        cyclic = self.plan_calls == 1 and bool(self.run_errors)
+        payload = {
+            "plan": [
+                {
+                    "index": 0,
+                    "prompt": prompt,
+                    "domain": "general",
+                    "depends_on": [0] if cyclic else [],
+                }
+            ],
+            "requirements": [],
+            "trace": {"request_id": f"core-plan-{self.plan_calls}"},
+        }
+        return TaskPlanResult(
+            payload=payload,
+            plan=tuple(payload["plan"]),
+            trace=payload["trace"],
+        )
+
+    def task_run(self, prompt, identity, *, plan_payload=None, effort=None):
+        self.calls.append(("task.run", prompt, identity, plan_payload, effort))
+        if self.run_errors:
+            raise self.run_errors.pop(0)
+        return CoreResult(
+            response="respuesta combinada",
+            trace={"request_id": "core-task", "stop_reason": "task_done"},
+            payload={
+                "response": "respuesta combinada",
+                "stop_reason": "task_done",
+                "trace": {
+                    "request_id": "core-task",
+                    "stop_reason": "task_done",
                 },
             },
         )
@@ -203,6 +254,42 @@ def _remember(store, content="CONTEXTO_CRUDO_NO_REENVIAR"):
             identity=_identity(),
             stated_by=StatedBy.MODEL,
         ),
+    )
+
+
+def _downstream_error(error_type, message):
+    return DownstreamError(
+        {
+            "type": error_type,
+            "message": message,
+            "origin": "ia_nest_core",
+            "request_id": f"core-{message}",
+        },
+        status_code=400,
+    )
+
+
+def test_task_condense_prompt_is_the_reconciled_literal():
+    assert _task_condense_prompt("contexto", "peticion") == (
+        "Reescribe la PETICION del usuario como una sola peticion autonoma, "
+        "que se entienda sin haber leido la conversacion.\n"
+        "Reglas:\n"
+        "- Si la peticion ya se entiende sola y no depende de la conversacion, "
+        "devuelvela tal cual.\n"
+        "- Sustituye toda referencia a la conversacion (\"el plato del jueves\", "
+        "\"esa lista\", \"continua\", \"y para...\") por aquello a lo que se "
+        "refiere, nombrandolo.\n"
+        "- Di de que tema se habla y arrastra las condiciones que el usuario "
+        "puso antes y que sigan aplicando.\n"
+        "- Conserva TODO lo que la peticion pide de nuevo: no quites matices, "
+        "ejemplos ni correcciones del usuario.\n"
+        "- De las respuestas anteriores toma solo el NOMBRE de aquello a lo que "
+        "la peticion se refiere; no copies su contenido ni anadas datos que el "
+        "usuario no ha pedido.\n"
+        "- No respondas, no resumas, no expliques. Devuelve solo la peticion "
+        "reescrita, en el idioma del usuario, sin encabezados ni formato.\n\n"
+        "MEMORIA DE LA CONVERSACION:\ncontexto\n\n"
+        "PETICION DEL USUARIO:\npeticion"
     )
 
 
@@ -373,6 +460,107 @@ def test_task_condensed_request_is_ephemeral_and_telemetry_has_no_content(tmp_pa
     assert literal not in serialized
     assert rewritten not in serialized
     assert raw_context not in serialized
+
+
+def test_task_retries_an_internal_plan_once_without_recondensing(tmp_path):
+    first_error = _downstream_error("PlanDependencyError", "primer-ciclo")
+    core = PlanRetryCore(run_errors=(first_error,))
+    store = InMemoryStore()
+    _remember(store)
+    service, _, _, _ = _service(tmp_path, core=core, store=store)
+
+    result = service.task_run(
+        "continua",
+        _identity(),
+        use_memory=True,
+        use_rag=False,
+        write_back=False,
+    )
+
+    assert result.response == "respuesta combinada"
+    assert len([call for call in core.calls if call[0] == "prompt.run"]) == 1
+    assert len([call for call in core.calls if call[0] == "task.plan"]) == 2
+    assert len([call for call in core.calls if call[0] == "task.run"]) == 2
+    event = next(item for item in _events(tmp_path) if item["event"] == "task.run")
+    assert event["plan_retried"] is True
+
+
+def test_task_propagates_the_second_plan_dependency_error_intact(tmp_path):
+    first_error = _downstream_error("PlanDependencyError", "primer-plan")
+    second_error = _downstream_error("PlanDependencyError", "segundo-plan")
+    core = PlanRetryCore(plan_errors=(first_error, second_error))
+    store = InMemoryStore()
+    _remember(store)
+    service, _, _, _ = _service(tmp_path, core=core, store=store)
+
+    with pytest.raises(DownstreamError) as exc_info:
+        service.task_run(
+            "continua",
+            _identity(),
+            use_memory=True,
+            use_rag=False,
+            write_back=False,
+        )
+
+    assert exc_info.value is second_error
+    assert len([call for call in core.calls if call[0] == "prompt.run"]) == 1
+    assert len([call for call in core.calls if call[0] == "task.plan"]) == 2
+    assert not [call for call in core.calls if call[0] == "task.run"]
+    event = next(item for item in _events(tmp_path) if item["event"] == "task.run")
+    assert event["plan_retried"] is True
+
+
+def test_task_does_not_retry_a_client_supplied_plan(tmp_path):
+    error = _downstream_error("PlanDependencyError", "plan-del-cliente")
+    core = PlanRetryCore(run_errors=(error,))
+    service, _, _, _ = _service(tmp_path, core=core)
+    supplied = {
+        "plan": [
+            {
+                "index": 0,
+                "prompt": "subtarea",
+                "domain": "general",
+                "depends_on": [0],
+            }
+        ]
+    }
+
+    with pytest.raises(DownstreamError) as exc_info:
+        service.task_run(
+            "tarea",
+            _identity(),
+            use_memory=False,
+            use_rag=False,
+            write_back=False,
+            plan_payload=supplied,
+        )
+
+    assert exc_info.value is error
+    assert not [call for call in core.calls if call[0] == "task.plan"]
+    assert len([call for call in core.calls if call[0] == "task.run"]) == 1
+    event = next(item for item in _events(tmp_path) if item["event"] == "task.run")
+    assert event["plan_retried"] is False
+
+
+def test_task_does_not_retry_another_downstream_error(tmp_path):
+    error = _downstream_error("PlanParseError", "plan-mal-formado")
+    core = PlanRetryCore(run_errors=(error,))
+    service, _, _, _ = _service(tmp_path, core=core)
+
+    with pytest.raises(DownstreamError) as exc_info:
+        service.task_run(
+            "tarea",
+            _identity(),
+            use_memory=False,
+            use_rag=False,
+            write_back=False,
+        )
+
+    assert exc_info.value is error
+    assert len([call for call in core.calls if call[0] == "task.plan"]) == 1
+    assert len([call for call in core.calls if call[0] == "task.run"]) == 1
+    event = next(item for item in _events(tmp_path) if item["event"] == "task.run")
+    assert event["plan_retried"] is False
 
 
 def test_task_plan_is_copied_faithfully_except_params(tmp_path):

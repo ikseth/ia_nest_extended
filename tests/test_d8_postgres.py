@@ -15,7 +15,7 @@ from ianest_extended import (
 
 class _Core:
     def prompt_run(self, prompt, identity, model=None, domain=None):
-        if prompt.startswith("Rewrite the user request"):
+        if prompt.startswith("Reescribe la PETICION del usuario"):
             response = "peticion autonoma efimera"
             request_id = "core-condense"
         else:
