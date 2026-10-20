@@ -74,7 +74,7 @@ Fuera del hito, a sabiendas:
 Regla del hito: lo que se descubra por el camino y no bloquee uno de los cinco
 criterios se anota como aparcado y NO se trabaja.
 
-### Estado al 2026-10-14: codigo cerrado, fase A medida, puerta pendiente
+### Estado al 2026-10-20: hito CERRADO por decision del operador
 
     pieza            estado
     D8               CERRADA en v0.5.2 (lectura del criterio, abajo)
@@ -84,10 +84,36 @@ criterios se anota como aparcado y NO se trabaja.
                      REST y MCP responden y el journal lo avisa
     RAG fase A       CERRADA como hecha, medida y repetible; objetivo NO
                      cumplido, por decision del operador (abajo)
-    puerta           pendiente; solo laboratorio
+    puerta           NO PASA (solo L5r) con el corpus de la fase A cargado;
+                     cerrada con el gap declarado, por decision del operador
+                     el 2026-10-20 (abajo)
 
-Las tres deudas se midieron en el laboratorio sobre la version desplegada. La
-puerta no necesita codigo: el hito se retoma por ahi.
+Las tres deudas se midieron en el laboratorio sobre la version desplegada.
+
+**Puerta, 2026-10-20 sobre `v0.5.2`, un ejecutor.** Precondiciones en verde
+(tag, servicios arrancados tras la instalacion, smoke del core 10/10, huella de
+parametros). L1, L2, L3 y L5 pasan 9/9; L4a 8/9, que pasa (el intento fallido
+es infidelidad del modelo, no composicion). Dos lineas fallan:
+
+- **L5r, 0/3, bloqueante.** Las frases de cortesia recuperan fragmentos: "hola,
+  buenos dias" trae el vocabulario de una lengua de la India, "gracias por tu
+  ayuda" un parrafo historico. El almacen no era el del despliegue natural:
+  ademas del manifiesto del instalador tenia los corpus de la fase A y de la A2
+  (~165.000 fragmentos), cargados por guiones aparte. Con el despliegue natural
+  L5r paso en todas las puertas anteriores. La causa no es un defecto de
+  codigo, es un PASO QUE FALTA: extended busca en el RAG en todos los turnos, y
+  un turno sin dominio busca en todos los corpus. Nadie decide antes si el turno
+  pide conocimiento.
+- **L4b, 1/9, no bloqueante** (brazo de control de la Fase 9). Con la sintesis
+  de hilo encendida dio 3/3 y 9/9 (21-09 a 29-09). Sin ella, 0-1 de 3 en
+  septiembre y 1/9 hoy. No es regresion: es la consecuencia esperada de apagar
+  la sintesis durante el hito.
+
+El operador cierra el hito asi el 2026-10-20, con el mismo criterio que la
+fase A: hecho, medido y con los gaps declarados y con dueno. No se pide la
+segunda pasada de la puerta: confirmaria un NO PASA ya entendido. L5r y L4b
+pasan a ser REQUISITOS DE ENTRADA para abrir el ente a usuarios que no sean el
+operador.
 
 **Fase A, medida el 2026-10-14 sobre `v0.5.2`.** Ingeridos los 1.000 articulos
 vitales de Wikipedia en espanol (991 con articulo), tldr-pages en espanol y el
@@ -116,6 +142,22 @@ hito siguiente: filtrar el contexto que no responde (reranker, ya registrado
 en `docs/mejoras_futuras/modelos_especializados.md`), cobertura (lista de
 10.000), indice vectorial e ingesta por lotes. El orden se decide al abrirlo.
 
+**Fase A2, medida el 2026-10-14 y leida el 2026-10-20.** Fuera del hito y sin
+cambiar su cierre: un experimento para orientar ese orden. Se paso de ~1.000 a
+~4.000 articulos (2.998 mas de la lista ampliada, al azar con semilla 42, sin
+tope) y se repitio la bateria de 96 con el mismo oraculo:
+
+    medida                                   fase A   fase A2
+    el contexto trae la respuesta               47       49
+    acierta con RAG                             72       71
+    acierta sin RAG y falla con RAG             10       12
+    latencia de busqueda sin dominio           2 s      4 s
+
+Cuadruplicar el corpus no mejora el acierto, empeora el estorbo y duplica la
+latencia: el contexto gana 7 preguntas y pierde 5 que antes traia, desplazadas
+por fragmentos nuevos. Apunta a **filtrar el contexto (reranker) antes que
+ampliar la cobertura**; el orden lo fija el operador al abrir el hito siguiente.
+
 **Lectura del criterio de D8, decidida por el operador el 2026-10-14.** Pasada
 final sobre `v0.5.2`, 23 turnos: 0 errores, 0 cortes, 0 turnos que re-respondan
 el historial. Queda un turno que devuelve el mismo menu que el anterior: el
@@ -127,12 +169,35 @@ del criterio, tambien por decision del operador: una lista enumerable que no
 cabe en el presupuesto de las subtareas (los ~90 emperadores bizantinos con
 fechas), que es el caso del modo `coverage` del core.
 
-Al core, como peticiones de cambio pendientes de abrir: su planificador emite a
-veces planes con dependencias circulares (extended reintenta una vez desde
-`v0.5.2`), y descarta a veces parte de la peticion al descomponerla.
+Al core, como AVISO (defectos medidos, no CR), entregado el 2026-10-20 en
+`ia_nest_meta/docs/handoff/avisos_al_core_desde_extended_2026-10-20.md`: su
+planificador emite a veces planes con dependencias circulares (extended
+reintenta una vez desde `v0.5.2`), y descarta a veces parte de la peticion al
+descomponerla.
 
 En el laboratorio, el combinador de `task.run` usa un perfil propio de 1536
 tokens de salida; `prompt.run` sigue con el de 512.
+
+## Hito siguiente: lo que la medida ordena (sin abrir)
+
+Orden propuesto, a fijar por el operador al abrirlo:
+
+1. **Paso cero: decidir si el turno pide conocimiento.** Cierra L5r. Propuesta
+   del operador del 2026-10-20: un corpus pequeno de CORTESIA, escrito a mano,
+   como senal. Si lo mas parecido a un turno es una frase de cortesia, y gana
+   con claridad, el turno no busca conocimiento. Es la ruta de "charla" del
+   enrutado semantico, aplicada a la recuperacion, y vive en extended (decidir
+   si se enriquece es de quien enriquece). A medir: los turnos mixtos
+   ("gracias, y ahora...") y que ninguna pregunta de la bateria de 96 caiga en
+   cortesia. L5r se redefine como "cero fragmentos de conocimiento"; el cambio
+   se declara y se reconcilia ANTES de medir. Por comprobar: si un corpus
+   puede llevar una etiqueta que no sea dominio del core.
+2. **Filtrar el contexto que no responde (reranker).** Cierra el estorbo de la
+   fase A y la A2. No basta para L5r: un reranker juzga parecido, y "muchas
+   gracias" se parece a "gracias".
+3. **Fase 9 bien hecha.** Cierra L4b sin el fallo que obligo a apagarla.
+4. **La CLI como cliente del servicio** (decidido el 2026-10-13, arriba).
+5. Cobertura e indice vectorial, despues del reranker.
 
 ## Fase 0: Semilla (esta)
 
