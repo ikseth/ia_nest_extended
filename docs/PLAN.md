@@ -955,9 +955,13 @@ con tres estados y un dueno por transicion. Extended ARCHIVA por reloj de
 inactividad -la saca de su alcance, sin declararla terminada-; conscience CIERRA
 al amortizarla. Asi `archivada` es la cola de trabajo del guardian, y mientras
 no exista, el respaldo de hilos sin amortizar es un dato visible, no un bloqueo.
-Un solo reloj, el del hilo, con el valor de hoy sin tocar. Pendiente de implementar, y **va antes que el
-ADR 0014**: exigir `session_id` a los clientes solo tiene sentido cuando hay
-donde consultarlo y crearlo.
+Un solo reloj, el del hilo, con el valor de hoy sin tocar.
+
+IMPLEMENTADA en `v0.4.0`, en el orden que pedia (la sesion antes que el ADR
+0014): entrega A (la sesion como entidad, archivado por inactividad), entrega B
+(`session.list`, `session.show`, `session.new`) y entrega C del ADR 0014 (REST
+y MCP exigen `user_id` y `session_id`). Lo que queda es de conscience: CERRAR
+al amortizar.
 
 ### D8. `task.run` enriquecido re-responde el historial
 
