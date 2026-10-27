@@ -21,9 +21,10 @@
 - Regulacion tecnica (limites, homeostasis) -> pulse.
 - Presentacion / GUI -> `ia_nest_web`.
 - Autenticacion de los interlocutores: no es enriquecimiento. Esta capa CONSUME
-  la identidad afirmada del request y la usa como clave; no la prueba. El concern
-  y sus hogares candidatos -esta capa es uno de ellos- estan registrados en
-  `ia_nest_meta/docs/CAPAS_FUTURAS.md`, sin decidir.
+  la identidad afirmada del request y la usa como clave; no la prueba. Quien
+  autentica esta decidido: el borde, `ia_nest_edge` (meta ADR 0011 y 0013). El
+  directorio de identidades es el hito H04 de la hoja de ruta de meta
+  (`ia_nest_meta/docs/plan/HOJA_DE_RUTA.md`, meta ADR 0014).
 
 ## Lecciones heredadas de la cantera (core ADR 0011)
 

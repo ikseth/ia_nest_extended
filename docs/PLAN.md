@@ -180,6 +180,11 @@ tokens de salida; `prompt.run` sigue con el de 512.
 
 ## Hito siguiente: lo que la medida ordena (sin abrir)
 
+El orden respecto a otras capas no se fija aqui: L5r y L4b los vigila el hito
+H08 (entrada de la familia) de la hoja de ruta de meta
+(`ia_nest_meta/docs/plan/HOJA_DE_RUTA.md`, meta ADR 0014). El orden interno de
+este hito si es de esta capa.
+
 Orden propuesto, a fijar por el operador al abrirlo:
 
 1. **Paso cero: decidir si el turno pide conocimiento.** Cierra L5r. Propuesta

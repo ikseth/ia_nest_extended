@@ -16,6 +16,10 @@ Antes de proponer o valorar cualquier cambio de diseno, lee en este orden:
 10. Los CR emitidos por esta capa, en el repo de gobernanza `ia_nest_meta`
     (`docs/change_requests/from-ia_nest_extended/`; el proceso, en su README)
 
+Orden entre capas: la hoja de ruta del ente, en
+`ia_nest_meta/docs/plan/HOJA_DE_RUTA.md` (meta ADR 0014). Los hilos de un hito
+salen de meta; `docs/PLAN.md` lleva solo el detalle interno de esta capa.
+
 Contexto del core (repo `ia_nest_core`): esta capa DEPENDE de sus contratos
 publicos (`CORE_CONTRACT.md`) y de la costura que el core expone a cada capa
 (`docs/FRONTERAS.md`, core ADR 0031-0037). No dupliques ni modifiques el core
