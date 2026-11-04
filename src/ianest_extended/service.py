@@ -43,8 +43,12 @@ from .errors import (
     SchemaMigrationRequiredError,
     SessionNotFoundError,
 )
-from .enrichment import compose_prompt
-from .identity import replace_remembered_session_id, resolve_identity
+from .enrichment import compose_prompt, interlocutor_context
+from .identity import (
+    normalize_interlocutor_profile,
+    replace_remembered_session_id,
+    resolve_identity,
+)
 from .ingest import ingest_path
 from .knowledge import (
     confirm_domain,
@@ -296,6 +300,7 @@ class ExtendedService:
         service: str | None = None,
         namespace: str | None = None,
         domain: str | None = None,
+        interlocutor_profile: str | None = None,
         check_remembered: bool = True,
     ) -> tuple[MemoryIdentity, SessionStatus | None]:
         """Resuelve la identidad local y rota solo una sesion recordada muerta.
@@ -311,6 +316,7 @@ class ExtendedService:
             service=service,
             namespace=namespace,
             domain=domain,
+            interlocutor_profile=interlocutor_profile,
         )
         if (
             not check_remembered
@@ -557,6 +563,7 @@ class ExtendedService:
             service=_identity_text(raw, "service"),
             namespace=_identity_text(raw, "namespace"),
             domain=_identity_text(raw, "domain_tag"),
+            interlocutor_profile=_identity_text(raw, "interlocutor_profile"),
             # El servidor no recuerda sesiones: el fichero de estado es de la
             # CLI. Un servidor que recuerda una sola las mezcla todas.
             remember_session=False,
@@ -613,6 +620,7 @@ class ExtendedService:
         model: str | None = None,
         dry_run: bool = False,
     ) -> PromptRunResult:
+        identity = _validated_identity(identity)
         plan = self.plan_enrichment(
             enrich=enrich,
             use_memory=use_memory,
@@ -624,13 +632,7 @@ class ExtendedService:
         )
         request_identity = identity
         if plan.domain is not None:
-            request_identity = MemoryIdentity(
-                user_id=identity.user_id,
-                session_id=identity.session_id,
-                service=identity.service,
-                domain_tag=plan.domain,
-                namespace=identity.namespace,
-            )
+            request_identity = replace(identity, domain_tag=plan.domain)
         if not plan.enrich:
             return self._passthrough(request_identity, prompt, plan, dry_run)
         return self._enriched(request_identity, prompt, plan, dry_run)
@@ -701,6 +703,7 @@ class ExtendedService:
         auto_domain: bool | None,
         model: str | None,
     ) -> _ObservedStream:
+        identity = _validated_identity(identity)
         plan = self.plan_enrichment(
             enrich=enrich,
             use_memory=use_memory,
@@ -742,7 +745,10 @@ class ExtendedService:
                 request_identity = prepared.identity
                 outbound_prompt = prepared.enriched_prompt
             else:
-                outbound_prompt = prompt
+                outbound_prompt = self._compose_interlocutor_prompt(
+                    request_identity,
+                    prompt,
+                )
 
             core = self._composition.core()
             open_stream = (
@@ -824,6 +830,7 @@ class ExtendedService:
         model: str | None = None,
         dry_run: bool = False,
     ) -> ReasoningRunResult:
+        identity = _validated_identity(identity)
         plan = self.plan_enrichment(
             enrich=enrich,
             use_memory=use_memory,
@@ -852,13 +859,16 @@ class ExtendedService:
                 return ReasoningRunResult(
                     payload={},
                     request_id=request_id,
-                    enriched_prompt=prompt,
+                    enriched_prompt=self._compose_interlocutor_prompt(
+                        request_identity,
+                        prompt,
+                    ),
                     enriched=False,
                     dry_run=True,
                 )
             try:
                 core_result = self._composition.core().reasoning_run(
-                    prompt,
+                    self._compose_interlocutor_prompt(request_identity, prompt),
                     request_identity,
                     model=plan.model,
                     domain=request_identity.domain_tag,
@@ -877,7 +887,10 @@ class ExtendedService:
             result = ReasoningRunResult(
                 payload=core_result.payload,
                 request_id=request_id,
-                enriched_prompt=prompt,
+                enriched_prompt=self._compose_interlocutor_prompt(
+                    request_identity,
+                    prompt,
+                ),
                 enriched=False,
                 downstream_request_id=core_result.request_id,
             )
@@ -948,6 +961,7 @@ class ExtendedService:
         effort: str | None = None,
         plan_payload: dict[str, object] | None = None,
     ) -> TaskRunResult:
+        identity = _validated_identity(identity)
         plan = self.plan_enrichment(
             enrich=enrich,
             use_memory=use_memory,
@@ -969,11 +983,28 @@ class ExtendedService:
         )
         if not plan.enrich:
             try:
+                outbound_prompt = self._compose_interlocutor_prompt(identity, prompt)
+                outbound_plan = plan_payload
+                subtasks_enriched = 0
+                if identity.interlocutor_profile == "child":
+                    if outbound_plan is None:
+                        planned = self._composition.core().task_plan(
+                            outbound_prompt,
+                            identity,
+                            effort=effort,
+                        )
+                        outbound_plan = dict(planned.payload)
+                    outbound_plan, subtasks_enriched = (
+                        self._compose_task_plan_interlocutor(
+                            outbound_plan,
+                            identity,
+                        )
+                    )
                 core_result = self._composition.core().task_run(
-                    prompt,
+                    outbound_prompt,
                     identity,
-                    plan_payload=plan_payload,
-                    effort=None if plan_payload is not None else effort,
+                    plan_payload=outbound_plan,
+                    effort=None if outbound_plan is not None else effort,
                 )
             except Exception:
                 self._record_task_run(
@@ -983,7 +1014,7 @@ class ExtendedService:
                     plan=plan,
                     started=started,
                     status="error",
-                    subtasks_enriched=0,
+                    subtasks_enriched=subtasks_enriched,
                     condense_trace=condense_trace,
                     plan_retried=plan_retried,
                 )
@@ -995,7 +1026,7 @@ class ExtendedService:
                 plan=plan,
                 started=started,
                 status="ok",
-                subtasks_enriched=0,
+                subtasks_enriched=subtasks_enriched,
                 condense_trace=condense_trace,
                 plan_retried=plan_retried,
             )
@@ -1028,13 +1059,17 @@ class ExtendedService:
                 prompt=prompt,
                 identity=memory_identity,
             )
+            outbound_task_prompt = self._compose_interlocutor_prompt(
+                identity,
+                task_prompt,
+            )
             client_supplied_plan = plan_payload is not None
             while True:
                 subtasks_enriched = 0
                 if not client_supplied_plan:
                     try:
                         planned = self._composition.core().task_plan(
-                            task_prompt,
+                            outbound_task_prompt,
                             identity,
                             effort=effort,
                         )
@@ -1062,6 +1097,8 @@ class ExtendedService:
                             "plan",
                         )
                     item = dict(original)
+                    subtask_prompt = item["prompt"]
+                    subtask_context = interlocutor_context(identity, self.config)
                     if plan.use_rag:
                         subtask_domain = item["domain"]
                         rag_identity = replace(
@@ -1075,29 +1112,27 @@ class ExtendedService:
                         chunks = enricher.retrieve_rag(
                             request_id=request_id,
                             identity=rag_identity,
-                            prompt=item["prompt"],
+                            prompt=subtask_prompt,
                         )
                         bundle = enricher.recall(
                             rag_identity,
-                            item["prompt"],
+                            subtask_prompt,
                             rag=chunks,
                             include_memory=False,
                             token_budget=self.config.rag_max_tokens,
                             rag_token_budget=self.config.rag_max_tokens,
                         )
-                        enriched_prompt = compose_prompt(
-                            bundle.context,
-                            item["prompt"],
-                        )
-                        if enriched_prompt != item["prompt"]:
-                            item["prompt"] = enriched_prompt
-                            subtasks_enriched += 1
+                        subtask_context = bundle.context
+                    enriched_prompt = compose_prompt(subtask_context, subtask_prompt)
+                    if enriched_prompt != subtask_prompt:
+                        item["prompt"] = enriched_prompt
+                        subtasks_enriched += 1
                     enriched_plan.append(item)
                 attempt_plan_payload["plan"] = enriched_plan
 
                 try:
                     core_result = self._composition.core().task_run(
-                        task_prompt,
+                        outbound_task_prompt,
                         identity,
                         plan_payload=attempt_plan_payload,
                     )
@@ -1278,6 +1313,7 @@ class ExtendedService:
         plan: EnrichmentPlan,
         dry_run: bool,
     ) -> PromptRunResult:
+        outbound_prompt = self._compose_interlocutor_prompt(identity, prompt)
         request_id = str(uuid4())
         started = time.monotonic()
         if dry_run:
@@ -1292,13 +1328,13 @@ class ExtendedService:
             return PromptRunResult(
                 payload={},
                 request_id=request_id,
-                enriched_prompt=prompt,
+                enriched_prompt=outbound_prompt,
                 enriched=False,
                 dry_run=True,
             )
         try:
             result = self._composition.core().prompt_run(
-                prompt,
+                outbound_prompt,
                 identity,
                 model=plan.model,
                 domain=identity.domain_tag,
@@ -1324,10 +1360,51 @@ class ExtendedService:
         return PromptRunResult(
             payload=result.payload,
             request_id=request_id,
-            enriched_prompt=prompt,
+            enriched_prompt=outbound_prompt,
             enriched=False,
             downstream_request_id=result.request_id,
         )
+
+    def _compose_interlocutor_prompt(
+        self,
+        identity: MemoryIdentity,
+        prompt: str,
+    ) -> str:
+        return compose_prompt(interlocutor_context(identity, self.config), prompt)
+
+    def _compose_task_plan_interlocutor(
+        self,
+        plan_payload: dict[str, object],
+        identity: MemoryIdentity,
+    ) -> tuple[dict[str, object], int]:
+        """Anade el hecho de interlocucion a cada subtarea sin tocar su plan."""
+        payload = dict(plan_payload)
+        payload.pop("params", None)
+        raw_plan = payload.get("plan")
+        if not isinstance(raw_plan, list):
+            raise EnrichmentParameterError(
+                "el plan suministrado debe contener una lista 'plan'", "plan"
+            )
+        composed_plan: list[object] = []
+        composed = 0
+        for original in raw_plan:
+            if not isinstance(original, dict):
+                raise EnrichmentParameterError(
+                    "el plan suministrado contiene una subtarea invalida", "plan"
+                )
+            item = dict(original)
+            prompt = item.get("prompt")
+            if not isinstance(prompt, str):
+                raise EnrichmentParameterError(
+                    "el plan suministrado contiene una subtarea sin prompt", "plan"
+                )
+            enriched_prompt = self._compose_interlocutor_prompt(identity, prompt)
+            if enriched_prompt != prompt:
+                item["prompt"] = enriched_prompt
+                composed += 1
+            composed_plan.append(item)
+        payload["plan"] = composed_plan
+        return payload, composed
 
     def _enriched(
         self,
@@ -1436,6 +1513,12 @@ class ExtendedService:
             },
             latency_ms=max(0, round((time.monotonic() - started) * 1000)),
             status=status,
+            details={
+                "interlocutor_context": {
+                    "profile": identity.interlocutor_profile,
+                    "composed": identity.interlocutor_profile == "child",
+                }
+            },
         )
 
     def _record_task_run(
@@ -1466,6 +1549,10 @@ class ExtendedService:
             latency_ms=max(0, round((time.monotonic() - started) * 1000)),
             status=status,
             details={
+                "interlocutor_context": {
+                    "profile": identity.interlocutor_profile,
+                    "composed": identity.interlocutor_profile == "child",
+                },
                 "question_rewritten": condense_trace.question_rewritten,
                 "condense_model": condense_trace.model,
                 "condense_latency_ms": condense_trace.latency_ms,
@@ -1907,6 +1994,19 @@ def _memory_identity(raw: Any) -> MemoryIdentity:
         service=_identity_text(raw, "service"),
         domain_tag=_identity_text(raw, "domain_tag"),
         namespace=_identity_text(raw, "namespace"),
+        interlocutor_profile=normalize_interlocutor_profile(
+            _identity_text(raw, "interlocutor_profile")
+        ),
+    )
+
+
+def _validated_identity(identity: MemoryIdentity) -> MemoryIdentity:
+    """Normaliza el perfil antes de cualquier llamada o escritura local."""
+    return replace(
+        identity,
+        interlocutor_profile=normalize_interlocutor_profile(
+            identity.interlocutor_profile
+        ),
     )
 
 

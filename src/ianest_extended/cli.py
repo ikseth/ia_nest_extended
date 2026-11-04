@@ -725,6 +725,11 @@ def _add_identity_arguments(
         help="espacio de identidad incluido en la traza",
     )
     identity.add_argument(
+        "--interlocutor-profile",
+        metavar="PERFIL",
+        help="perfil del interlocutor: adult o child",
+    )
+    identity.add_argument(
         "--domain",
         metavar="DOMINIO",
         help=(
@@ -1241,6 +1246,7 @@ def _identity(
         service=getattr(args, "service", None),
         namespace=getattr(args, "namespace", None),
         domain=getattr(args, "domain", None) if include_domain else None,
+        interlocutor_profile=getattr(args, "interlocutor_profile", None),
         check_remembered=check_remembered,
     )
     if replaced_status is not None:

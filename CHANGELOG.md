@@ -5,6 +5,15 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+### Anadido
+- `identity.interlocutor_profile` se transporta por CLI, REST y MCP hacia el
+  core. Con `child`, `prompt.*`, `reasoning.*` y `task.run` componen una seccion
+  permanente `## interlocutor`, configurable por
+  `IANEST_EXTENDED_INTERLOCUTOR_CONTEXT_CHILD`, incluso sin memoria, RAG o
+  enriquecimiento. No participa en las claves ni en los engramas; write-back
+  conserva la pregunta literal. La telemetria de esas capacidades anade
+  `interlocutor_context`. `task.stream` sigue reenviado sin composicion. PATCH.
+
 ### Corregido
 - Al componer `semantic`, `episodic` y `dialog`, las lineas atribuidas al
   usuario se presentan antes que las de procedencia desconocida y las del

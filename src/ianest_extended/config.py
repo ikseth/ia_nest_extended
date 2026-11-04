@@ -51,6 +51,7 @@ class ExtendedConfig:
     default_user_id: str = "local_operator"
     default_service: str = "local_cli"
     default_namespace: str = ""
+    interlocutor_context_child: str = "El interlocutor es un nino o una nina."
     enrich_enabled: bool = True
     memory_enabled: bool = True
     write_back_enabled: bool = True
@@ -146,6 +147,10 @@ class ExtendedConfig:
             "default_namespace": _env(
                 "DEFAULT_NAMESPACE",
                 defaults.default_namespace,
+            ),
+            "interlocutor_context_child": _env(
+                "INTERLOCUTOR_CONTEXT_CHILD",
+                defaults.interlocutor_context_child,
             ),
             "enrich_enabled": _env_bool(
                 "ENRICH_ENABLED",
@@ -358,6 +363,7 @@ class ExtendedConfig:
             "embedding_model",
             "extraction_model",
             "default_service",
+            "interlocutor_context_child",
         ):
             if not str(getattr(self, name)).strip():
                 raise ExtendedConfigError(f"{name} no puede estar vacio", name)

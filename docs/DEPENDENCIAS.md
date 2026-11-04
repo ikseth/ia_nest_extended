@@ -9,7 +9,13 @@ dependencias; el registro de capas del ente es un indice que lo refleja.
 
 ## Depende de
 
-- `ia_nest_core >=0.4 <0.5`. **Re-verificado en vivo contra el TAG `v0.4.0`**
+- `ia_nest_core >=0.4.2 <0.5`. El campo `identity.interlocutor_profile` del
+  core se reexpone como parte de la identidad del request, y el rango exige la
+  version que declara ese campo y su validacion. Comprobacion en vivo contra
+  `v0.4.2`, pendiente.
+
+  Comprobacion anterior del rango `>=0.4 <0.5`. **Re-verificado en vivo contra el
+  TAG `v0.4.0`**
   (commit `1fbc0e4`) el 2026-08-20, cumpliendo el deber de re-verificacion de
   `ia_nest_meta/docs/REGISTRO_CAPAS.md`: no basta subir el techo, hay que poder
   responder por que.
