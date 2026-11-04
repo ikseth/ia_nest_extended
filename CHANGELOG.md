@@ -5,6 +5,12 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+### Corregido
+- Al componer `semantic`, `episodic` y `dialog`, las lineas atribuidas al
+  usuario se presentan antes que las de procedencia desconocida y las del
+  modelo, sin cambiar relevancia ni el resultado del recorte por presupuesto.
+  `delegated`, `thread_summary` y RAG conservan su orden. PATCH.
+
 ## [0.5.3] - 2026-11-04
 
 ### Anadido
