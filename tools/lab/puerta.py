@@ -94,6 +94,7 @@ class GateArgs:
     repetitions: int
     timeout: float
     json_path: Path | None
+    phase_a_questions_path: Path | None
 
 
 class RestRecorder:
@@ -236,6 +237,24 @@ def _prompt(
     return rest.post(
         "/prompt/run",
         {"prompt": prompt, "identity": _identity(user_id, session_id)},
+    )
+
+
+def _enriched_prompt(
+    rest: RestRecorder,
+    user_id: str,
+    session_id: str,
+    prompt: str,
+) -> dict[str, Any]:
+    return rest.post(
+        "/prompt/run",
+        {
+            "prompt": prompt,
+            "identity": _identity(user_id, session_id),
+            "use_memory": False,
+            "use_rag": True,
+            "write_back": False,
+        },
     )
 
 
@@ -604,18 +623,168 @@ def _attempt_l5r(
             },
         )
         rag_count, corpora, context = _rag_observation(payload)
+        turn_payload = _enriched_prompt(rest, user_id, session_id, question)
+        turn_knowledge = turn_payload.get("knowledge")
+        turn_count = (
+            turn_knowledge.get("fragments")
+            if isinstance(turn_knowledge, dict)
+            and isinstance(turn_knowledge.get("fragments"), int)
+            else None
+        )
+        recall_gate = _knowledge_gate_observation(payload)
+        turn_gate = _knowledge_gate_observation(turn_payload)
         evidence.update(
             {
                 "recall": payload,
+                "turn": turn_payload,
                 "context": context,
                 "k_returned": rag_count,
+                "turn_fragments": turn_count,
                 "recovered_corpora": corpora,
-                "verdict": PASS if rag_count == 0 else FAIL,
+                "knowledge_gate": {"recall": recall_gate, "turn": turn_gate},
+                "verdict": (
+                    PASS
+                    if rag_count == 0
+                    and turn_count == 0
+                    and recall_gate is not None
+                    and turn_gate is not None
+                    else FAIL
+                ),
             }
         )
     except GateHttpError as exc:
         evidence.update({"error": str(exc), "verdict": FAIL})
     return evidence
+
+
+def _knowledge_gate_observation(payload: dict[str, Any]) -> dict[str, Any] | None:
+    gate = payload.get("knowledge_gate")
+    if not isinstance(gate, dict):
+        return None
+    decision = gate.get("decision")
+    if decision not in {"skip", "search", "not_applied", "error"}:
+        return None
+    return {
+        "decision": decision,
+        "score": gate.get("score"),
+        "threshold": gate.get("threshold"),
+        "nearest": gate.get("nearest"),
+    }
+
+
+def _step_zero_recall(
+    rest: RestRecorder,
+    *,
+    user_id: str,
+    session_id: str,
+    question: str,
+) -> dict[str, Any]:
+    payload = rest.post(
+        "/memory/recall",
+        {
+            "prompt": question,
+            "identity": _identity(user_id, session_id),
+            "use_memory": False,
+            "use_rag": True,
+        },
+    )
+    rag_count, corpora, context = _rag_observation(payload)
+    return {
+        "question": question,
+        "recall": payload,
+        "k_returned": rag_count,
+        "recovered_corpora": corpora,
+        "context": context,
+        "knowledge_gate": _knowledge_gate_observation(payload),
+    }
+
+
+def _load_phase_a_questions(path: Path | None) -> tuple[list[str] | None, str | None]:
+    if path is None:
+        return None, "falta --fase-a-preguntas-jsonl"
+    try:
+        questions = [
+            parsed["pregunta"].strip()
+            for raw in path.read_text(encoding="utf-8").splitlines()
+            if raw.strip()
+            for parsed in (json.loads(raw),)
+            if isinstance(parsed, dict)
+            and isinstance(parsed.get("pregunta"), str)
+            and parsed["pregunta"].strip()
+        ]
+    except (OSError, json.JSONDecodeError) as exc:
+        return None, f"no se pudo leer la bateria privada: {exc}"
+    if len(questions) != 96:
+        return None, "la bateria privada debe contener exactamente 96 preguntas"
+    return questions, None
+
+
+def _step_zero_battery(
+    rest: RestRecorder,
+    *,
+    user_id: str,
+    phase_a_questions_path: Path | None,
+) -> dict[str, Any]:
+    battery_path = Path(__file__).with_name("paso_cero_bateria.json")
+    battery = json.loads(battery_path.read_text(encoding="utf-8"))
+    blind = battery["cortesia_ciega"]
+    mixed = battery["mixtos"]
+    phase_a, phase_a_error = _load_phase_a_questions(phase_a_questions_path)
+    if phase_a_error is not None:
+        return {
+            "verdict": NOT_EXECUTABLE,
+            "reason": phase_a_error,
+            "courtesy_blind": [],
+            "phase_a": [],
+            "mixed": [],
+        }
+    courtesy = [
+        _step_zero_recall(
+            rest,
+            user_id=user_id,
+            session_id=f"l5r-courtesy-{index}-{uuid.uuid4().hex[:8]}",
+            question=question,
+        )
+        for index, question in enumerate(blind, start=1)
+    ]
+    phase_a_probes = [
+        _step_zero_recall(
+            rest,
+            user_id=user_id,
+            session_id=f"l5r-phase-a-{index}-{uuid.uuid4().hex[:8]}",
+            question=question,
+        )
+        for index, question in enumerate(phase_a, start=1)
+    ]
+    mixed_probes = [
+        _step_zero_recall(
+            rest,
+            user_id=user_id,
+            session_id=f"l5r-mixed-{index}-{uuid.uuid4().hex[:8]}",
+            question=question,
+        )
+        for index, question in enumerate(mixed, start=1)
+    ]
+    courtesy_passed = sum(probe["k_returned"] == 0 for probe in courtesy)
+    phase_a_passed = all(
+        probe["knowledge_gate"] is not None
+        and probe["knowledge_gate"]["decision"] == "search"
+        for probe in phase_a_probes
+    )
+    mixed_passed = all(
+        probe["knowledge_gate"] is not None
+        and probe["knowledge_gate"]["decision"] == "search"
+        for probe in mixed_probes
+    )
+    return {
+        "verdict": PASS if courtesy_passed >= 27 and phase_a_passed and mixed_passed else FAIL,
+        "courtesy_blind": courtesy,
+        "courtesy_passed": courtesy_passed,
+        "phase_a": phase_a_probes,
+        "phase_a_passed": phase_a_passed,
+        "mixed": mixed_probes,
+        "mixed_passed": mixed_passed,
+    }
 
 
 def _aggregate(
@@ -939,6 +1108,12 @@ def execute_gate(
         )
         l5r_attempts.append(l5r)
         _print_probe_progress("L5r", repetition, l5r["verdict"])
+    l5r_battery = _step_zero_battery(
+        rest,
+        user_id=_probe_user_id(run_id, "l5r-battery", 1),
+        phase_a_questions_path=args.phase_a_questions_path,
+    )
+    _print_probe_progress("L5r", 4, l5r_battery["verdict"], "bateria")
     corpus_observations = [
         probe.get("corpus_identity_verifiable_by_rest", False)
         for attempt in l5_attempts
@@ -966,6 +1141,10 @@ def execute_gate(
         "total": len(l3_attempts),
         "rate": f"{annotations}/{len(l3_attempts)}",
     }
+    l5r_line = _aggregate("L5r", l5r_attempts)
+    l5r_line["step_zero_battery"] = l5r_battery
+    if l5r_battery["verdict"] != PASS:
+        l5r_line["verdict"] = l5r_battery["verdict"]
     lines.extend(
         [
             _aggregate("L2", l2_attempts),
@@ -973,7 +1152,7 @@ def execute_gate(
             _aggregate_l4a(l4a_attempts),
             _aggregate("L4b", l4b_attempts, blocking=False),
             _aggregate("L5", l5_attempts),
-            _aggregate("L5r", l5r_attempts),
+            l5r_line,
             {
                 "line": "L6",
                 "verdict": OUTSIDE,
@@ -1110,6 +1289,12 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--n", type=int, default=3, dest="repetitions")
     parser.add_argument("--timeout", type=float, default=180.0)
     parser.add_argument("--json", type=Path, dest="json_path")
+    parser.add_argument(
+        "--fase-a-preguntas-jsonl",
+        type=Path,
+        dest="phase_a_questions_path",
+        help="ruta privada JSONL con 96 objetos que contienen pregunta",
+    )
     return parser
 
 

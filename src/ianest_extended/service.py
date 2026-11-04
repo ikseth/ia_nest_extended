@@ -81,6 +81,7 @@ class PromptRunResult:
     enriched: bool = True
     dry_run: bool = False
     downstream_request_id: str | None = None
+    knowledge_gate: dict[str, object] | None = None
 
     @property
     def response(self) -> str:
@@ -1376,14 +1377,19 @@ class ExtendedService:
             started=started,
             status="dry_run" if dry_run else "ok",
         )
+        payload = dict(result.payload)
+        if not dry_run:
+            payload["knowledge_gate"] = result.knowledge_gate.public_dict()
+            payload["knowledge"] = {"fragments": result.rag_fragments}
         return PromptRunResult(
-            payload=result.payload,
+            payload=payload,
             request_id=request_id,
             context=result.context,
             enriched_prompt=result.enriched_prompt,
             enriched=True,
             dry_run=dry_run,
             downstream_request_id=result.downstream_request_id,
+            knowledge_gate=result.knowledge_gate.public_dict(),
         )
 
     def _record_prompt_run(
@@ -1511,21 +1517,11 @@ class ExtendedService:
             memory_store=memory_store,
             rag_store=rag_store,
         )
-        chunks = ()
-        if rag_store is not None:
-            _, min_score = config.rag_score_floor(identity.domain_tag)
-            chunks = tuple(
-                rag_store.retrieve(
-                    prompt,
-                    domain=identity.domain_tag,
-                    top_k=config.rag_top_k,
-                    min_score=min_score,
-                )
-            )
-        bundle = enricher.recall(
-            identity,
-            prompt,
-            rag=chunks,
+        bundle = enricher.recall_with_rag(
+            request_id=str(uuid4()),
+            identity=identity,
+            prompt=prompt,
+            use_rag=rag_on,
             include_memory=memory_on,
         )
         return {
@@ -1537,6 +1533,7 @@ class ExtendedService:
                 "episodic": len(bundle.episodic),
                 "dialog": len(bundle.dialog),
             },
+            "knowledge_gate": bundle.knowledge_gate.public_dict(),
         }
 
     def memory_write(

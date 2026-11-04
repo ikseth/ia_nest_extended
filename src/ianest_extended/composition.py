@@ -22,6 +22,7 @@ from .errors import (
     SchemaMigrationRequiredError,
 )
 from .ports import Embedder, MemoryStore, RagStore
+from .knowledge_gate import KnowledgeGate
 from .telemetry import TelemetryWriter
 
 
@@ -37,6 +38,7 @@ class ExtendedComposition:
         memory_store: MemoryStore | None = None,
         rag_store: RagStore | None = None,
         telemetry: TelemetryWriter | None = None,
+        knowledge_gate: KnowledgeGate | None = None,
     ) -> None:
         self._config = config
         self._core = core
@@ -44,6 +46,7 @@ class ExtendedComposition:
         self._memory_store = memory_store
         self._rag_store = rag_store
         self._telemetry = telemetry
+        self._knowledge_gate = knowledge_gate
         self._memory_verified = False
         self._rag_verified = False
 
@@ -83,6 +86,16 @@ class ExtendedComposition:
         if self._telemetry is None:
             self._telemetry = TelemetryWriter(self._config.telemetry_dir)
         return self._telemetry
+
+    def knowledge_gate(self) -> KnowledgeGate:
+        if self._knowledge_gate is None:
+            self._knowledge_gate = KnowledgeGate(
+                embedder=self.embedder(),
+                enabled=self._config.knowledge_gate_enabled,
+                threshold=self._config.knowledge_gate_threshold,
+                phrases_file=self._config.knowledge_gate_phrases_file,
+            )
+        return self._knowledge_gate
 
     def memory_store(self, *, verify: bool = True) -> MemoryStore:
         if self._memory_store is None:
@@ -137,6 +150,7 @@ class ExtendedComposition:
             telemetry=self.telemetry(),
             config=self._config,
             rag_store=rag_store,
+            knowledge_gate=self.knowledge_gate() if rag_store is not None else None,
         )
 
     def migrate(self) -> dict[str, Any]:

@@ -39,7 +39,7 @@ mcp = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-ianest_extended = ["db/migrations/*.sql"]
+ianest_extended = ["db/migrations/*.sql", "data/*.txt"]
 
 [tool.pytest.ini_options]
 addopts = "-ra"

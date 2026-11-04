@@ -35,6 +35,9 @@ class Embedder(Protocol):
     def embed(self, text: str) -> tuple[float, ...]:
         """Convierte texto en un vector normalizado."""
 
+    def embed_many(self, texts: Sequence[str]) -> tuple[tuple[float, ...], ...]:
+        """Convierte varios textos en una sola peticion cuando el adaptador puede."""
+
 
 class MemoryStore(Protocol):
     def migrate(self) -> None:
@@ -204,6 +207,7 @@ class RagStore(Protocol):
         domain: str | None = None,
         top_k: int = 3,
         min_score: float = 0.0,
+        query_embedding: Sequence[float] | None = None,
     ) -> Sequence[RagChunk]:
         """Recupera chunks activos por similitud y gate opcional de dominio.
 

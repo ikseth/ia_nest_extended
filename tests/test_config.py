@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from ianest_extended import ExtendedConfig, ExtendedConfigError
@@ -14,6 +16,11 @@ def test_config_reads_prefixed_environment(monkeypatch):
     monkeypatch.setenv("IANEST_EXTENDED_SESSION_ID", "parallel-thread")
     monkeypatch.setenv("IANEST_EXTENDED_PROMOTE_MIN_STABILITY", "4")
     monkeypatch.setenv("IANEST_EXTENDED_RAG_ENABLED", "false")
+    monkeypatch.setenv("IANEST_EXTENDED_KNOWLEDGE_GATE_ENABLED", "false")
+    monkeypatch.setenv("IANEST_EXTENDED_KNOWLEDGE_GATE_THRESHOLD", "0.73")
+    monkeypatch.setenv(
+        "IANEST_EXTENDED_KNOWLEDGE_GATE_PHRASES_FILE", "/tmp/courtesy.txt"
+    )
     monkeypatch.setenv("IANEST_EXTENDED_RAG_MIN_SCORE", "0.5")
     monkeypatch.setenv("IANEST_EXTENDED_RAG_MIN_SCORE_DOMAIN", "0.41")
     monkeypatch.setenv("IANEST_EXTENDED_RAG_MIN_SCORE_NO_DOMAIN", "0.46")
@@ -35,6 +42,9 @@ def test_config_reads_prefixed_environment(monkeypatch):
     assert config.cli_session_id == "parallel-thread"
     assert config.promote_min_stability == 4
     assert config.rag_enabled is False
+    assert config.knowledge_gate_enabled is False
+    assert config.knowledge_gate_threshold == 0.73
+    assert config.knowledge_gate_phrases_file == Path("/tmp/courtesy.txt")
     assert config.rag_min_score == 0.5
     assert config.rag_min_score_domain == 0.41
     assert config.rag_min_score_no_domain == 0.46

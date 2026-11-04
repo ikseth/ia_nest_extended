@@ -1,0 +1,38 @@
+# Senal del paso cero: turnos que no piden conocimiento (docs/PLAN.md, Hito
+# siguiente). Es mecanismo, no personalidad. Una frase por linea.
+# saludos
+hola
+buenos dias
+buenas tardes
+buenas noches
+hola, que tal
+que tal estas
+como estas
+# agradecimiento
+gracias
+muchas gracias
+gracias por tu ayuda
+te lo agradezco
+de nada
+# disculpas y cortesia
+por favor
+perdona
+lo siento
+disculpa la molestia
+# despedidas
+adios
+chao
+hasta luego
+hasta manana
+hasta otra
+nos vemos
+que descanses
+me tengo que ir
+# acuse
+vale
+de acuerdo
+perfecto
+genial
+# sobre la propia relacion, sin pedir enciclopedia
+que recuerdas de mi
+que sabes de mi

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+from collections.abc import Sequence
 
 from .errors import InvalidEmbeddingDimensionError
 
@@ -39,3 +40,6 @@ class FakeEmbedder:
             values[0] = 1.0
             norm = 1.0
         return tuple(value / norm for value in values)
+
+    def embed_many(self, texts: Sequence[str]) -> tuple[tuple[float, ...], ...]:
+        return tuple(self.embed(text) for text in texts)

@@ -1,7 +1,9 @@
 # Puerta de laboratorio de ia_nest_extended
 
-Estado: reconciliado 2026-09-22. Declarado ANTES de medir.
-Version: 1.3 - 2026-09-22 (L4a desambigua: bloquea por composicion, no por
+Estado: reconciliado 2026-11-04. Declarado ANTES de medir.
+Version: 1.4 - 2026-11-04 (L5r pasa a "cero fragmentos de conocimiento", por los
+dos caminos, con la bateria del paso cero; 1.3 del 2026-09-22: L4a desambigua:
+bloquea por composicion, no por
 obediencia del modelo; 1.2 del 2026-09-21 anadio L7, memoria conversacional con
 referente, derivada de un hilo real; L1 y L3 se precisaron el 2026-09-12 al
 implementar el script)
@@ -66,7 +68,7 @@ incorrecto. Ninguna linea usa un modelo del propio sistema como juez.
 | L4a Coherencia, correccion de un candidato del modelo | hilo de cuatro turnos sobre L3; la ultima pregunta pide el dato | la respuesta contiene el testigo del usuario y no el del modelo | contiene el del modelo, o ninguno |
 | L4b Coherencia, autocorreccion del interlocutor | "la reunion es el martes" ... "perdona, es el jueves" ... "que dia es?" | contiene "jueves" y no "martes" | contiene "martes", o ninguno |
 | L5 RAG por dominio | por cada dominio con corpus confirmado, una pregunta redactada como la haria una persona, SIN mirar el corpus | la recuperacion devuelve al menos un fragmento, y se registra el nombre de corpus que el contexto publique | no recupera nada |
-| L5r Ruido | cortesia sin dominio ("hola", "gracias", "que recuerdas de mi") | la recuperacion RAG devuelve cero | recupera algo |
+| L5r Ruido | turnos que no piden conocimiento ("hola, buenos dias", "gracias por tu ayuda", "que recuerdas de mi"), por `memory.recall` y por un turno enriquecido; y la bateria del paso cero (seccion propia) | cero fragmentos de conocimiento en las tres frases por los dos caminos, y la bateria cumple | algun fragmento en esas frases, o la bateria no cumple |
 | L6 Repeticion | segunda ejecucion de `setup.sh` sobre lo instalado | L1-L3 siguen pasando y los datos no se duplican | cualquier otro |
 | L7 Memoria conversacional con referente | hilo de cuatro turnos en el que el interlocutor puntua cosas por ORDINAL -"la primera un 6"- y al final pregunta por una concreta | la respuesta trae la puntuacion correcta de esa pieza y ninguna de las que nunca se puntuaron | trae otra puntuacion, o ninguna |
 
@@ -99,6 +101,38 @@ tambien cuando la anotacion no disparo**. Lo que sostiene el comportamiento es
 marcar la procedencia; la anotacion es la segunda capa. Exigirla como criterio
 haria suspender a la puerta por un refuerzo, no por la funcion. Su tasa se
 registra en la evidencia, porque una caida ahi sigue siendo informacion.
+
+## L5r y el paso cero (reconciliado el 2026-11-04)
+
+Antes, L5r eran tres frases por `memory.recall`. Dos debilidades: basta con
+escribir esas tres frases en la senal de cortesia para pasar, y el turno normal
+recupera por otro camino de codigo, asi que la linea podia pasar sin servir a
+quien conversa. Por eso, sobre el tag desplegado y con el almacen que usara la
+familia (criterio 1 de H08, meta), L5r exige las cinco cosas:
+
+1. Las tres frases de la tabla: cero fragmentos de conocimiento por
+   `memory.recall` y por un turno enriquecido. 3 de 3.
+2. 30 frases de cortesia fijadas ANTES de escribir la senal y fuera de ella: al
+   menos 27 sin fragmentos de conocimiento.
+3. Las 96 preguntas de la fase A: ninguna se queda sin buscar.
+4. 10 turnos mixtos ("gracias, y ahora, que es la fotosintesis?"): los 10 buscan.
+5. La telemetria declara en cada turno si el paso cero salto.
+
+Fragmento de conocimiento es cualquier fragmento recuperado que llega al contexto
+del turno. El paso cero no toca la memoria: "que recuerdas de mi" sigue buscando
+en ella.
+
+Los errores no pesan igual, y por eso 3 y 4 no admiten fallos: ante la duda se
+busca. Un fallo de 2 deja el ruido de hoy; uno de 3 o 4 deja una pregunta real sin
+conocimiento.
+
+Si se corrige la senal despues de ver fallar una frase del punto 2, esa frase deja
+de ser ciega y se sustituye por otra nueva antes de volver a medir.
+
+Si el corpus de cortesia suspende por los matices (punto 2, 3 o 4), el siguiente
+escalon a valorar es un dominio con un modelo pequeno y rapido que comprenda esos
+matices (`docs/PLAN.md`, Hito siguiente). No antes: una llamada a un modelo anade
+tiempo a cada turno, y se paga solo con una medida que lo justifique.
 
 ## L7 mide lo que un hilo real rompio, y tampoco bloquea
 

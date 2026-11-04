@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import math
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from http.client import HTTPConnection, HTTPException, HTTPSConnection
 from typing import Any
@@ -572,10 +572,15 @@ class OllamaEmbedder:
         return self._dimension
 
     def embed(self, text: str) -> tuple[float, ...]:
+        return self.embed_many((text,))[0]
+
+    def embed_many(self, texts: Sequence[str]) -> tuple[tuple[float, ...], ...]:
+        if not texts:
+            return ()
         data = _request_json(
             f"{self._base_url}/api/embed",
             "POST",
-            {"model": self._model, "input": text},
+            {"model": self._model, "input": list(texts)},
             self._timeouts,
             connection_error=OllamaConnectionError,
             response_error=OllamaResponseError,
@@ -583,14 +588,17 @@ class OllamaEmbedder:
         embeddings = data.get("embeddings")
         if (
             not isinstance(embeddings, list)
-            or len(embeddings) != 1
-            or not isinstance(embeddings[0], list)
+            or len(embeddings) != len(texts)
+            or not all(isinstance(embedding, list) for embedding in embeddings)
         ):
             raise OllamaResponseError(
-                "Ollama no devolvio exactamente un embedding"
+                "Ollama no devolvio un embedding por cada texto"
             )
+        return tuple(self._normalized_embedding(embedding) for embedding in embeddings)
+
+    def _normalized_embedding(self, values: list[object]) -> tuple[float, ...]:
         try:
-            vector = tuple(float(value) for value in embeddings[0])
+            vector = tuple(float(value) for value in values)
         except (TypeError, ValueError) as exc:
             raise OllamaResponseError(
                 "el embedding de Ollama contiene valores no numericos"
