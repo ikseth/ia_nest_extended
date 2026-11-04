@@ -1,18 +1,23 @@
 import json
+from uuid import uuid4
 
 from ianest_extended import (
     CoreClient,
+    EntityProfile,
     CoreResult,
     EngramStatus,
     ExtendedConfig,
     EngramWrite,
     MemoryEnricher,
     Principal,
+    RecallItem,
     StatedBy,
     TelemetryWriter,
 )
 from ianest_extended.enrichment import (
+    _compose_context,
     _extraction_prompt,
+    _lines,
     _parse_extraction,
     _validate_item,
 )
@@ -201,6 +206,153 @@ def test_dialog_records_who_said_each_turn(tmp_path, local_service_stub):
         StatedBy.USER,
         StatedBy.MODEL,
     ]
+
+
+def test_context_lines_put_user_before_unknown_and_model_stably():
+    store = InMemoryStore()
+    identity_value = identity()
+    model = store.write(
+        Principal.EXTENDED,
+        EngramWrite(
+            type_name="episodic",
+            content="model first by relevance",
+            identity=identity_value,
+            namespace="facts",
+            stated_by=StatedBy.MODEL,
+        ),
+    )
+    user_first = store.write(
+        Principal.EXTENDED,
+        EngramWrite(
+            type_name="episodic",
+            content="user first",
+            identity=identity_value,
+            namespace="facts",
+            stated_by=StatedBy.USER,
+        ),
+    )
+    unknown = store.write(
+        Principal.EXTENDED,
+        EngramWrite(
+            type_name="episodic",
+            content="unknown between users and model",
+            identity=identity_value,
+            namespace="facts",
+        ),
+    )
+    user_second = store.write(
+        Principal.EXTENDED,
+        EngramWrite(
+            type_name="episodic",
+            content="user second",
+            identity=identity_value,
+            namespace="facts",
+            stated_by=StatedBy.USER,
+        ),
+    )
+    entity = EntityProfile(
+        id=uuid4(),
+        kind="project",
+        name="entity between unknown and model",
+    )
+
+    lines = _lines(
+        "episodic",
+        (
+            RecallItem("episodic", 1.0, engram=model),
+            RecallItem("episodic", 0.1, engram=user_first),
+            RecallItem("episodic", 0.2, engram=unknown),
+            RecallItem("episodic", 0.5, entity=entity),
+            RecallItem("episodic", 0.3, engram=user_second),
+        ),
+    )
+
+    assert [line.text.rsplit(") ", 1)[-1] for line in lines] == [
+        "user first",
+        "user second",
+        "unknown between users and model",
+        "[episodic/entities] entity between unknown and model: {}",
+        "model first by relevance",
+    ]
+
+
+def test_context_lines_apply_source_order_to_semantic_and_dialog_only():
+    store = InMemoryStore()
+    identity_value = identity()
+    for tier in ("semantic", "dialog", "delegated", "thread_summary"):
+        user = store.write(
+            Principal.EXTENDED,
+            EngramWrite(
+                type_name=tier,
+                content=f"{tier} user",
+                identity=identity_value,
+                namespace="thread" if tier == "thread_summary" else "facts",
+                stated_by=StatedBy.USER,
+            ),
+        )
+        model = store.write(
+            Principal.EXTENDED,
+            EngramWrite(
+                type_name=tier,
+                content=f"{tier} model",
+                identity=identity_value,
+                namespace="thread" if tier == "thread_summary" else "facts",
+                stated_by=StatedBy.MODEL,
+            ),
+        )
+
+        lines = _lines(
+            tier,
+            (
+                RecallItem(tier, 1.0, engram=model),
+                RecallItem(tier, 0.1, engram=user),
+            ),
+        )
+
+        contents = [line.text.rsplit(") ", 1)[-1] for line in lines]
+        expected = (
+            [f"{tier} user", f"{tier} model"]
+            if tier in {"semantic", "dialog"}
+            else [f"{tier} model", f"{tier} user"]
+        )
+        assert contents == expected
+
+
+def test_context_budget_removes_the_same_low_relevance_line_after_reordering():
+    store = InMemoryStore()
+    identity_value = identity()
+    model = store.write(
+        Principal.EXTENDED,
+        EngramWrite(
+            type_name="episodic",
+            content="model removed by budget",
+            identity=identity_value,
+            namespace="facts",
+            stated_by=StatedBy.MODEL,
+        ),
+    )
+    user = store.write(
+        Principal.EXTENDED,
+        EngramWrite(
+            type_name="episodic",
+            content="user kept by budget",
+            identity=identity_value,
+            namespace="facts",
+            stated_by=StatedBy.USER,
+        ),
+    )
+    lines = _lines(
+        "episodic",
+        (
+            RecallItem("episodic", 0.9, engram=model),
+            RecallItem("episodic", 0.9, engram=user),
+        ),
+    )
+
+    context = _compose_context(lines, token_budget=36, rag_token_budget=100)
+
+    assert "user kept by budget" in context
+    assert "model removed by budget" not in context
 
 
 def test_model_claim_is_stored_as_model_not_as_user_fact(

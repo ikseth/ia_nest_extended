@@ -216,3 +216,18 @@ Sin decidir, y no de paso: anotar tambien hacia delante -que un engrama del
 modelo recien escrito busque correcciones previas del usuario- amplia una accion
 que hoy solo ocurre en un sentido, y el orden de escritura dentro de un mismo
 write-back pasaria a ser parte del contrato. Pide su propia medida.
+
+## Enmienda del 2026-11-04: el usuario antes que el modelo
+
+Decidido por el operador. Vuelve el hueco de la enmienda anterior: la puerta sobre
+`v0.5.3` dio 8 de 9 en L3, con la reafirmacion del modelo sin anotar delante de la
+version del usuario, en el mismo bloque.
+
+Dentro de `semantic`, `episodic` y `dialog`, las lineas del usuario se presentan
+antes que las de procedencia desconocida, y estas antes que las del modelo. Es una
+regla de composicion y no depende de umbrales ni de la anotacion, que sigue siendo la
+segunda capa. La relevancia no cambia, asi que el recorte por presupuesto quita lo
+mismo.
+
+No se anota hacia delante ni cambia el orden de escritura: la copia del modelo queda
+sin anotar, pero detras y con su etiqueta de procedencia.

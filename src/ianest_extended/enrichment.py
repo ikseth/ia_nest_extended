@@ -104,6 +104,7 @@ class _ContextLine:
     text: str
     relevance: float
     permanent: bool = False
+    trim_order: int | None = None
 
 
 class MemoryEnricher:
@@ -994,7 +995,10 @@ def _lines(
     permanent: bool = False,
 ) -> list[_ContextLine]:
     result = []
-    for item in items:
+    indexed_items = list(enumerate(items))
+    if tier in {"semantic", "episodic", "dialog"}:
+        indexed_items.sort(key=lambda pair: _stated_by_order(pair[1]))
+    for original_index, item in indexed_items:
         relevance = item.relevance
         if item.engram is not None:
             namespace = item.engram.namespace or "raw"
@@ -1019,9 +1023,20 @@ def _lines(
                 text=text,
                 relevance=relevance,
                 permanent=permanent,
+                trim_order=original_index,
             )
         )
     return result
+
+
+def _stated_by_order(item: RecallItem) -> int:
+    if item.engram is None:
+        return 1
+    return {
+        StatedBy.USER: 0,
+        StatedBy.UNKNOWN: 1,
+        StatedBy.MODEL: 2,
+    }[item.engram.stated_by]
 
 
 def _rag_lines(chunks: tuple[RagChunk, ...]) -> list[_ContextLine]:
@@ -1060,7 +1075,13 @@ def _compose_context(
             break
         worst_index, _ = min(
             removable,
-            key=lambda pair: (pair[1].relevance, pair[0]),
+            key=lambda pair: (
+                pair[1].relevance,
+                pair[1].trim_order
+                if pair[1].trim_order is not None
+                else pair[0],
+                pair[0],
+            ),
         )
         selected.pop(worst_index)
     return _render_context(selected)
@@ -1081,7 +1102,13 @@ def _trim_tier_to_budget(
             return
         worst_index, _ = min(
             candidates,
-            key=lambda pair: (pair[1].relevance, pair[0]),
+            key=lambda pair: (
+                pair[1].relevance,
+                pair[1].trim_order
+                if pair[1].trim_order is not None
+                else pair[0],
+                pair[0],
+            ),
         )
         lines.pop(worst_index)
 
