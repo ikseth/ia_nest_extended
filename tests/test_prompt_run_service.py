@@ -25,6 +25,7 @@ def _config(tmp_path, local_service_stub, **changes):
         telemetry_dir=tmp_path,
         session_state_path=tmp_path / "session_id",
         embedding_dimension=2,
+        knowledge_gate_enabled=False,
         connect_timeout_seconds=5,
         inactivity_timeout_seconds=5,
         **changes,
@@ -72,10 +73,14 @@ def test_overridden_prompt_run_keeps_core_shape(tmp_path, local_service_stub):
         "domain",
         "params",
         "trace",
+        "knowledge_gate",
+        "knowledge",
     }
     assert result.payload["response"] == f"echo:{core_payloads[0]['prompt']}"
     assert result.payload["trace"]["finish_reason"] == "stop"
     assert result.payload["trace"]["request_id"].startswith("core-")
+    assert result.payload["knowledge_gate"]["decision"] == "not_applied"
+    assert result.payload["knowledge"] == {"fragments": 0}
 
 
 def test_passthrough_does_not_recall_inject_or_write(

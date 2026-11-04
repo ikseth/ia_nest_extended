@@ -475,7 +475,15 @@ class InMemoryRagStore:
     def verify_schema(self):
         return None
 
-    def retrieve(self, query_text, *, domain=None, top_k=3, min_score=0.0):
+    def retrieve(
+        self,
+        query_text,
+        *,
+        domain=None,
+        top_k=3,
+        min_score=0.0,
+        query_embedding=None,
+    ):
         self.domains.append(domain)
         self.min_scores.append(min_score)
         selected = [

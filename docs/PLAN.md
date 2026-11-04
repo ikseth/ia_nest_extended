@@ -178,31 +178,56 @@ descomponerla.
 En el laboratorio, el combinador de `task.run` usa un perfil propio de 1536
 tokens de salida; `prompt.run` sigue con el de 512.
 
-## Hito siguiente: lo que la medida ordena (sin abrir)
+## Hito siguiente: lo que la medida ordena (abierto el 2026-11-03)
 
 El orden respecto a otras capas no se fija aqui: L5r y L4b los vigila el hito
 H08 (entrada de la familia) de la hoja de ruta de meta
 (`ia_nest_meta/docs/plan/HOJA_DE_RUTA.md`, meta ADR 0014). El orden interno de
 este hito si es de esta capa.
 
-Orden propuesto, a fijar por el operador al abrirlo:
+Lo que bloquea a H08, por este orden (H08P2 y H08P6, decididos por el operador
+el 2026-10-29):
 
 1. **Paso cero: decidir si el turno pide conocimiento.** Cierra L5r. Propuesta
    del operador del 2026-10-20: un corpus pequeno de CORTESIA, escrito a mano,
-   como senal. Si lo mas parecido a un turno es una frase de cortesia, y gana
-   con claridad, el turno no busca conocimiento. Es la ruta de "charla" del
-   enrutado semantico, aplicada a la recuperacion, y vive en extended (decidir
-   si se enriquece es de quien enriquece). A medir: los turnos mixtos
-   ("gracias, y ahora...") y que ninguna pregunta de la bateria de 96 caiga en
-   cortesia. L5r se redefine como "cero fragmentos de conocimiento"; el cambio
-   se declara y se reconcilia ANTES de medir. Por comprobar: si un corpus
-   puede llevar una etiqueta que no sea dominio del core.
-2. **Filtrar el contexto que no responde (reranker).** Cierra el estorbo de la
-   fase A y la A2. No basta para L5r: un reranker juzga parecido, y "muchas
-   gracias" se parece a "gracias".
+   como senal. Es la ruta de "charla" del enrutado semantico, aplicada a la
+   recuperacion, y vive en extended (decidir si se enriquece es de quien
+   enriquece). Criterio reconciliado el 2026-11-04, antes de medir, en
+   `docs/PUERTA_LABORATORIO.md` (seccion "L5r y el paso cero"). Si el corpus
+   suspende por los matices, el siguiente escalon a valorar es el que propuso
+   el operador: un dominio con un modelo pequeno y rapido.
+
+   Mecanismo, decidido por el operador el 2026-11-04: umbral sobre frases de
+   cortesia ANTES de buscar, con las frases en parametros de la capa y fuera del
+   almacen de conocimiento. Descartado: un corpus de cortesia en el almacen que
+   compita con el conocimiento, porque obliga a buscar siempre, sus fragmentos no
+   llegarian al modelo y el conocimiento no es autobiografico
+   (`docs/VISION_MEMORIA.md`).
+
+   Esto es mecanismo, no personalidad. La personalidad sigue siendo `identity` +
+   `principles`, que escribe conscience (`docs/ROSTER_MEMORIA.md`); el paso cero
+   no la toca ni la sustituye. Lo que perdura es la pregunta "este turno pide
+   conocimiento?" y su registro en telemetria; quien la responde se puede
+   sustituir (hoy la lista con umbral; despues, si hace falta, el modelo pequeno,
+   o conscience si algun dia se decide que es juicio suyo).
+2. **`edge CR-0002`** (ia_nest_extended#81). Transportar el perfil del
+   interlocutor sin usarlo como clave, componerlo siempre, no memorizarlo y
+   declararlo en telemetria. Rango del core a re-verificar contra `v0.4.2`.
 3. **Fase 9 bien hecha.** Cierra L4b sin el fallo que obligo a apagarla.
-4. **La CLI como cliente del servicio** (decidido el 2026-10-13, arriba).
-5. Cobertura e indice vectorial, despues del reranker.
+4. **Latencia del primer token (criterio 7 de H08).** Memoria y conocimiento en
+   paralelo e indice vectorial. Se mide con la bateria v1 del laboratorio, sin
+   cambiarla, mirando antes la presion de memoria y la swap del anfitrion.
+5. **Fallos vistos en esa bateria, a valorar.** Un tiempo de espera hacia el core
+   llega al cliente como 400, y uno a mitad de flujo termina sin evento de error.
+
+Interno, sin bloquear a H08 y por detras (orden cambiado el 2026-10-29: el indice
+vectorial se adelanta al reranker, H08P6):
+
+- **Filtrar el contexto que no responde (reranker).** Cierra el estorbo de la
+  fase A y la A2. No basta para L5r: un reranker juzga parecido, y "muchas
+  gracias" se parece a "gracias".
+- **La CLI como cliente del servicio** (decidido el 2026-10-13, arriba).
+- Cobertura.
 
 ## Fase 0: Semilla (esta)
 

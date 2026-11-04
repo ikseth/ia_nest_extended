@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from importlib.resources.abc import Traversable
 from uuid import uuid4
 
@@ -236,6 +237,7 @@ class PostgresRagStore:
         domain: str | None = None,
         top_k: int = 3,
         min_score: float = 0.0,
+        query_embedding: Sequence[float] | None = None,
     ) -> tuple[RagChunk, ...]:
         if not query_text.strip():
             raise InvalidRagInputError("query_text no puede estar vacio")
@@ -243,7 +245,13 @@ class PostgresRagStore:
             raise InvalidRagInputError("top_k debe ser mayor que cero")
         if domain is not None and not domain.strip():
             raise InvalidRagInputError("domain no puede estar vacio")
-        embedding = self._embedder.embed(query_text)
+        embedding = (
+            self._embedder.embed(query_text)
+            if query_embedding is None
+            else tuple(float(value) for value in query_embedding)
+        )
+        if len(embedding) != self._embedder.dimension:
+            raise InvalidRagInputError("query_embedding tiene dimension invalida")
         vector = _vector_literal(embedding)
         with self._connect() as connection:
             rows = connection.execute(

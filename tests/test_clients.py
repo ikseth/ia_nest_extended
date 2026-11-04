@@ -54,7 +54,7 @@ def test_ollama_embedder_normalizes_and_validates_dimension(
     assert vector == pytest.approx((0.6, 0.8))
     assert math.sqrt(sum(value * value for value in vector)) == pytest.approx(1)
     _, payload = local_service_stub.requests[-1]
-    assert payload == {"model": "test-embed", "input": "hola"}
+    assert payload == {"model": "test-embed", "input": ["hola"]}
 
     wrong = OllamaEmbedder(
         local_service_stub.base_url,

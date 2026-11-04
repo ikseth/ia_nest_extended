@@ -111,9 +111,11 @@ def test_wheel_install_contains_reachable_migrations(tmp_path):
                 "from ianest_extended.adapters.rag_postgres import "
                 "_default_migration_path as rag, "
                 "_default_domain_migration_path as domains; "
+                "from importlib.resources import files; "
                 "print(json.dumps({'package': ianest_extended.__file__, "
                 "'sql': [resource().read_text(encoding='ascii') "
-                "for resource in (memory, rag, domains, stated_by, synthesis, sessions)]}))"
+                "for resource in (memory, rag, domains, stated_by, synthesis, sessions)], "
+                "'courtesy': files('ianest_extended').joinpath('data/courtesy_es.txt').read_text(encoding='utf-8')}))"
             ),
         ],
         cwd=tmp_path,
@@ -128,6 +130,7 @@ def test_wheel_install_contains_reachable_migrations(tmp_path):
     assert "CREATE TABLE IF NOT EXISTS memory_types" in payload["sql"][0]
     assert "CREATE TABLE IF NOT EXISTS rag_chunks" in payload["sql"][1]
     assert "CREATE TABLE IF NOT EXISTS rag_corpus_domains" in payload["sql"][2]
+    assert "hola" in payload["courtesy"]
 
 
 def test_repository_has_one_copy_of_each_migration():

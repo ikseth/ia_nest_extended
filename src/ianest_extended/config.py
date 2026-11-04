@@ -81,6 +81,9 @@ class ExtendedConfig:
     promote_min_score: float = 0.8
     promote_recency_max: float = 0.1
     rag_enabled: bool = True
+    knowledge_gate_enabled: bool = True
+    knowledge_gate_threshold: float = 0.70
+    knowledge_gate_phrases_file: Path | None = None
     rag_top_k: int = 3
     rag_min_score: float = 0.50
     rag_min_score_domain: float | None = None
@@ -225,6 +228,18 @@ class ExtendedConfig:
                 defaults.promote_recency_max,
             ),
             "rag_enabled": _env_bool("RAG_ENABLED", defaults.rag_enabled),
+            "knowledge_gate_enabled": _env_bool(
+                "KNOWLEDGE_GATE_ENABLED",
+                defaults.knowledge_gate_enabled,
+            ),
+            "knowledge_gate_threshold": _env_float(
+                "KNOWLEDGE_GATE_THRESHOLD",
+                defaults.knowledge_gate_threshold,
+            ),
+            "knowledge_gate_phrases_file": _env_optional_path(
+                "KNOWLEDGE_GATE_PHRASES_FILE",
+                defaults.knowledge_gate_phrases_file,
+            ),
             "rag_top_k": _env_int("RAG_TOP_K", defaults.rag_top_k),
             "rag_min_score": _env_float(
                 "RAG_MIN_SCORE",
@@ -303,6 +318,7 @@ class ExtendedConfig:
             "rag_min_score",
             "rag_min_score_domain",
             "rag_min_score_no_domain",
+            "knowledge_gate_threshold",
         ):
             value = getattr(self, name)
             if value is None:
@@ -431,6 +447,14 @@ def _env_optional_float(name: str, default: float | None) -> float | None:
         return float(os.environ[key])
     except ValueError as exc:
         raise ExtendedConfigError(f"{key} debe ser numerico") from exc
+
+
+def _env_optional_path(name: str, default: Path | None) -> Path | None:
+    key = f"{PREFIX}{name}"
+    if key not in os.environ:
+        return default
+    value = os.environ[key].strip()
+    return Path(value).expanduser() if value else None
 
 
 def _env_bool(name: str, default: bool) -> bool:

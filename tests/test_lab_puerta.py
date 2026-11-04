@@ -23,6 +23,20 @@ sys.modules[SPEC.name] = puerta
 SPEC.loader.exec_module(puerta)
 
 
+def _gate_payload(prompt):
+    battery = json.loads(
+        (SCRIPT.parent / "paso_cero_bateria.json").read_text(encoding="utf-8")
+    )
+    courtesy = set(battery["cortesia_ciega"]) | set(puerta.L5R_PROBES)
+    decision = "skip" if prompt in courtesy else "search"
+    return {
+        "decision": decision,
+        "score": 0.2 if decision == "search" else 0.9,
+        "threshold": 0.7,
+        "nearest": "hola" if decision == "skip" else "gracias",
+    }
+
+
 @pytest.fixture
 def gate_stub():
     state = SimpleNamespace(
@@ -110,6 +124,15 @@ def gate_stub():
         def _prompt_run(self, payload):
             prompt = payload["prompt"]
             user_id = payload["identity"]["user_id"]
+            if payload.get("use_rag") and not payload.get("use_memory"):
+                self._send(
+                    {
+                        "response": "OK",
+                        "knowledge": {"fragments": 1 if state.l5r_noise else 0},
+                        "knowledge_gate": _gate_payload(prompt),
+                    }
+                )
+                return
             if prompt.startswith("Mi perro se llama "):
                 witness = prompt.split()[4].rstrip(".")
                 state.l2_witnesses[payload["identity"]["user_id"]] = witness
@@ -162,6 +185,7 @@ def gate_stub():
                             {
                                 "context": context,
                                 "counters": {"rag": 1},
+                                "knowledge_gate": _gate_payload(prompt),
                             }
                         )
                     return
@@ -170,10 +194,17 @@ def gate_stub():
                         {
                             "context": "[corpus-ruido/global/noise.md#0] ruido",
                             "counters": {"rag": 1},
+                            "knowledge_gate": _gate_payload(prompt),
                         }
                     )
                 else:
-                    self._send({"context": "", "counters": {"rag": 0}})
+                    self._send(
+                        {
+                            "context": "",
+                            "counters": {"rag": 0},
+                            "knowledge_gate": _gate_payload(prompt),
+                        }
+                    )
                 return
             if "perro" in prompt:
                 witness = state.l2_witnesses[user_id]
@@ -243,6 +274,15 @@ def _systemctl_ok(*args, **kwargs):
 
 
 def _argv(stub, tmp_path, *, repetitions=3):
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    questions = tmp_path / "phase-a-private.jsonl"
+    questions.write_text(
+        "".join(
+            json.dumps({"pregunta": f"que es la prueba {index}?"}) + "\n"
+            for index in range(96)
+        ),
+        encoding="utf-8",
+    )
     return [
         "--url",
         stub.base_url,
@@ -259,6 +299,8 @@ def _argv(stub, tmp_path, *, repetitions=3):
         str(repetitions),
         "--json",
         str(tmp_path / "evidence.json"),
+        "--fase-a-preguntas-jsonl",
+        str(questions),
     ]
 
 
@@ -276,6 +318,25 @@ def _line(report, name):
     return next(item for item in report["lines"] if item["line"] == name)
 
 
+def test_phase_a_battery_is_private_and_requires_exactly_96_questions(tmp_path):
+    questions, error = puerta._load_phase_a_questions(None)
+    assert questions is None
+    assert error == "falta --fase-a-preguntas-jsonl"
+
+    path = tmp_path / "phase-a.jsonl"
+    path.write_text(
+        "".join(
+            json.dumps({"pregunta": f"que es la prueba {index}?"}) + "\n"
+            for index in range(96)
+        ),
+        encoding="utf-8",
+    )
+    questions, error = puerta._load_phase_a_questions(path)
+
+    assert error is None
+    assert len(questions) == 96
+
+
 def test_green_verdict_executes_all_executable_lines(gate_stub, tmp_path, capsys):
     code, output, report = _run(gate_stub, tmp_path, capsys)
 
@@ -285,6 +346,10 @@ def test_green_verdict_executes_all_executable_lines(gate_stub, tmp_path, capsys
         _line(report, name)["verdict"] == "PASA"
         for name in ("L1", "L2", "L3", "L4a", "L4b", "L5", "L5r")
     )
+    step_zero = _line(report, "L5r")["step_zero_battery"]
+    assert step_zero["courtesy_passed"] >= 27
+    assert step_zero["phase_a_passed"] is True
+    assert step_zero["mixed_passed"] is True
     assert "VEREDICTO: PASA (codigo 0)" in output
 
 
@@ -562,7 +627,7 @@ def test_unpublished_corpus_identity_is_declared_without_hiding_retrieval(
     )
 
 
-def test_progress_reports_every_probe_before_the_unchanged_summary(
+def test_progress_reports_every_probe_before_the_summary(
     gate_stub, tmp_path, capsys
 ):
     _, output, _ = _run(gate_stub, tmp_path, capsys, repetitions=1)
@@ -570,11 +635,12 @@ def test_progress_reports_every_probe_before_the_unchanged_summary(
     output_lines = output.splitlines()
     summary_index = output_lines.index("LO QUE LA PUERTA NO CUBRE")
     progress = output_lines[:summary_index]
-    assert len(progress) == 13
+    assert len(progress) == 14
     assert all(line.startswith("PROGRESO ") for line in progress)
     assert "PROGRESO L1 repeticion 1: PASA" in progress
     assert "PROGRESO L5 repeticion 1 agricultura: PASA" in progress
     assert "PROGRESO L5r repeticion 3: PASA" in progress
+    assert "PROGRESO L5r repeticion 4 bateria: PASA" in progress
     assert "VEREDICTO: PASA (codigo 0)" in output_lines[summary_index:]
     assert "L6: FUERA DEL SCRIPT" in output_lines[summary_index:]
 

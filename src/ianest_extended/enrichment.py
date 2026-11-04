@@ -14,6 +14,7 @@ from uuid import uuid4
 from .clients import CoreClient, CoreResult
 from .config import ExtendedConfig
 from .errors import InvalidCoreDomainError
+from .knowledge_gate import GateDecision, KnowledgeGate, not_applied_decision
 from .models import (
     EngramWrite,
     MemoryIdentity,
@@ -69,6 +70,7 @@ class RecallBundle:
     thread_summary: tuple[RecallItem, ...]
     dialog: tuple[RecallItem, ...]
     context: str
+    knowledge_gate: GateDecision
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +82,8 @@ class EnrichResult:
     payload: dict[str, Any] = field(default_factory=dict)
     enriched_prompt: str = ""
     downstream_request_id: str | None = None
+    knowledge_gate: GateDecision = field(default_factory=not_applied_decision)
+    rag_fragments: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,12 +115,14 @@ class MemoryEnricher:
         telemetry: TelemetryWriter,
         config: ExtendedConfig,
         rag_store: RagStore | None = None,
+        knowledge_gate: KnowledgeGate | None = None,
     ) -> None:
         self._store = store
         self._core = core
         self._telemetry = telemetry
         self._config = config
         self._rag_store = rag_store
+        self._knowledge_gate = knowledge_gate
 
     def enrich(
         self,
@@ -212,6 +218,8 @@ class MemoryEnricher:
                 payload={},
                 enriched_prompt=prepared.enriched_prompt,
                 downstream_request_id=None,
+                knowledge_gate=prepared.bundle.knowledge_gate,
+                rag_fragments=_rag_fragments_in_context(prepared.bundle),
             )
 
         try:
@@ -240,6 +248,8 @@ class MemoryEnricher:
                 payload=core_result.payload,
                 enriched_prompt=prepared.enriched_prompt,
                 downstream_request_id=core_result.request_id,
+                knowledge_gate=prepared.bundle.knowledge_gate,
+                rag_fragments=_rag_fragments_in_context(prepared.bundle),
             )
 
         self.write_back(
@@ -256,6 +266,8 @@ class MemoryEnricher:
             payload=core_result.payload,
             enriched_prompt=prepared.enriched_prompt,
             downstream_request_id=core_result.request_id,
+            knowledge_gate=prepared.bundle.knowledge_gate,
+            rag_fragments=_rag_fragments_in_context(prepared.bundle),
         )
 
     def prepare(
@@ -284,7 +296,7 @@ class MemoryEnricher:
         )
         recall_started = time.monotonic()
         try:
-            rag = self._retrieve_rag(
+            rag, gate_decision = self._retrieve_rag(
                 request_id=request_id,
                 identity=resolved_identity,
                 prompt=prompt,
@@ -296,6 +308,7 @@ class MemoryEnricher:
                 resolved_identity,
                 prompt,
                 rag=rag,
+                knowledge_gate=gate_decision,
                 include_memory=memory_on,
             )
         except Exception:
@@ -341,6 +354,7 @@ class MemoryEnricher:
         prompt: str,
         *,
         rag: tuple[RagChunk, ...] = (),
+        knowledge_gate: GateDecision | None = None,
         include_memory: bool = True,
         token_budget: int | None = None,
         rag_token_budget: int | None = None,
@@ -458,6 +472,7 @@ class MemoryEnricher:
             thread_summary=thread_summary,
             dialog=dialog,
             context=context,
+            knowledge_gate=knowledge_gate or not_applied_decision(),
         )
 
     def _resolve_domain(
@@ -497,13 +512,33 @@ class MemoryEnricher:
         auto_route: bool,
         route_confidence: float | None,
         use_rag: bool,
-    ) -> tuple[RagChunk, ...]:
+        apply_gate: bool = True,
+    ) -> tuple[tuple[RagChunk, ...], GateDecision]:
         if not use_rag or self._rag_store is None:
-            return ()
+            return (), not_applied_decision()
         started = time.monotonic()
         score_regime, min_score = self._config.rag_score_floor(
             identity.domain_tag
         )
+        gate_decision = (
+            self._knowledge_gate.decide(prompt)
+            if apply_gate and self._knowledge_gate is not None
+            else not_applied_decision()
+        )
+        if gate_decision.decision == "skip":
+            self._record_rag_retrieve(
+                request_id=request_id,
+                identity=identity,
+                chunks=(),
+                auto_route=auto_route,
+                route_confidence=route_confidence,
+                score_regime=score_regime,
+                min_score=min_score,
+                latency_ms=_latency_ms(started),
+                status="skipped",
+                gate_decision=gate_decision,
+            )
+            return (), gate_decision
         try:
             chunks = tuple(
                 self._rag_store.retrieve(
@@ -511,6 +546,7 @@ class MemoryEnricher:
                     domain=identity.domain_tag,
                     top_k=self._config.rag_top_k,
                     min_score=min_score,
+                    query_embedding=gate_decision.embedding,
                 )
             )
         except Exception:
@@ -524,6 +560,7 @@ class MemoryEnricher:
                 min_score=min_score,
                 latency_ms=_latency_ms(started),
                 status="error",
+                gate_decision=gate_decision,
             )
             raise
         self._record_rag_retrieve(
@@ -536,8 +573,9 @@ class MemoryEnricher:
             min_score=min_score,
             latency_ms=_latency_ms(started),
             status="ok",
+            gate_decision=gate_decision,
         )
-        return chunks
+        return chunks, gate_decision
 
     def retrieve_rag(
         self,
@@ -547,13 +585,41 @@ class MemoryEnricher:
         prompt: str,
     ) -> tuple[RagChunk, ...]:
         """Recupera RAG para un dominio ya resuelto, sin llamar al router."""
-        return self._retrieve_rag(
+        chunks, _ = self._retrieve_rag(
             request_id=request_id,
             identity=identity,
             prompt=prompt,
             auto_route=False,
             route_confidence=None,
             use_rag=True,
+            apply_gate=False,
+        )
+        return chunks
+
+    def recall_with_rag(
+        self,
+        *,
+        request_id: str,
+        identity: MemoryIdentity,
+        prompt: str,
+        use_rag: bool,
+        include_memory: bool,
+    ) -> RecallBundle:
+        """Camino comun de preview y enriquecimiento para el RAG upfront."""
+        chunks, gate_decision = self._retrieve_rag(
+            request_id=request_id,
+            identity=identity,
+            prompt=prompt,
+            auto_route=False,
+            route_confidence=None,
+            use_rag=use_rag,
+        )
+        return self.recall(
+            identity,
+            prompt,
+            rag=chunks,
+            knowledge_gate=gate_decision,
+            include_memory=include_memory,
         )
 
     def _record_rag_retrieve(
@@ -568,6 +634,7 @@ class MemoryEnricher:
         min_score: float,
         latency_ms: int,
         status: str,
+        gate_decision: GateDecision,
     ) -> None:
         self._telemetry.record(
             event="rag.retrieve",
@@ -587,6 +654,7 @@ class MemoryEnricher:
                 "auto_route_confidence": route_confidence,
                 "score_regime": score_regime,
                 "min_score": min_score,
+                "knowledge_gate": gate_decision.public_dict(),
             },
         )
 
@@ -969,6 +1037,10 @@ def _rag_lines(chunks: tuple[RagChunk, ...]) -> list[_ContextLine]:
         )
         for chunk in chunks
     ]
+
+
+def _rag_fragments_in_context(bundle: RecallBundle) -> int:
+    return sum(line.text in bundle.context for line in _rag_lines(bundle.rag))
 
 
 def _compose_context(

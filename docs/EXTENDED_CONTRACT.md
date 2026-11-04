@@ -175,6 +175,15 @@ usa el primer override y sin dominio el segundo; un override ausente cae a la
 base. Por tanto, no declarar las claves nuevas conserva exactamente la politica
 anterior.
 
+Antes de recuperar RAG, la capa aplica el paso cero de conocimiento. La senal
+por defecto es el dato empaquetado `courtesy_es.txt`: frases de cortesia que, si
+alcanzan `IANEST_EXTENDED_KNOWLEDGE_GATE_THRESHOLD` (default `0.70`), hacen que
+el turno no busque. `IANEST_EXTENDED_KNOWLEDGE_GATE_ENABLED` es verdadero por
+defecto y `IANEST_EXTENDED_KNOWLEDGE_GATE_PHRASES_FILE` puede sustituir el
+fichero. El embedding del turno se reutiliza en la busqueda cuando decide
+`search`; un fallo decide `error` y busca. Las subtareas de `task.run` no
+aplican la senal.
+
 La sintesis de hilo (Fase 9) se gobierna con
 `IANEST_EXTENDED_THREAD_SYNTHESIS_ENABLED` (default `false`),
 `IANEST_EXTENDED_THREAD_SYNTHESIS_WINDOW_TURNS` (default `4`) y
@@ -200,6 +209,9 @@ reescritura ni el contexto.
 Cada evento `rag.retrieve` declara `score_regime` (`domain` o `no_domain`) y
 `min_score`, ademas del dominio efectivo. La calibracion puede asi observar la
 regla aplicada sin reconstruirla desde otros campos.
+Declara tambien `knowledge_gate` con `decision` (`skip`, `search`,
+`not_applied` o `error`), `score`, `threshold` y `nearest`. Un `skip` conserva
+el evento, con `status=skipped` y `k_returned=0`.
 
 La CLI admite `IANEST_EXTENDED_SESSION_ID` para mantener hilos paralelos en
 terminales distintos. La precedencia es `--session-id`, despues la variable de
@@ -233,6 +245,11 @@ que guarda (ADR 0013). `memory.write` lo acepta y lo devuelve; omitirlo deja
 que `memory.recall` compone lleva la marca en cada linea. No confundir con el
 `provenance` de `capability.list`, que dice de donde sale una CAPACIDAD y no
 quien dijo un contenido.
+
+`memory.recall` devuelve ademas `knowledge_gate` para hacer visible la decision
+del RAG. `prompt.run` enriquecido anade `knowledge_gate` y
+`knowledge.fragments`, el numero de fragmentos que llegaron a su contexto; los
+dos campos son aditivos y no alteran los campos del core.
 
 ### Conocimiento
 

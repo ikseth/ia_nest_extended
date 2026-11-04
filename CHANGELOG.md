@@ -5,6 +5,14 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+### Anadido
+- Paso cero del RAG: antes de recuperar conocimiento, una senal empaquetada de
+  cortesia decide `skip` o `search` por similitud configurable. Ante un fallo
+  busca, la memoria no cambia y las subtareas de `task.run` no pasan por esta
+  decision. `memory.recall`, `prompt.run` enriquecido y `rag.retrieve` publican
+  la decision aditiva para medir L5r; el embedding del turno se reutiliza al
+  buscar. PATCH.
+
 ## [0.5.2] - 2026-10-14
 
 ### Corregido
