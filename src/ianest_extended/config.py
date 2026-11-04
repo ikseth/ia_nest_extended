@@ -82,7 +82,7 @@ class ExtendedConfig:
     promote_recency_max: float = 0.1
     rag_enabled: bool = True
     knowledge_gate_enabled: bool = True
-    knowledge_gate_threshold: float = 0.70
+    knowledge_gate_threshold: float = 0.65
     knowledge_gate_phrases_file: Path | None = None
     rag_top_k: int = 3
     rag_min_score: float = 0.50

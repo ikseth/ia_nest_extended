@@ -177,7 +177,7 @@ anterior.
 
 Antes de recuperar RAG, la capa aplica el paso cero de conocimiento. La senal
 por defecto es el dato empaquetado `courtesy_es.txt`: frases de cortesia que, si
-alcanzan `IANEST_EXTENDED_KNOWLEDGE_GATE_THRESHOLD` (default `0.70`), hacen que
+alcanzan `IANEST_EXTENDED_KNOWLEDGE_GATE_THRESHOLD` (default `0.65`), hacen que
 el turno no busque. `IANEST_EXTENDED_KNOWLEDGE_GATE_ENABLED` es verdadero por
 defecto y `IANEST_EXTENDED_KNOWLEDGE_GATE_PHRASES_FILE` puede sustituir el
 fichero. El embedding del turno se reutiliza en la busqueda cuando decide

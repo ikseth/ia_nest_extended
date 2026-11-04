@@ -1,7 +1,8 @@
 # Puerta de laboratorio de ia_nest_extended
 
 Estado: reconciliado 2026-11-04. Declarado ANTES de medir.
-Version: 1.4 - 2026-11-04 (L5r pasa a "cero fragmentos de conocimiento", por los
+Version: 1.5 - 2026-11-04 (bateria del paso cero en version 2, sin cambiar el
+criterio; 1.4 del mismo dia: L5r pasa a "cero fragmentos de conocimiento", por los
 dos caminos, con la bateria del paso cero; 1.3 del 2026-09-22: L4a desambigua:
 bloquea por composicion, no por
 obediencia del modelo; 1.2 del 2026-09-21 anadio L7, memoria conversacional con
@@ -128,6 +129,12 @@ conocimiento.
 
 Si se corrige la senal despues de ver fallar una frase del punto 2, esa frase deja
 de ser ciega y se sustituye por otra nueva antes de volver a medir.
+
+Aplicado el 2026-11-04: `v0.5.3` dio 24 de 30 en el punto 2, con umbral 0.70. El
+umbral 0.65 se eligio con las puntuaciones de TODAS las frases de los puntos 2 y 4,
+asi que esa bateria se sustituye entera, no solo las frases que fallaron. El
+criterio no cambia. Las 96 preguntas del punto 3 no se sustituyen: fueron un dato
+del umbral, pero son fijas y su maximo (0.410) queda lejos de el.
 
 Si el corpus de cortesia suspende por los matices (punto 2, 3 o 4), el siguiente
 escalon a valorar es un dominio con un modelo pequeno y rapido que comprenda esos

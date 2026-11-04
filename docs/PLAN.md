@@ -210,6 +210,17 @@ el 2026-10-29):
    conocimiento?" y su registro en telemetria; quien la responde se puede
    sustituir (hoy la lista con umbral; despues, si hace falta, el modelo pequeno,
    o conscience si algun dia se decide que es juicio suyo).
+
+   Primera medida, 2026-11-04 sobre `v0.5.3`: L5r no pasa solo por el punto 2 (24
+   de 30, umbral 0.70), y los puntos 3 y 4 salen limpios. Decidido por el operador
+   el mismo dia: umbral 0.65, ocho frases mas y bateria nueva a ciegas. Es la
+   ultima medida de este enfoque: si no pasa, no se sube otro escalon por inercia.
+   Se para y se valoran las opciones con el operador, porque es probable que este
+   mecanismo no admita ajuste fino a futuro.
+
+   Coste anotado, fuera del criterio de L5r: los turnos cortos de hilo ("cuentame
+   mas", "por que?") dejan de buscar. Sin medir si perdian algo. A revisar con la
+   memoria de conversacion.
 2. **`edge CR-0002`** (ia_nest_extended#81). Transportar el perfil del
    interlocutor sin usarlo como clave, componerlo siempre, no memorizarlo y
    declararlo en telemetria. Rango del core a re-verificar contra `v0.4.2`.
