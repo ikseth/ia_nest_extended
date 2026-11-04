@@ -706,6 +706,7 @@ class MemoryEnricher:
             "items_contradicted": 0,
             "items_unconverged": 0,
             "invalid_json": 0,
+            "extraction_retried": 0,
         }
         common = {
             "identity": identity,
@@ -729,18 +730,28 @@ class MemoryEnricher:
             )
             counters["dialog_written"] += 1
 
+        extraction_prompt = _extraction_prompt(prompt, core_result.response)
         extraction = self._core.prompt_run(
-            _extraction_prompt(prompt, core_result.response),
+            extraction_prompt,
             identity,
             model=self._config.extraction_model,
         )
         try:
             items = _parse_extraction(extraction.response)
         except (json.JSONDecodeError, ValueError, TypeError):
-            counters["invalid_json"] = 1
-            counters["items_discarded"] = 1
-            self._synthesize_thread(identity, source_trace_id)
-            return counters, "invalid_extraction_json"
+            counters["extraction_retried"] = 1
+            extraction = self._core.prompt_run(
+                extraction_prompt,
+                identity,
+                model=self._config.extraction_model,
+            )
+            try:
+                items = _parse_extraction(extraction.response)
+            except (json.JSONDecodeError, ValueError, TypeError):
+                counters["invalid_json"] = 1
+                counters["items_discarded"] = 1
+                self._synthesize_thread(identity, source_trace_id)
+                return counters, "invalid_extraction_json"
 
         counters["items_extracted"] = len(items)
         source_texts = {
@@ -927,6 +938,7 @@ class MemoryEnricher:
                     "items_contradicted": 0,
                     "items_unconverged": 0,
                     "invalid_json": 0,
+                    "extraction_retried": 0,
                 },
                 latency_ms=_latency_ms(started),
                 status="error",
@@ -997,7 +1009,7 @@ def _lines(
 ) -> list[_ContextLine]:
     result = []
     indexed_items = list(enumerate(items))
-    if tier in {"semantic", "episodic", "dialog"}:
+    if tier in {"semantic", "episodic"}:
         indexed_items.sort(key=lambda pair: _stated_by_order(pair[1]))
     for original_index, item in indexed_items:
         relevance = item.relevance

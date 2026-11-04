@@ -5,6 +5,15 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+## [0.5.5] - 2026-11-04
+
+### Corregido
+- `dialog` conserva el orden de entrada al componer el contexto; `semantic` y
+  `episodic` mantienen su orden por procedencia. La extraccion de write-back se
+  repite una sola vez con el mismo prompt solo si la primera respuesta no es
+  JSON valido. La telemetria `enrich.write_back` anade el contador aditivo
+  `extraction_retried`. PATCH.
+
 ## [0.5.4] - 2026-11-04
 
 ### Anadido

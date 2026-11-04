@@ -235,6 +235,12 @@ Declara tambien `knowledge_gate` con `decision` (`skip`, `search`,
 `not_applied` o `error`), `score`, `threshold` y `nearest`. Un `skip` conserva
 el evento, con `status=skipped` y `k_returned=0`.
 
+El evento `enrich.write_back` declara `counters.extraction_retried` con `0` o
+`1`. Vale `1` solo cuando la primera respuesta del extractor no se puede
+interpretar como JSON y se hace un segundo intento con el mismo prompt. El
+contador `invalid_json` conserva su significado: vale `1` solo si el intento
+final tampoco se puede interpretar como JSON.
+
 La CLI admite `IANEST_EXTENDED_SESSION_ID` para mantener hilos paralelos en
 terminales distintos. La precedencia es `--session-id`, despues la variable de
 entorno y por ultimo el fichero de sesion recordada. Los comandos que usan
