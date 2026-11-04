@@ -5,6 +5,8 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+## [0.5.3] - 2026-11-04
+
 ### Anadido
 - Paso cero del RAG: antes de recuperar conocimiento, una senal empaquetada de
   cortesia decide `skip` o `search` por similitud configurable. Ante un fallo
