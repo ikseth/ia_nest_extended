@@ -5,6 +5,8 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+## [0.5.4] - 2026-11-04
+
 ### Anadido
 - `identity.interlocutor_profile` se transporta por CLI, REST y MCP hacia el
   core. Con `child`, `prompt.*`, `reasoning.*` y `task.run` componen una seccion
