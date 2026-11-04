@@ -16,7 +16,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from .config import ExtendedConfig
-from .errors import ExtendedConfigError
+from .errors import EnrichmentParameterError, ExtendedConfigError
 from .models import MemoryIdentity
 
 
@@ -62,6 +62,7 @@ def resolve_identity(
     service: str | None = None,
     namespace: str | None = None,
     domain: str | None = None,
+    interlocutor_profile: str | None = None,
     remember_session: bool = True,
 ) -> MemoryIdentity:
     resolved_session = session_id
@@ -75,6 +76,7 @@ def resolve_identity(
         service=_value(service, config.default_service),
         domain_tag=_value(domain, None),
         namespace=_value(namespace, config.default_namespace),
+        interlocutor_profile=normalize_interlocutor_profile(interlocutor_profile),
     )
 
 
@@ -84,3 +86,22 @@ def _value(explicit: str | None, default: str | None) -> str | None:
         return None
     value = value.strip()
     return value or None
+
+
+def normalize_interlocutor_profile(value: str | None) -> str | None:
+    """Normaliza el dato de procedencia que el core acepta para el interlocutor."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise EnrichmentParameterError(
+            "interlocutor_profile debe ser texto", "interlocutor_profile"
+        )
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if normalized not in ("adult", "child"):
+        raise EnrichmentParameterError(
+            "interlocutor_profile debe ser 'adult' o 'child'",
+            "interlocutor_profile",
+        )
+    return normalized

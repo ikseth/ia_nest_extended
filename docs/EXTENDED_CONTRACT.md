@@ -105,8 +105,9 @@ concreta es la peticion autonoma descrita abajo, no el contexto crudo.
 En `task.run`, el enriquecimiento por subtarea requiere suministrar al core el
 plan obtenido antes con `task.plan`. Ese camino no re-planifica: si EVALUATE lo
 pide, el core corta con `replan_unavailable`. Desactivar el enriquecimiento
-recupera el passthrough sin plan y, con el, la capacidad de re-planificacion.
-No hay reintento automatico sin plan: seria no determinista y duplicaria coste.
+recupera el passthrough sin plan salvo con perfil `child`: entonces la capa pide
+el plan para componer tambien cada subtarea. No hay reintento automatico sin
+plan: seria no determinista y duplicaria coste.
 Unica excepcion acotada: si el plan que esta capa pidio a `task.plan` provoca
 `PlanDependencyError` (el planificador del core emitio dependencias circulares),
 se pide un plan nuevo UNA vez, sin repetir la reescritura; un segundo error se
@@ -133,9 +134,10 @@ publica dentro del `trace` de su evento `done`. Los nacidos de `prompt.stream`
 conservan `source_trace_id` nulo: el core no publica su trace en ese flujo y esta
 capa nunca sustituye el dato ausente por su identificador propio.
 
-`task.stream` se reenvia SIN enriquecer. Es un hueco conocido y deliberado: el
-core no acepta `plan` ni `requirements` suministrados en esa capacidad, asi que
-el enriquecimiento por subtarea no tiene una costura de entrada.
+`task.stream` se reenvia SIN enriquecer ni componer contexto de interlocutor.
+Es un hueco conocido y deliberado: el core no acepta `plan` ni `requirements`
+suministrados en esa capacidad, asi que el enriquecimiento por subtarea no tiene
+una costura de entrada.
 
 La presentacion de las capacidades reenviadas es JSON mientras `extended
 CR-0004` siga sin resolver. No se inventa render local para respuestas que la
@@ -146,9 +148,23 @@ docs/CORE_CONTRACT.md` (convencion transversal 6, meta ADR 0008). Un consumidor
 lee ese documento en el rango declarado, y este para lo propio de la capa.
 
 Igual con el **contexto de identidad del request** (`user_id`, `service`,
-`session_id`, `domain_tag`, `namespace`): lo define el core y esta capa lo usa
-como clave de indexacion. Que subconjunto entra en la clave de memoria, en
-`docs/FORMA_ENRIQUECIMIENTO.md`.
+`session_id`, `domain_tag`, `namespace`, `interlocutor_profile`): lo define el
+core y esta capa lo reenvia. `interlocutor_profile` admite `adult` o `child`;
+ausente o vacio significa sin dato, y otro valor es un error tipado antes de
+llamar al core o escribir memoria. Es procedencia, como `service`: no entra en
+la clave, consulta, sesion ni deduplicacion de memoria. Que subconjunto entra
+en la clave de memoria, en `docs/FORMA_ENRIQUECIMIENTO.md`.
+
+Con `interlocutor_profile=child`, la capa antepone al contexto la seccion
+permanente `## interlocutor`. Su contenido viene de
+`IANEST_EXTENDED_INTERLOCUTOR_CONTEXT_CHILD`, cuyo default es `El interlocutor
+es un nino o una nina.`. La clave no admite valor vacio al arrancar. La seccion
+es un hecho configurado, no una instruccion, no consume una fuente de recall y
+no se elimina al recortar presupuesto. Con `adult` o sin dato no se compone
+nada y el prompt conserva su forma anterior. El texto se compone tambien con
+`enrich=false`, sin memoria, sin RAG, y si el paso cero del conocimiento hace
+`skip`; write-back, extraccion, dominio y paso cero reciben la pregunta literal
+sin esta seccion.
 
 ### Parametros de extension del enriquecimiento
 
@@ -206,6 +222,11 @@ pregunta literal como degradacion, y nulo en los demas casos. Declara tambien
 `plan_retried`, verdadero si hubo que pedir el plan otra vez por
 `PlanDependencyError`. Ninguno de esos campos contiene la pregunta, la
 reescritura ni el contexto.
+
+Los eventos de `prompt.run`, `prompt.stream`, `reasoning.run`,
+`reasoning.stream` y `task.run` anaden `interlocutor_context` con `profile`
+(`child`, `adult` o nulo) y `composed`. Esta telemetria se emite tambien con el
+enriquecimiento apagado y en `dry_run` cuando la capacidad lo admite.
 
 Cada evento `rag.retrieve` declara `score_regime` (`domain` o `no_domain`) y
 `min_score`, ademas del dominio efectivo. La calibracion puede asi observar la

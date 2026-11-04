@@ -196,6 +196,15 @@ def test_task_condense_model_rejects_empty_value(monkeypatch):
     assert exc_info.value.field == "condense_model"
 
 
+def test_interlocutor_context_child_rejects_empty_value(monkeypatch):
+    monkeypatch.setenv("IANEST_EXTENDED_INTERLOCUTOR_CONTEXT_CHILD", "")
+
+    with pytest.raises(ExtendedConfigError) as exc_info:
+        ExtendedConfig.from_env(env_file=None)
+
+    assert exc_info.value.field == "interlocutor_context_child"
+
+
 def test_thread_synthesis_config_from_environment(monkeypatch):
     monkeypatch.setenv("IANEST_EXTENDED_THREAD_SYNTHESIS_ENABLED", "true")
     monkeypatch.setenv("IANEST_EXTENDED_THREAD_SYNTHESIS_WINDOW_TURNS", "7")

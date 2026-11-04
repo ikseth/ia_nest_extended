@@ -104,6 +104,7 @@ class MemoryIdentity:
     service: str | None = None
     domain_tag: str | None = None
     namespace: str | None = None
+    interlocutor_profile: str | None = None
 
     def to_core_dict(self) -> dict[str, str]:
         return {
@@ -114,6 +115,7 @@ class MemoryIdentity:
                 ("session_id", self.session_id),
                 ("domain_tag", self.domain_tag),
                 ("namespace", self.namespace),
+                ("interlocutor_profile", self.interlocutor_profile),
             )
             if value is not None
         }

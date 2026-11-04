@@ -445,7 +445,8 @@ class MemoryEnricher:
             if item.engram is None or item.engram.id not in summarized_ids
         )
         lines = (
-            _lines("delegated", delegated, permanent=True)
+            _interlocutor_lines(identity, self._config)
+            + _lines("delegated", delegated, permanent=True)
             + _rag_lines(rag)
             + _lines("semantic", semantic)
             + _lines("thread_summary", thread_summary)
@@ -1130,6 +1131,7 @@ def _next_removable_tier(
 def _render_context(lines: list[_ContextLine]) -> str:
     sections: list[str] = []
     for tier in (
+        "interlocutor",
         "delegated",
         "rag",
         "semantic",
@@ -1141,6 +1143,29 @@ def _render_context(lines: list[_ContextLine]) -> str:
         if tier_lines:
             sections.append(f"## {tier}\n" + "\n".join(tier_lines))
     return "\n\n".join(sections)
+
+
+def interlocutor_context(identity: MemoryIdentity, config: ExtendedConfig) -> str:
+    """Devuelve el hecho de interlocucion que no compite con el presupuesto."""
+    if identity.interlocutor_profile != "child":
+        return ""
+    return "## interlocutor\n" + config.interlocutor_context_child
+
+
+def _interlocutor_lines(
+    identity: MemoryIdentity,
+    config: ExtendedConfig,
+) -> list[_ContextLine]:
+    if identity.interlocutor_profile != "child":
+        return []
+    return [
+        _ContextLine(
+            "interlocutor",
+            config.interlocutor_context_child,
+            relevance=0.0,
+            permanent=True,
+        )
+    ]
 
 
 def _render_tier(lines: list[_ContextLine], tier: str) -> str:
