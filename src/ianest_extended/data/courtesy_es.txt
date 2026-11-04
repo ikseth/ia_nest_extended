@@ -8,22 +8,15 @@ buenas noches
 hola, que tal
 que tal estas
 como estas
-hola otra vez
-ya estoy aqui
 # agradecimiento
 gracias
 muchas gracias
 gracias por tu ayuda
 te lo agradezco
 de nada
-que amable
-# encuentro
-encantado
-un placer
 # disculpas y cortesia
 por favor
 perdona
-perdoname
 lo siento
 disculpa la molestia
 # despedidas
@@ -34,8 +27,6 @@ hasta manana
 hasta otra
 nos vemos
 que descanses
-dulces suenos
-cuidate
 me tengo que ir
 # acuse
 vale

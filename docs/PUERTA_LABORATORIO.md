@@ -128,13 +128,8 @@ busca. Un fallo de 2 deja el ruido de hoy; uno de 3 o 4 deja una pregunta real s
 conocimiento.
 
 Si se corrige la senal despues de ver fallar una frase del punto 2, esa frase deja
-de ser ciega y se sustituye por otra nueva antes de volver a medir.
-
-Aplicado el 2026-11-04: `v0.5.3` dio 24 de 30 en el punto 2, con umbral 0.70. El
-umbral 0.65 se eligio con las puntuaciones de TODAS las frases de los puntos 2 y 4,
-asi que esa bateria se sustituye entera, no solo las frases que fallaron. El
-criterio no cambia. Las 96 preguntas del punto 3 no se sustituyen: fueron un dato
-del umbral, pero son fijas y su maximo (0.410) queda lejos de el.
+de ser ciega y se sustituye por otra nueva antes de volver a medir. Si el ajuste
+se elige con las puntuaciones de toda la bateria, se sustituye la bateria entera.
 
 Si el corpus de cortesia suspende por los matices (punto 2, 3 o 4), el siguiente
 escalon a valorar es un dominio con un modelo pequeno y rapido que comprenda esos
