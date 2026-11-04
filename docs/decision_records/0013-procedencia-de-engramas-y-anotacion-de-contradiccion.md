@@ -231,3 +231,7 @@ mismo.
 
 No se anota hacia delante ni cambia el orden de escritura: la copia del modelo queda
 sin anotar, pero detras y con su etiqueta de procedencia.
+
+Corregido el mismo dia, medido sobre `v0.5.4`: `dialog` sale de la regla. La linea del
+modelo quedaba justo antes de la pregunta y L4a cayo de 9 de 9 a 3 de 9, con el modelo
+repitiendo esa linea en 5 de 9. La regla queda en `semantic` y `episodic`.

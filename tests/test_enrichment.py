@@ -1,8 +1,11 @@
 import json
 from uuid import uuid4
 
+import pytest
+
 from ianest_extended import (
     CoreClient,
+    CoreConnectionError,
     EntityProfile,
     CoreResult,
     EngramStatus,
@@ -43,6 +46,60 @@ def _enricher(tmp_path, local_service_stub, store, **overrides):
 def _events(tmp_path):
     path = next(tmp_path.glob("extended-*.jsonl"))
     return [json.loads(line) for line in path.read_text().splitlines()]
+
+
+class ExtractionCore:
+    def __init__(self, extraction_responses):
+        self._extraction_responses = iter(extraction_responses)
+        self.calls = []
+
+    def prompt_run(self, prompt, identity, model=None, domain=None):
+        self.calls.append((prompt, identity, model, domain))
+        response = next(self._extraction_responses)
+        if isinstance(response, Exception):
+            raise response
+        return CoreResult(
+            response=response,
+            trace={"request_id": "core-extraction", "finish_reason": "stop"},
+            payload={"response": response},
+        )
+
+
+def _write_back_enricher(tmp_path, store, core):
+    return MemoryEnricher(
+        store=store,
+        core=core,
+        telemetry=TelemetryWriter(tmp_path),
+        config=ExtendedConfig(
+            telemetry_dir=tmp_path,
+            embedding_dimension=2,
+            memory_budget_tokens=1500,
+        ),
+    )
+
+
+def _write_back_core_result():
+    return CoreResult(
+        response="the user prefers blue",
+        trace={"request_id": "core-answer", "finish_reason": "stop"},
+        payload={"response": "the user prefers blue"},
+    )
+
+
+def _valid_extraction():
+    return json.dumps(
+        {
+            "from_user": [
+                {
+                    "namespace": "preferences",
+                    "content": "the user prefers blue",
+                    "confidence": 0.95,
+                    "mentions": [],
+                }
+            ],
+            "from_assistant": [],
+        }
+    )
 
 
 def test_vertical_continuity_antinoise_and_telemetry(
@@ -163,6 +220,67 @@ def test_invalid_extraction_is_discarded_and_traced(
     event = _events(tmp_path)[-1]
     assert event["status"] == "invalid_extraction_json"
     assert event["counters"]["invalid_json"] == 1
+    assert event["counters"]["extraction_retried"] == 1
+    extraction_calls = [
+        request
+        for path, request in local_service_stub.requests
+        if path == "/prompt/run" and request.get("model")
+    ]
+    assert len(extraction_calls) == 2
+
+
+def test_invalid_extraction_retries_once_and_writes_valid_items(tmp_path):
+    store = InMemoryStore()
+    core = ExtractionCore(["not-json", _valid_extraction()])
+    enricher = _write_back_enricher(tmp_path, store, core)
+
+    counters, status = enricher.write_back(
+        request_id="request-1",
+        identity=identity(),
+        prompt="the user prefers blue",
+        core_result=_write_back_core_result(),
+    )
+
+    assert status == "ok"
+    assert counters["extraction_retried"] == 1
+    assert counters["invalid_json"] == 0
+    assert counters["items_written"] == 1
+    assert len(core.calls) == 2
+    assert core.calls[0] == core.calls[1]
+
+
+def test_valid_extraction_does_not_retry(tmp_path):
+    store = InMemoryStore()
+    core = ExtractionCore([_valid_extraction()])
+    enricher = _write_back_enricher(tmp_path, store, core)
+
+    counters, status = enricher.write_back(
+        request_id="request-1",
+        identity=identity(),
+        prompt="the user prefers blue",
+        core_result=_write_back_core_result(),
+    )
+
+    assert status == "ok"
+    assert counters["extraction_retried"] == 0
+    assert len(core.calls) == 1
+
+
+def test_core_error_during_extraction_does_not_retry(tmp_path):
+    store = InMemoryStore()
+    core = ExtractionCore([CoreConnectionError("core unavailable")])
+    enricher = _write_back_enricher(tmp_path, store, core)
+
+    with pytest.raises(CoreConnectionError):
+        enricher.write_back(
+            request_id="request-1",
+            identity=identity(),
+            prompt="the user prefers blue",
+            core_result=_write_back_core_result(),
+        )
+
+    assert len(core.calls) == 1
+    assert _events(tmp_path)[-1]["counters"]["extraction_retried"] == 0
 
 
 def test_extraction_prompt_uses_concrete_values_and_json_only():
@@ -276,10 +394,16 @@ def test_context_lines_put_user_before_unknown_and_model_stably():
     ]
 
 
-def test_context_lines_apply_source_order_to_semantic_and_dialog_only():
+def test_context_lines_apply_source_order_to_semantic_and_episodic_only():
     store = InMemoryStore()
     identity_value = identity()
-    for tier in ("semantic", "dialog", "delegated", "thread_summary"):
+    for tier in (
+        "semantic",
+        "episodic",
+        "dialog",
+        "delegated",
+        "thread_summary",
+    ):
         user = store.write(
             Principal.EXTENDED,
             EngramWrite(
@@ -312,7 +436,7 @@ def test_context_lines_apply_source_order_to_semantic_and_dialog_only():
         contents = [line.text.rsplit(") ", 1)[-1] for line in lines]
         expected = (
             [f"{tier} user", f"{tier} model"]
-            if tier in {"semantic", "dialog"}
+            if tier in {"semantic", "episodic"}
             else [f"{tier} model", f"{tier} user"]
         )
         assert contents == expected
