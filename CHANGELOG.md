@@ -5,6 +5,15 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+## [0.5.4] - 2026-11-04
+
+### Cambiado
+- Paso cero: el umbral por defecto baja de 0.70 a 0.65 y la senal de cortesia
+  gana ocho frases. Motivo, medido en el laboratorio sobre `v0.5.3`: el punto 2
+  de L5r dio 24 de 30 con umbral 0.70. Con la senal ampliada, un turno mixto ya
+  visto puntua 0.628, y por eso no se baja mas. La bateria de los puntos 2 y 4 se
+  sustituye entera por una version 2, fijada antes de ampliar la senal. PATCH.
+
 ## [0.5.3] - 2026-11-04
 
 ### Anadido
