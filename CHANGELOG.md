@@ -5,6 +5,14 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+## [0.6.2] - 2026-11-05
+
+### Corregido
+- Un item de extraccion sin `confidence` o con `confidence: null` conserva el
+  item y usa `0.0`; los tipos invalidos y los valores fuera de rango se siguen
+  descartando. `enrich.write_back` anade el contador aditivo
+  `items_missing_confidence` para los items que llegan sin ese campo. PATCH.
+
 ## [0.6.1] - 2026-11-05
 
 ### Corregido
