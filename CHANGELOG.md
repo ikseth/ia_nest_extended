@@ -5,6 +5,16 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+## [0.6.1] - 2026-11-05
+
+### Corregido
+- Los items extraidos, atribuidos al usuario y anclados en su turno se escriben
+  aunque su confianza este por debajo de `confidence_threshold`; conservan la
+  confianza como `score`. Los items del modelo, no anclados o `unknown` siguen
+  sujetos al umbral. `enrich.write_back` anade los contadores aditivos
+  `items_discarded_invalid`, `items_discarded_low_confidence` e
+  `items_user_below_threshold`; `items_discarded` sigue siendo su suma. PATCH.
+
 ## [0.6.0] - 2026-11-05
 
 ### Cambiado

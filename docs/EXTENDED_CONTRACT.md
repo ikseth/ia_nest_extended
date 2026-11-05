@@ -247,6 +247,16 @@ interpretar como JSON y se hace un segundo intento con el mismo prompt. El
 contador `invalid_json` conserva su significado: vale `1` solo si el intento
 final tampoco se puede interpretar como JSON.
 
+El mismo evento declara los contadores aditivos
+`items_discarded_invalid`, `items_discarded_low_confidence` e
+`items_user_below_threshold`. Los dos primeros desglosan
+`items_discarded`: un item invalido o una extraccion final no interpretable
+cuenta como invalido, y un item valido que no alcanza el umbral cuenta como
+baja confianza. Por tanto, `items_discarded` es siempre la suma de ambos.
+`items_user_below_threshold` cuenta los items atribuidos al usuario, anclados
+en su texto, que se escriben por debajo del umbral; conservan su confianza como
+`score`.
+
 La CLI admite `IANEST_EXTENDED_SESSION_ID` para mantener hilos paralelos en
 terminales distintos. La precedencia es `--session-id`, despues la variable de
 entorno y por ultimo el fichero de sesion recordada. Los comandos que usan
