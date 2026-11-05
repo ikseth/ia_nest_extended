@@ -18,12 +18,12 @@ from ianest_extended import (
 from ianest_extended.maintain import run_maintenance
 
 
-def _write_episodic(postgres_store, *, stability=0, score=0.0):
+def _write_thread_artifacts(postgres_store, *, stability=0, score=0.0):
     return postgres_store.write(
         Principal.EXTENDED,
         EngramWrite(
-            type_name="episodic",
-            content=f"episodic literal {uuid4()}",
+            type_name="thread_artifacts",
+            content=f"thread_artifacts literal {uuid4()}",
             identity=MemoryIdentity(
                 user_id=f"phase4-{uuid4()}",
                 session_id="A",
@@ -80,73 +80,32 @@ def _database_snapshot(postgres_store):
     return statuses, link_count
 
 
-def test_phase4_promotion_preserves_source_and_creates_lineage(
+def test_maintain_never_promotes_thread_artifacts_to_semantic(
     postgres_store,
     tmp_path,
 ):
-    source = _write_episodic(postgres_store, stability=3)
+    source = _write_thread_artifacts(postgres_store, stability=3)
     _set_age(postgres_store, source.id, timedelta(days=120))
-    before_count = len(_database_snapshot(postgres_store)[0])
 
-    run_maintenance(
+    result = run_maintenance(
         store=postgres_store,
         telemetry=TelemetryWriter(tmp_path),
         config=ExtendedConfig(telemetry_dir=tmp_path),
     )
 
-    archived = postgres_store.get_engram(source.id)
     with postgres_store._connect() as connection:
-        target = connection.execute(
-            """
-            SELECT e.*
-            FROM memory_links ml
-            JOIN engrams e ON e.id = ml.target_engram_id
-            WHERE ml.source_id = %s
-              AND ml.link_kind = 'consolidated_from'
-            """,
-            (source.id,),
-        ).fetchone()
-        after_count = connection.execute(
-            "SELECT count(*) AS count FROM engrams"
-        ).fetchone()["count"]
-
-    assert archived.status is EngramStatus.ARCHIVED
-    assert archived.archived_reason == "promoted_to_semantic"
-    assert target["type_name"] == "semantic"
-    assert target["content"] == source.content
-    assert after_count >= before_count + 1
-
-
-def test_phase4_recent_or_unmerited_episodic_is_not_promoted(
-    postgres_store,
-    tmp_path,
-):
-    recent = _write_episodic(postgres_store, stability=3)
-    old_without_merit = _write_episodic(postgres_store)
-    _set_age(postgres_store, old_without_merit.id, timedelta(days=120))
-
-    run_maintenance(
-        store=postgres_store,
-        telemetry=TelemetryWriter(tmp_path),
-        config=ExtendedConfig(telemetry_dir=tmp_path),
-    )
-
-    assert postgres_store.get_engram(recent.id).status is EngramStatus.ACTIVE
-    assert (
-        postgres_store.get_engram(old_without_merit.id).status
-        is EngramStatus.ACTIVE
-    )
-    with postgres_store._connect() as connection:
-        links = connection.execute(
+        promoted = connection.execute(
             """
             SELECT count(*) AS count
             FROM memory_links
-            WHERE source_id = ANY(%s::uuid[])
-              AND link_kind = 'consolidated_from'
+            WHERE source_id = %s AND link_kind = 'consolidated_from'
             """,
-            ([recent.id, old_without_merit.id],),
+            (source.id,),
         ).fetchone()["count"]
-    assert links == 0
+
+    assert result.dialog_archived == 0
+    assert postgres_store.get_engram(source.id).status is EngramStatus.ACTIVE
+    assert promoted == 0
 
 
 def test_phase4_old_dialog_stays_active_while_its_session_is_active(
@@ -189,7 +148,7 @@ def test_phase4_executor_enforces_target_authority(
     postgres_store,
     tmp_path,
 ):
-    source = _write_episodic(postgres_store)
+    source = _write_thread_artifacts(postgres_store)
     executor = ConsolidationExecutor(
         store=postgres_store,
         telemetry=TelemetryWriter(tmp_path),
@@ -230,8 +189,8 @@ def test_phase4_dry_run_does_not_mutate_database(
     postgres_store,
     tmp_path,
 ):
-    old_episodic = _write_episodic(postgres_store, stability=3)
-    _set_age(postgres_store, old_episodic.id, timedelta(days=120))
+    old_thread_artifacts = _write_thread_artifacts(postgres_store, stability=3)
+    _set_age(postgres_store, old_thread_artifacts.id, timedelta(days=120))
     old_dialog = postgres_store.write(
         Principal.EXTENDED,
         EngramWrite(
@@ -263,5 +222,4 @@ def test_phase4_dry_run_does_not_mutate_database(
 
     assert result.dry_run is True
     assert result.dialog_archived >= 1
-    assert result.episodic_promoted >= 1
     assert _database_snapshot(postgres_store) == before

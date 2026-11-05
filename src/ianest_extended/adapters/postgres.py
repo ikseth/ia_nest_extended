@@ -71,6 +71,9 @@ class PostgresMemoryStore:
             _default_thread_synthesis_migration_path()
         )
         self._sessions_migration_path = _default_sessions_migration_path()
+        self._thread_artifacts_migration_path = (
+            _default_thread_artifacts_migration_path()
+        )
 
     def verify_schema(self) -> None:
         """Comprueba el esquema SIN mutarlo (migracion explicita, ADR 0011)."""
@@ -129,6 +132,22 @@ class PostgresMemoryStore:
                     "'ianest-extended runtime migrate'",
                     "memory_links.summarizes",
                 )
+            thread_artifacts = connection.execute(
+                """
+                SELECT 1
+                FROM memory_types
+                WHERE name = 'thread_artifacts'
+                  AND status = 'active'
+                  AND scope = 'session'
+                """
+            ).fetchone()
+            if thread_artifacts is None:
+                raise SchemaMigrationRequiredError(
+                    "el esquema de memoria no esta migrado "
+                    "(falta 'thread_artifacts'); ejecuta "
+                    "'ianest-extended runtime migrate'",
+                    "memory_types.thread_artifacts",
+                )
 
     def migrate(self) -> None:
         embedder = self._require_embedder()
@@ -151,6 +170,9 @@ class PostgresMemoryStore:
             )
             connection.execute(
                 self._sessions_migration_path.read_text(encoding="ascii")
+            )
+            connection.execute(
+                self._thread_artifacts_migration_path.read_text(encoding="ascii")
             )
             self._ensure_embedding_dimension(connection)
         for memory_type in seed_memory_types():
@@ -262,6 +284,7 @@ class PostgresMemoryStore:
                        namespaces, w_recency, w_similarity, w_stability,
                        w_score, half_life_seconds, status, version
                 FROM memory_types
+                WHERE status = 'active'
                 ORDER BY created_at, name
                 """
             ).fetchall()
@@ -293,7 +316,7 @@ class PostgresMemoryStore:
                     connection,
                     user_id=key.user_id,
                     session_id=key.session_id,
-                    touch=memory_type.name == "dialog",
+                    touch=memory_type.name in {"dialog", "thread_artifacts"},
                 )
             row = connection.execute(
                 """
@@ -576,6 +599,7 @@ class PostgresMemoryStore:
         self,
         *,
         user_id: str,
+        session_id: str,
         namespace: str,
         text: str,
         threshold: float,
@@ -584,10 +608,12 @@ class PostgresMemoryStore:
             raise InvalidEngramError("threshold debe estar entre 0 y 1")
         if not user_id:
             raise ScopeViolationError("dedup exige user_id")
-        episodic = self._get_type("episodic")
+        if not session_id:
+            raise ScopeViolationError("dedup exige session_id")
+        thread_artifacts = self._get_type("thread_artifacts")
         derive_memory_key(
-            episodic,
-            MemoryIdentity(user_id=user_id),
+            thread_artifacts,
+            MemoryIdentity(user_id=user_id, session_id=session_id),
             namespace,
         )
         embedding = self._require_embedder().embed(text)
@@ -596,9 +622,9 @@ class PostgresMemoryStore:
                 """
                 SELECT *
                 FROM engrams
-                WHERE type_name = 'episodic'
+                WHERE type_name = 'thread_artifacts'
                   AND user_id = %s
-                  AND session_id IS NULL
+                  AND session_id = %s
                   AND namespace = %s
                   AND status = 'active'
                   AND 1 - (embedding <=> %s::vector) >= %s
@@ -607,6 +633,7 @@ class PostgresMemoryStore:
                 """,
                 (
                     user_id,
+                    session_id,
                     namespace,
                     _vector_literal(embedding),
                     threshold,
@@ -678,6 +705,7 @@ class PostgresMemoryStore:
                 FROM engrams
                 WHERE type_name = %s
                   AND user_id = %s
+                  AND session_id = %s
                   AND stated_by = 'model'
                   AND status = 'active'
                   AND id <> %s
@@ -687,6 +715,7 @@ class PostgresMemoryStore:
                 (
                     stated_by_user.type_name,
                     stated_by_user.user_id,
+                    stated_by_user.session_id,
                     stated_by_user.id,
                     vector,
                     conflict_threshold,
@@ -769,21 +798,25 @@ class PostgresMemoryStore:
                     if row["source_trace_id"] is not None
                 )
             )
-            episodic = []
+            thread_artifacts = []
             if trace_ids:
-                episodic = connection.execute(
+                thread_artifacts = connection.execute(
                     """
                     SELECT *
                     FROM engrams
-                    WHERE type_name = 'episodic'
+                    WHERE type_name = 'thread_artifacts'
                       AND user_id = %s
+                      AND session_id = %s
                       AND status = 'active'
                       AND source_trace_id = ANY(%s::text[])
                     ORDER BY created_at, id
                     """,
-                    (key.user_id, list(trace_ids)),
+                    (key.user_id, key.session_id, list(trace_ids)),
                 ).fetchall()
-        rows = sorted((*dialogs, *episodic), key=lambda row: (row["created_at"], row["id"]))
+        rows = sorted(
+            (*dialogs, *thread_artifacts),
+            key=lambda row: (row["created_at"], row["id"]),
+        )
         return tuple(_engram_from_row(row) for row in rows)
 
     def write_thread_summary(
@@ -986,63 +1019,13 @@ class PostgresMemoryStore:
                 FROM archived_sessions s
                 WHERE e.user_id = s.user_id
                   AND e.session_id = s.session_id
-                  AND e.type_name IN ('dialog', 'thread_summary')
+                  AND e.type_name IN (
+                      'dialog', 'thread_summary', 'thread_artifacts'
+                  )
                   AND e.status = 'active'
                 RETURNING e.*
                 """,
                 (now, now, inactivity_seconds, now, reason),
-            ).fetchall()
-        return tuple(_engram_from_row(row) for row in rows)
-
-    def find_episodic_to_promote(
-        self,
-        *,
-        now: datetime,
-        recency_max: float,
-        min_stability: int,
-        min_score: float,
-    ) -> tuple[Engram, ...]:
-        if not 0.0 <= recency_max <= 1.0:
-            raise InvalidConsolidationEventError(
-                "recency_max debe estar entre 0 y 1"
-            )
-        if min_stability < 0:
-            raise InvalidConsolidationEventError(
-                "min_stability no puede ser negativo"
-            )
-        if not 0.0 <= min_score <= 1.0:
-            raise InvalidConsolidationEventError(
-                "min_score debe estar entre 0 y 1"
-            )
-        with self._connect() as connection:
-            rows = connection.execute(
-                """
-                SELECT e.*
-                FROM engrams e
-                JOIN memory_types mt ON mt.name = e.type_name
-                WHERE e.type_name = 'episodic'
-                  AND e.status = 'active'
-                  AND e.namespace <> 'tasks'
-                  AND mt.half_life_seconds IS NOT NULL
-                  AND power(
-                      0.5,
-                      GREATEST(
-                          EXTRACT(
-                              EPOCH FROM (
-                                  %s::timestamptz
-                                  - COALESCE(
-                                      e.last_reinforced_at,
-                                      e.created_at
-                                  )
-                              )
-                          ),
-                          0
-                      ) / mt.half_life_seconds
-                  ) < %s
-                  AND (e.stability >= %s OR e.score >= %s)
-                ORDER BY e.created_at, e.id
-                """,
-                (now, recency_max, min_stability, min_score),
             ).fetchall()
         return tuple(_engram_from_row(row) for row in rows)
 
@@ -1238,24 +1221,18 @@ class PostgresMemoryStore:
         memory_types: tuple[MemoryType, ...],
         query: RecallQuery,
     ) -> list[RecallItem]:
-        """Recupera tipos `RANKED` (dialog/episodic/semantic).
+        """Recall ranked memory while keeping conversation domain-neutral.
 
-        Filtro de dominio (D2, PLAN.md): una memoria sin `domain_tag` es
-        SIEMPRE candidata (neutra, no incompatible); el filtro excluye solo
-        las de un dominio DISTINTO del pedido. Sin dominio pedido, no hay
-        filtro (comportamiento sin cambios).
+        Dialog, thread summaries and thread artifacts belong to the session,
+        regardless of the request domain. Durable knowledge keeps the domain
+        filter: an untagged item is neutral, while a different tag is hidden.
         """
         scope_clauses: list[str] = []
         parameters: list[Any] = []
         for memory_type in memory_types:
-            namespace = (
-                memory_type.namespaces[0]
-                if (
-                    memory_type.scope is Scope.SESSION
-                    and memory_type.namespaces
-                )
-                else query.namespace
-            )
+            namespace = query.namespace
+            if namespace is None and len(memory_type.namespaces) == 1:
+                namespace = memory_type.namespaces[0]
             key = derive_memory_key(
                 memory_type,
                 query.identity,
@@ -1269,15 +1246,13 @@ class PostgresMemoryStore:
 
         query_embedding = self._require_embedder().embed(query.text)
         now = query.now or datetime.now(UTC)
-        # D4: el suelo de similitud gatea SOLO `episodic` (ruido reciente de
-        # alto volumen). `semantic` ya paso un juicio de promocion y `dialog`
-        # es continuidad, no pertinencia tematica; ninguno de los dos se
-        # gatea aqui aunque la query traiga un `min_similarity`. Ver
-        # docs/PLAN.md D4 y docs/handoff/deuda_d4_brief.md.
+        # D4: el suelo de similitud gatea SOLO los artefactos estructurados del
+        # hilo. `semantic` ya fue curado por conscience y `dialog` es
+        # continuidad, no pertinencia tematica.
         gated_type_names = tuple(
             memory_type.name
             for memory_type in memory_types
-            if memory_type.name == "episodic"
+            if memory_type.name == "thread_artifacts"
         )
         sql = f"""
             SELECT e.*,
@@ -1325,7 +1300,10 @@ class PostgresMemoryStore:
             WHERE e.status = 'active'
               AND ({" OR ".join(scope_clauses)})
               AND (
-                  %s::text IS NULL
+                  e.type_name IN (
+                      'dialog', 'thread_summary', 'thread_artifacts'
+                  )
+                  OR %s::text IS NULL
                   OR e.domain_tag IS NULL
                   OR e.domain_tag = %s
               )
@@ -1478,6 +1456,10 @@ def _default_migration_path() -> Traversable:
 
 def _default_stated_by_migration_path() -> Traversable:
     return migration_resource("0004_stated_by.sql")
+
+
+def _default_thread_artifacts_migration_path() -> Traversable:
+    return migration_resource("0007_thread_artifacts.sql")
 
 
 def _require_authority(

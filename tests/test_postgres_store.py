@@ -16,6 +16,7 @@ from ianest_extended import (
     RecallQuery,
     StatedBy,
     TelemetryWriter,
+    UnknownMemoryTypeError,
     WriteAuthorityError,
 )
 
@@ -46,12 +47,12 @@ def _controlled_vector(store, first, second):
     return (first, second, *(0.0 for _ in range(store._embedder.dimension - 2)))
 
 
-def test_a1_continuity_and_session_isolation(postgres_store):
+def test_thread_artifacts_do_not_cross_sessions(postgres_store):
     unique_user = f"u-{uuid4()}"
     postgres_store.write(
         Principal.EXTENDED,
         EngramWrite(
-            type_name="episodic",
+            type_name="thread_artifacts",
             content="el usuario prefiere respuestas concisas",
             identity=MemoryIdentity(unique_user, "A"),
             namespace="facts",
@@ -67,9 +68,17 @@ def test_a1_continuity_and_session_isolation(postgres_store):
         ),
     )
 
-    episodic = postgres_store.recall(
+    same_session = postgres_store.recall(
         RecallQuery(
-            type_names=("episodic",),
+            type_names=("thread_artifacts",),
+            identity=MemoryIdentity(unique_user, "A"),
+            text="preferencias de respuesta",
+            namespace="facts",
+        )
+    )
+    other_session = postgres_store.recall(
+        RecallQuery(
+            type_names=("thread_artifacts",),
             identity=MemoryIdentity(unique_user, "B"),
             text="preferencias de respuesta",
             namespace="facts",
@@ -83,10 +92,24 @@ def test_a1_continuity_and_session_isolation(postgres_store):
         )
     )
 
-    assert [item.engram.content for item in episodic] == [
+    assert [item.engram.content for item in same_session] == [
         "el usuario prefiere respuestas concisas"
     ]
+    assert other_session == ()
     assert dialog == ()
+
+
+def test_memory_write_rejects_episodic_without_alias(postgres_store):
+    with pytest.raises(UnknownMemoryTypeError):
+        postgres_store.write(
+            Principal.EXTENDED,
+            EngramWrite(
+                type_name="episodic",
+                content="old public name",
+                identity=MemoryIdentity(f"u-{uuid4()}", "A"),
+                namespace="facts",
+            ),
+        )
 
 
 def test_a2_delegated_authority_is_enforced(postgres_store):
@@ -155,13 +178,13 @@ def test_entity_profile_uses_delegated_contract(postgres_store):
     assert recalled[0].entity.id == profile.id
 
 
-def test_gates_filter_domain_and_entity_reference(postgres_store):
+def test_entity_reference_still_filters_thread_artifacts(postgres_store):
     unique_user = f"u-{uuid4()}"
     selected_entity = uuid4()
     postgres_store.write(
         Principal.EXTENDED,
         EngramWrite(
-            type_name="episodic",
+            type_name="thread_artifacts",
             content="hecho linux",
             identity=MemoryIdentity(unique_user, "A"),
             namespace="facts",
@@ -172,7 +195,7 @@ def test_gates_filter_domain_and_entity_reference(postgres_store):
     postgres_store.write(
         Principal.EXTENDED,
         EngramWrite(
-            type_name="episodic",
+            type_name="thread_artifacts",
             content="hecho salud",
             identity=MemoryIdentity(unique_user, "A"),
             namespace="facts",
@@ -182,8 +205,8 @@ def test_gates_filter_domain_and_entity_reference(postgres_store):
 
     recalled = postgres_store.recall(
         RecallQuery(
-            type_names=("episodic",),
-            identity=MemoryIdentity(unique_user, "B"),
+            type_names=("thread_artifacts",),
+            identity=MemoryIdentity(unique_user, "A"),
             namespace="facts",
             domain_tag="linux.ops",
             entity_ref=selected_entity,
@@ -193,59 +216,95 @@ def test_gates_filter_domain_and_entity_reference(postgres_store):
     assert [item.engram.content for item in recalled] == ["hecho linux"]
 
 
-def test_d2_domain_filter_treats_memory_without_domain_as_neutral(postgres_store):
-    """D2: pedido=X incluye X y sin-dominio; excluye solo un dominio distinto.
-
-    docs/PLAN.md D2 / docs/handoff/deudas_d1_d2_brief.md: una memoria sin
-    `domain_tag` no es incompatible con el dominio pedido, es neutra, y debe
-    seguir siendo candidata (a diferencia del filtro estricto anterior).
-    """
+def test_domain_does_not_filter_conversational_memory(postgres_store):
     unique_user = f"u-{uuid4()}"
+    identity = MemoryIdentity(
+        unique_user,
+        "A",
+        domain_tag="medicina",
+    )
+    dialog = postgres_store.write(
+        Principal.EXTENDED,
+        EngramWrite(
+            type_name="dialog",
+            content="testigo conversacional",
+            identity=identity,
+            domain_tag="medicina",
+            stated_by=StatedBy.USER,
+        ),
+    )
     postgres_store.write(
         Principal.EXTENDED,
         EngramWrite(
-            type_name="episodic",
+            type_name="thread_artifacts",
             content="hecho del dominio pedido",
-            identity=MemoryIdentity(unique_user, "A"),
+            identity=identity,
             namespace="facts",
-            domain_tag="linux",
+            domain_tag="medicina",
         ),
     )
     postgres_store.write(
         Principal.EXTENDED,
         EngramWrite(
-            type_name="episodic",
+            type_name="thread_artifacts",
             content="hecho sin dominio, neutro",
-            identity=MemoryIdentity(unique_user, "A"),
+            identity=identity,
             namespace="facts",
         ),
     )
     postgres_store.write(
         Principal.EXTENDED,
         EngramWrite(
-            type_name="episodic",
+            type_name="thread_artifacts",
             content="hecho de otro dominio",
-            identity=MemoryIdentity(unique_user, "A"),
+            identity=identity,
             namespace="facts",
             domain_tag="matematicas",
         ),
     )
+    summary = postgres_store.write_thread_summary(
+        Principal.EXTENDED,
+        identity=identity,
+        content="resumen medico del hilo",
+        source_ids=(dialog.id,),
+        source_trace_id="domain-summary",
+    ).summary
 
-    recalled = postgres_store.recall(
+    artifacts = postgres_store.recall(
         RecallQuery(
-            type_names=("episodic",),
-            identity=MemoryIdentity(unique_user, "B"),
+            type_names=("thread_artifacts",),
+            identity=MemoryIdentity(unique_user, "A"),
             namespace="facts",
-            domain_tag="linux",
+            domain_tag="cultura",
+        )
+    )
+    dialogs = postgres_store.recall(
+        RecallQuery(
+            type_names=("dialog",),
+            identity=MemoryIdentity(unique_user, "A"),
+            domain_tag="cultura",
+        )
+    )
+    summaries = postgres_store.recall(
+        RecallQuery(
+            type_names=("thread_summary",),
+            identity=MemoryIdentity(unique_user, "A"),
+            namespace="thread",
+            domain_tag="cultura",
         )
     )
 
-    contents = {item.engram.content for item in recalled}
-    assert contents == {"hecho del dominio pedido", "hecho sin dominio, neutro"}
-    assert "hecho de otro dominio" not in contents
+    contents = {item.engram.content for item in artifacts}
+    assert contents == {
+        "hecho del dominio pedido",
+        "hecho sin dominio, neutro",
+        "hecho de otro dominio",
+    }
+    assert [item.engram.id for item in dialogs] == [dialog.id]
+    assert [item.engram.id for item in summaries] == [summary.id]
 
 
-def test_d4_similarity_floor_gates_episodic_before_composite_relevance(
+def test_d4_similarity_floor_gates_thread_artifacts_before_composite_relevance(
     postgres_store,
 ):
     """D4 criterio 1: similitud baja no pasa aunque recencia y merito sumen."""
@@ -254,7 +313,7 @@ def test_d4_similarity_floor_gates_episodic_before_composite_relevance(
     stored = postgres_store.write(
         Principal.EXTENDED,
         EngramWrite(
-            type_name="episodic",
+            type_name="thread_artifacts",
             content="engrama reciente y estable",
             identity=MemoryIdentity(user, "A"),
             namespace="facts",
@@ -270,21 +329,21 @@ def test_d4_similarity_floor_gates_episodic_before_composite_relevance(
 
     recalled = postgres_store.recall(
         RecallQuery(
-            type_names=("episodic",),
-            identity=MemoryIdentity(user, "B"),
+            type_names=("thread_artifacts",),
+            identity=MemoryIdentity(user, "A"),
             text=prompt,
             namespace="facts",
             min_similarity=0.10,
         )
     )
 
-    episodic = next(
+    thread_artifacts = next(
         memory_type
         for memory_type in postgres_store.list_types()
-        if memory_type.name == "episodic"
+        if memory_type.name == "thread_artifacts"
     )
     assert calculate_relevance(
-        episodic,
+        thread_artifacts,
         age_seconds=0,
         similarity=0.0,
         stability=10,
@@ -300,7 +359,7 @@ def test_d4_passing_memories_keep_composite_relevance_order(postgres_store):
     lower = postgres_store.write(
         Principal.EXTENDED,
         EngramWrite(
-            type_name="episodic",
+            type_name="thread_artifacts",
             content=prompt,
             identity=MemoryIdentity(user, "A"),
             namespace="facts",
@@ -311,7 +370,7 @@ def test_d4_passing_memories_keep_composite_relevance_order(postgres_store):
     higher = postgres_store.write(
         Principal.EXTENDED,
         EngramWrite(
-            type_name="episodic",
+            type_name="thread_artifacts",
             content=prompt,
             identity=MemoryIdentity(user, "A"),
             namespace="facts",
@@ -322,8 +381,8 @@ def test_d4_passing_memories_keep_composite_relevance_order(postgres_store):
 
     recalled = postgres_store.recall(
         RecallQuery(
-            type_names=("episodic",),
-            identity=MemoryIdentity(user, "B"),
+            type_names=("thread_artifacts",),
+            identity=MemoryIdentity(user, "A"),
             text=prompt,
             namespace="facts",
             min_similarity=0.10,
@@ -335,11 +394,11 @@ def test_d4_passing_memories_keep_composite_relevance_order(postgres_store):
 
 
 def test_d4_semantic_is_not_gated_even_when_query_carries_a_floor(postgres_store):
-    """D4 criterio 3: semantic ya paso un juicio de promocion; sin suelo."""
+    """Semantic ya fue curado por conscience y no usa el suelo del hilo."""
     user = f"u-{uuid4()}"
     prompt = "consulta sin relacion"
     stored = postgres_store.write(
-        Principal.EXTENDED,
+        Principal.CONSCIENCE,
         EngramWrite(
             type_name="semantic",
             content="hecho consolidado del interlocutor",
@@ -445,7 +504,7 @@ def test_d4_zero_passing_memories_complete_with_zero_telemetry(
     stored = postgres_store.write(
         Principal.EXTENDED,
         EngramWrite(
-            type_name="episodic",
+            type_name="thread_artifacts",
             content="engrama ajeno",
             identity=MemoryIdentity(user, "A"),
             namespace="facts",
@@ -467,7 +526,7 @@ def test_d4_zero_passing_memories_complete_with_zero_telemetry(
     )
 
     result = enricher.enrich(
-        MemoryIdentity(user, "B"),
+        MemoryIdentity(user, "A"),
         prompt,
         dry_run=True,
     )
@@ -486,7 +545,7 @@ def test_a5_archive_preserves_row(postgres_store):
     stored = postgres_store.write(
         Principal.EXTENDED,
         EngramWrite(
-            type_name="episodic",
+            type_name="thread_artifacts",
             content="engrama archivable",
             identity=MemoryIdentity(f"u-{uuid4()}", "A"),
             namespace="facts",
@@ -511,8 +570,13 @@ def test_contradiction_crosses_namespace_but_not_type_user_or_band(postgres_stor
     content = "La clave del refugio tiene una version distinta"
 
     def write_model(type_name, candidate_user, namespace):
+        principal = (
+            Principal.CONSCIENCE
+            if type_name == "semantic"
+            else Principal.EXTENDED
+        )
         return postgres_store.write(
-            Principal.EXTENDED,
+            principal,
             EngramWrite(
                 type_name=type_name,
                 content=content,
@@ -522,17 +586,27 @@ def test_contradiction_crosses_namespace_but_not_type_user_or_band(postgres_stor
             ),
         )
 
-    cross_namespace = write_model("episodic", user, "facts")
-    other_user_candidate = write_model("episodic", other_user, "facts")
+    cross_namespace = write_model("thread_artifacts", user, "facts")
+    other_user_candidate = write_model("thread_artifacts", other_user, "facts")
     other_type_candidate = write_model("semantic", user, "facts")
-    below_band = write_model("episodic", user, "preferences")
-    above_dedup = write_model("episodic", user, "facts")
+    other_session_candidate = postgres_store.write(
+        Principal.EXTENDED,
+        EngramWrite(
+            type_name="thread_artifacts",
+            content=content,
+            identity=MemoryIdentity(user, "B"),
+            namespace="facts",
+            stated_by=StatedBy.MODEL,
+        ),
+    )
+    below_band = write_model("thread_artifacts", user, "preferences")
+    above_dedup = write_model("thread_artifacts", user, "facts")
     stated_by_user = postgres_store.write(
         Principal.EXTENDED,
         EngramWrite(
-            type_name="episodic",
+            type_name="thread_artifacts",
             content=content,
-            identity=MemoryIdentity(user, "B"),
+            identity=MemoryIdentity(user, "A"),
             namespace="tasks",
             stated_by=StatedBy.USER,
         ),
@@ -545,6 +619,7 @@ def test_contradiction_crosses_namespace_but_not_type_user_or_band(postgres_stor
         cross_namespace,
         other_user_candidate,
         other_type_candidate,
+        other_session_candidate,
     ):
         _set_embedding(postgres_store, candidate.id, conflict_vector)
     _set_embedding(postgres_store, below_band.id, below_vector)
@@ -577,5 +652,6 @@ def test_contradiction_crosses_namespace_but_not_type_user_or_band(postgres_stor
     )
     assert postgres_store.get_engram(other_user_candidate.id).contradicted is False
     assert postgres_store.get_engram(other_type_candidate.id).contradicted is False
+    assert postgres_store.get_engram(other_session_candidate.id).contradicted is False
     assert postgres_store.get_engram(below_band.id).contradicted is False
     assert postgres_store.get_engram(above_dedup.id).contradicted is False

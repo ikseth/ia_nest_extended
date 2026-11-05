@@ -158,7 +158,7 @@ def test_summary_keeps_both_contradiction_sides_and_replaces_the_rest(tmp_path):
     model = store.write(
         Principal.EXTENDED,
         EngramWrite(
-            type_name="episodic",
+            type_name="thread_artifacts",
             content="la clave del refugio es Cobalto",
             identity=identity,
             namespace="facts",
@@ -168,7 +168,7 @@ def test_summary_keeps_both_contradiction_sides_and_replaces_the_rest(tmp_path):
     user = store.write(
         Principal.EXTENDED,
         EngramWrite(
-            type_name="episodic",
+            type_name="thread_artifacts",
             content="la clave del refugio es Ambar",
             identity=identity,
             namespace="facts",
@@ -184,7 +184,7 @@ def test_summary_keeps_both_contradiction_sides_and_replaces_the_rest(tmp_path):
     ordinary = store.write(
         Principal.EXTENDED,
         EngramWrite(
-            type_name="episodic",
+            type_name="thread_artifacts",
             content="el inventario tiene tres mantas",
             identity=identity,
             namespace="facts",
@@ -210,11 +210,11 @@ def test_summary_keeps_both_contradiction_sides_and_replaces_the_rest(tmp_path):
     assert "[thread_summary/thread]" in context
     assert "el inventario tiene tres mantas" not in context
     user_line = (
-        "[episodic/facts] (fuente: usuario) "
+        "[thread_artifacts/facts] (fuente: usuario) "
         "la clave del refugio es Ambar"
     )
     model_line = (
-        "[episodic/facts] (fuente: modelo, sin verificar; "
+        "[thread_artifacts/facts] (fuente: modelo, sin verificar; "
         "hay una version del usuario sobre esto) "
         "la clave del refugio es Cobalto"
     )

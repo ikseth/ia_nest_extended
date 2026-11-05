@@ -92,6 +92,9 @@ declaraciones que su dueno llenara.
 
 ## Enmienda (2026-09-22): `episodic` no era memoria, era el residuo de un hilo
 
+Implementada el 2026-11-05 en `v0.6.0`, por decision del operador. El paquete de
+traspaso y las magnitudes (puntos 5 y 6) quedan para conscience.
+
 ### Lo medido
 
 Sesion real del operador, 2026-09-22, sobre `v0.3.2`. La recomendacion que el

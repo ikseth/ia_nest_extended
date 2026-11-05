@@ -1617,7 +1617,7 @@ class ExtendedService:
                 "delegated": len(bundle.delegated),
                 "rag": len(bundle.rag),
                 "semantic": len(bundle.semantic),
-                "episodic": len(bundle.episodic),
+                "thread_artifacts": len(bundle.thread_artifacts),
                 "dialog": len(bundle.dialog),
             },
             "knowledge_gate": bundle.knowledge_gate.public_dict(),
@@ -1661,8 +1661,6 @@ class ExtendedService:
         )
         return {
             "dialog_archived": result.dialog_archived,
-            "episodic_promoted": result.episodic_promoted,
-            "candidates_seen": result.candidates_seen,
             "dry_run": result.dry_run,
         }
 

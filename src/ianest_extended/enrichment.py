@@ -33,7 +33,7 @@ DELEGATED_TYPES = (
     ("safety", "safety"),
 )
 SEMANTIC_NAMESPACES = ("facts", "preferences")
-EPISODIC_NAMESPACES = ("facts", "tasks", "preferences")
+THREAD_ARTIFACT_NAMESPACES = ("facts", "tasks", "preferences")
 CONTEXT_WRAPPER_CHARS = len("<enrichment_context>\n\n</enrichment_context>\n\n")
 _CORE_RESULT_TRACE = object()
 
@@ -66,7 +66,7 @@ class RecallBundle:
     delegated: tuple[RecallItem, ...]
     rag: tuple[RagChunk, ...]
     semantic: tuple[RecallItem, ...]
-    episodic: tuple[RecallItem, ...]
+    thread_artifacts: tuple[RecallItem, ...]
     thread_summary: tuple[RecallItem, ...]
     dialog: tuple[RecallItem, ...]
     context: str
@@ -362,7 +362,7 @@ class MemoryEnricher:
     ) -> RecallBundle:
         delegated: list[RecallItem] = []
         semantic: tuple[RecallItem, ...] = ()
-        episodic: tuple[RecallItem, ...] = ()
+        thread_artifacts: tuple[RecallItem, ...] = ()
         thread_summary: tuple[RecallItem, ...] = ()
         dialog: tuple[RecallItem, ...] = ()
         if include_memory:
@@ -384,18 +384,17 @@ class MemoryEnricher:
                 self._config.semantic_top_k,
                 identity,
                 prompt,
-                # D4: el suelo de similitud NO alcanza a `semantic` (lo
-                # consolidado ya paso un juicio de promocion; ver
-                # docs/PLAN.md D4 y docs/handoff/deuda_d4_brief.md).
+                # The thread similarity floor does not apply to `semantic`:
+                # conscience owns and curates that durable memory.
                 min_similarity=None,
             )
-            episodic = self._recall_ranked_namespaces(
-                "episodic",
-                EPISODIC_NAMESPACES,
-                self._config.episodic_top_k,
+            thread_artifacts = self._recall_ranked_namespaces(
+                "thread_artifacts",
+                THREAD_ARTIFACT_NAMESPACES,
+                self._config.thread_artifacts_top_k,
                 identity,
                 prompt,
-                min_similarity=self._config.memory_min_similarity,
+                min_similarity=self._config.thread_artifacts_min_similarity,
             )
             if self._config.thread_synthesis_enabled:
                 thread_summary = tuple(
@@ -423,7 +422,7 @@ class MemoryEnricher:
             )
         contradiction_ids = {
             item.engram.id
-            for item in (*episodic, *dialog)
+            for item in (*thread_artifacts, *dialog)
             if item.engram is not None
             and item.engram.contradiction_involved
         }
@@ -434,9 +433,9 @@ class MemoryEnricher:
             for source_id in item.engram.summarized_ids
             if source_id not in contradiction_ids
         }
-        visible_episodic = tuple(
+        visible_thread_artifacts = tuple(
             item
-            for item in episodic
+            for item in thread_artifacts
             if item.engram is None or item.engram.id not in summarized_ids
         )
         visible_dialog = tuple(
@@ -450,7 +449,7 @@ class MemoryEnricher:
             + _rag_lines(rag)
             + _lines("semantic", semantic)
             + _lines("thread_summary", thread_summary)
-            + _lines("episodic", visible_episodic)
+            + _lines("thread_artifacts", visible_thread_artifacts)
             + _lines("dialog", visible_dialog)
         )
         context = _compose_context(
@@ -470,7 +469,7 @@ class MemoryEnricher:
             delegated=tuple(delegated),
             rag=rag,
             semantic=semantic,
-            episodic=episodic,
+            thread_artifacts=thread_artifacts,
             thread_summary=thread_summary,
             dialog=dialog,
             context=context,
@@ -783,6 +782,7 @@ class MemoryEnricher:
                 counters["items_unattributed"] += 1
             existing = self._store.find_similar(
                 user_id=identity.user_id or "",
+                session_id=identity.session_id or "",
                 namespace=parsed["namespace"],
                 text=parsed["content"],
                 threshold=self._config.dedup_threshold,
@@ -794,7 +794,7 @@ class MemoryEnricher:
             written = self._store.write(
                 Principal.EXTENDED,
                 EngramWrite(
-                    type_name="episodic",
+                    type_name="thread_artifacts",
                     content=parsed["content"],
                     namespace=parsed["namespace"],
                     score=parsed["confidence"],
@@ -963,8 +963,8 @@ class MemoryEnricher:
             "rag_returned": len(bundle.rag),
             "semantic_k_requested": self._config.semantic_top_k,
             "semantic_returned": len(bundle.semantic),
-            "episodic_k_requested": self._config.episodic_top_k,
-            "episodic_returned": len(bundle.episodic),
+            "thread_artifacts_k_requested": self._config.thread_artifacts_top_k,
+            "thread_artifacts_returned": len(bundle.thread_artifacts),
             "dialog_k_requested": self._config.dialog_top_k,
             "dialog_returned": len(bundle.dialog),
         }
@@ -980,8 +980,8 @@ class MemoryEnricher:
             "rag_returned": 0,
             "semantic_k_requested": self._config.semantic_top_k,
             "semantic_returned": 0,
-            "episodic_k_requested": self._config.episodic_top_k,
-            "episodic_returned": 0,
+            "thread_artifacts_k_requested": self._config.thread_artifacts_top_k,
+            "thread_artifacts_returned": 0,
             "dialog_k_requested": self._config.dialog_top_k,
             "dialog_returned": 0,
         }
@@ -1009,7 +1009,7 @@ def _lines(
 ) -> list[_ContextLine]:
     result = []
     indexed_items = list(enumerate(items))
-    if tier in {"semantic", "episodic"}:
+    if tier in {"semantic", "thread_artifacts"}:
         indexed_items.sort(key=lambda pair: _stated_by_order(pair[1]))
     for original_index, item in indexed_items:
         relevance = item.relevance
@@ -1129,7 +1129,13 @@ def _trim_tier_to_budget(
 def _next_removable_tier(
     lines: list[_ContextLine],
 ) -> list[tuple[int, _ContextLine]]:
-    for tier in ("rag", "episodic", "semantic", "dialog", "thread_summary"):
+    for tier in (
+        "rag",
+        "thread_artifacts",
+        "semantic",
+        "dialog",
+        "thread_summary",
+    ):
         candidates = [
             (index, line)
             for index, line in enumerate(lines)
@@ -1148,7 +1154,7 @@ def _render_context(lines: list[_ContextLine]) -> str:
         "rag",
         "semantic",
         "thread_summary",
-        "episodic",
+        "thread_artifacts",
         "dialog",
     ):
         tier_lines = [line.text for line in lines if line.tier == tier]
@@ -1338,7 +1344,7 @@ def _validate_item(item: Any) -> dict[str, Any] | None:
     content = item.get("content")
     confidence = item.get("confidence")
     mentions = item.get("mentions", [])
-    if namespace not in EPISODIC_NAMESPACES:
+    if namespace not in THREAD_ARTIFACT_NAMESPACES:
         return None
     if not isinstance(content, str) or not content.strip():
         return None

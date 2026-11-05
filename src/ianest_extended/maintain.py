@@ -8,13 +8,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from .config import ExtendedConfig
-from .consolidation import ConsolidationExecutor
-from .models import (
-    ConsolidationEvent,
-    ConsolidationTrigger,
-    MemoryIdentity,
-    Principal,
-)
+from .models import MemoryIdentity
 from .ports import MemoryStore
 from .telemetry import TelemetryWriter
 
@@ -22,8 +16,6 @@ from .telemetry import TelemetryWriter
 @dataclass(frozen=True, slots=True)
 class MaintenanceResult:
     dialog_archived: int
-    episodic_promoted: int
-    candidates_seen: int
     dry_run: bool
 
 
@@ -44,18 +36,8 @@ def run_maintenance(
             inactivity_seconds=config.session_inactivity_seconds,
         )
     )
-    candidates = tuple(
-        store.find_episodic_to_promote(
-            now=effective_now,
-            recency_max=config.promote_recency_max,
-            min_stability=config.promote_min_stability,
-            min_score=config.promote_min_score,
-        )
-    )
     result = MaintenanceResult(
         dialog_archived=len(old_dialogs),
-        episodic_promoted=len(candidates),
-        candidates_seen=len(candidates),
         dry_run=dry_run,
     )
     status = "dry_run" if dry_run else "ok"
@@ -73,26 +55,8 @@ def run_maintenance(
                     item.type_name == "dialog"
                     for item in archived_session_engrams
                 ),
-                episodic_promoted=len(candidates),
-                candidates_seen=len(candidates),
                 dry_run=False,
             )
-            executor = ConsolidationExecutor(
-                store=store,
-                telemetry=telemetry,
-            )
-            for episodic in candidates:
-                executor.execute(
-                    ConsolidationEvent(
-                        trigger=ConsolidationTrigger.DECAY,
-                        principal=Principal.EXTENDED,
-                        source_ids=(episodic.id,),
-                        target_type="semantic",
-                        content=episodic.content,
-                        target_namespace=episodic.namespace,
-                        reason="promoted_to_semantic",
-                    )
-                )
     except Exception:
         _record_maintain(
             telemetry,
@@ -126,8 +90,6 @@ def _record_maintain(
         identity=MemoryIdentity(),
         counters={
             "dialog_archived": result.dialog_archived,
-            "episodic_promoted": result.episodic_promoted,
-            "candidates_seen": result.candidates_seen,
             "dry_run": int(result.dry_run),
         },
         latency_ms=max(0, round((time.monotonic() - started) * 1000)),

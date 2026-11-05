@@ -163,6 +163,10 @@ Capacidades PROPIAS:
 capacidades del servicio, pero no tienen comando: su consumidor es `conscience`
 por REST (fase 7c).
 
+`memory.write` usa `thread_artifacts` para los hechos, tareas y preferencias
+del hilo. Es de ambito sesion y exige `session_id`; no existe alias para el
+antiguo nombre `episodic`.
+
 `session list` solo consulta las sesiones del usuario indicado y filtra por
 `activa` de forma predeterminada; admite `archivada`, `cerrada` y `todas`.
 `session new` genera un id si se omite y, en la CLI, lo deja como sesion
@@ -199,11 +203,10 @@ Con PostgreSQL local disponible:
     ianest-extended memory maintain
 
 `--dry-run` calcula el resumen sin cambiar engramas ni lineage. La ejecucion
-real archiva `dialog` fuera de la ventana caliente y promociona literalmente
-los `episodic` elegibles a `semantic`; reutiliza su embedding y no conecta al
-core ni a Ollama, porque el composition-root construye cada dependencia solo
-cuando la operacion invocada la necesita. Emite `memory.maintain` y, por cada
-transicion aplicada, `memory.consolidation`.
+real archiva las sesiones inactivas junto con sus `dialog`, `thread_summary` y
+`thread_artifacts`. No promociona a `semantic` y no conecta al core ni a
+Ollama, porque el composition-root construye cada dependencia solo cuando la
+operacion invocada la necesita. Emite `memory.maintain`.
 
 ## Telemetria
 
@@ -215,10 +218,10 @@ ente para encadenar la traza entre capas.
 
 `IANEST_EXTENDED_SESSION_INACTIVITY_SECONDS` se expresa en segundos y vale
 14400 por defecto. Conserva el valor del reloj anterior, pero ahora mide la
-inactividad del hilo completo. Los umbrales de promocion
-son `IANEST_EXTENDED_PROMOTE_MIN_STABILITY=3`,
-`IANEST_EXTENDED_PROMOTE_MIN_SCORE=0.8` y
-`IANEST_EXTENDED_PROMOTE_RECENCY_MAX=0.1`.
+inactividad del hilo completo. `IANEST_EXTENDED_THREAD_ARTIFACTS_TOP_K=4`
+limita los artefactos recuperados por namespace y
+`IANEST_EXTENDED_THREAD_ARTIFACTS_MIN_SIMILARITY=0.10` fija su suelo de
+similitud.
 
 Para parar la DB sin borrar sus datos:
 

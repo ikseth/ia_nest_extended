@@ -59,13 +59,13 @@ class ExtendedConfig:
     thread_synthesis_window_turns: int = 4
     memory_budget_tokens: int = 1500
     dialog_top_k: int = 6
-    episodic_top_k: int = 4
+    thread_artifacts_top_k: int = 4
     semantic_top_k: int = 3
-    # D4: suelo de similitud aplicado SOLO a `episodic` (no a `semantic`,
+    # D4: suelo de similitud aplicado SOLO a `thread_artifacts` (no a `semantic`,
     # `dialog` ni a los delegados). Provisional y sin medida: conserva
     # memorias posiblemente pertinentes hasta calibrar D5 con corpus y uso
     # reales.
-    memory_min_similarity: float = 0.10
+    thread_artifacts_min_similarity: float = 0.10
     dedup_threshold: float = 0.92
     # Suelo de la banda de conflicto (ADR 0013). Calibrado con bge-m3 en el lab
     # (local/lab/2026-08-22_banda_de_conflicto.md): una correccion REAL midio
@@ -78,9 +78,6 @@ class ExtendedConfig:
     inactivity_timeout_seconds: float = 30.0
     task_timeout_seconds: float = 600.0
     session_inactivity_seconds: int = 4 * 60 * 60
-    promote_min_stability: int = 3
-    promote_min_score: float = 0.8
-    promote_recency_max: float = 0.1
     rag_enabled: bool = True
     knowledge_gate_enabled: bool = True
     knowledge_gate_threshold: float = 0.70
@@ -180,17 +177,17 @@ class ExtendedConfig:
                 "DIALOG_TOP_K",
                 defaults.dialog_top_k,
             ),
-            "episodic_top_k": _env_int(
-                "EPISODIC_TOP_K",
-                defaults.episodic_top_k,
+            "thread_artifacts_top_k": _env_int(
+                "THREAD_ARTIFACTS_TOP_K",
+                defaults.thread_artifacts_top_k,
             ),
             "semantic_top_k": _env_int(
                 "SEMANTIC_TOP_K",
                 defaults.semantic_top_k,
             ),
-            "memory_min_similarity": _env_float(
-                "MEMORY_MIN_SIMILARITY",
-                defaults.memory_min_similarity,
+            "thread_artifacts_min_similarity": _env_float(
+                "THREAD_ARTIFACTS_MIN_SIMILARITY",
+                defaults.thread_artifacts_min_similarity,
             ),
             "dedup_threshold": _env_float(
                 "DEDUP_THRESHOLD",
@@ -219,18 +216,6 @@ class ExtendedConfig:
             "session_inactivity_seconds": _env_int(
                 "SESSION_INACTIVITY_SECONDS",
                 defaults.session_inactivity_seconds,
-            ),
-            "promote_min_stability": _env_int(
-                "PROMOTE_MIN_STABILITY",
-                defaults.promote_min_stability,
-            ),
-            "promote_min_score": _env_float(
-                "PROMOTE_MIN_SCORE",
-                defaults.promote_min_score,
-            ),
-            "promote_recency_max": _env_float(
-                "PROMOTE_RECENCY_MAX",
-                defaults.promote_recency_max,
             ),
             "rag_enabled": _env_bool("RAG_ENABLED", defaults.rag_enabled),
             "knowledge_gate_enabled": _env_bool(
@@ -297,7 +282,7 @@ class ExtendedConfig:
             "rest_port",
             "memory_budget_tokens",
             "dialog_top_k",
-            "episodic_top_k",
+            "thread_artifacts_top_k",
             "semantic_top_k",
             "session_inactivity_seconds",
             "thread_synthesis_window_turns",
@@ -317,7 +302,7 @@ class ExtendedConfig:
             "dedup_threshold",
             "conflict_threshold",
             "confidence_threshold",
-            "memory_min_similarity",
+            "thread_artifacts_min_similarity",
             "auto_domain_min_confidence",
             "rag_suggest_min_confidence",
             "rag_min_score",
@@ -343,14 +328,6 @@ class ExtendedConfig:
         ):
             if getattr(self, name) <= 0:
                 raise ExtendedConfigError(f"{name} debe ser mayor que cero", name)
-        if self.promote_min_stability < 0:
-            raise ExtendedConfigError(
-                "promote_min_stability no puede ser negativo"
-            )
-        for name in ("promote_min_score", "promote_recency_max"):
-            value = getattr(self, name)
-            if not 0.0 <= value <= 1.0:
-                raise ExtendedConfigError(f"{name} debe estar entre 0 y 1")
         if not 0.0 <= self.rag_chunk_overlap < 1.0:
             raise ExtendedConfigError(
                 "rag_chunk_overlap debe estar entre 0 (incluido) y 1 (excluido)"

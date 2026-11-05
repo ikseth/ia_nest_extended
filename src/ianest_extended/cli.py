@@ -1041,8 +1041,7 @@ def _memory_maintain(service, config, args) -> int:
     payload = service.memory_maintain(dry_run=args.dry_run)
     text = (
         "dialog_archived={dialog_archived} "
-        "episodic_promoted={episodic_promoted} "
-        "candidates_seen={candidates_seen} dry_run={dry_run}"
+        "dry_run={dry_run}"
     ).format(**{**payload, "dry_run": str(payload["dry_run"]).lower()})
     return _emit(payload, args.json, text=text)
 

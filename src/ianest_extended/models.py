@@ -58,7 +58,6 @@ class StatedBy(StrEnum):
 
 
 class ConsolidationTrigger(StrEnum):
-    DECAY = "decay"
     MANUAL = "manual"
 
 

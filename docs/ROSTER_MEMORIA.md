@@ -1,7 +1,7 @@
 # Roster de tipos de memoria (Fase 2)
 
 Estado: RECONCILIADO
-Version: 0.2 - 2026-07-18
+Version: 0.3 - 2026-11-05 (thread_artifacts y semantic delegado)
 
 Instancia concreta del mecanismo: clases y autoridad (ADR 0002), tiers y
 relevancia (ADR 0003), entities y multi-espacio (ADR 0004), disolucion de
@@ -15,8 +15,7 @@ ejes (modo de recuperacion, dueno, scope, namespace): eso seria aliasing
 | Tipo | Tier / patron | Scope | Namespaces | Escritura | H |
 |---|---|---|---|---|---|
 | `dialog` | conversacional | `session_id` | (crudo, sin ns) | write-back directo de turnos | ~4 h |
-| `episodic` | episodica | `user_id` | `facts`, `tasks`, `preferences` | write-back con politica (dedup, filtro anti-ruido) + `entity_refs` | ~30 d |
-| `semantic` | semantica | `user_id` | `facts`, `preferences` | solo consolidacion (Fase 4), comprimida | off |
+| `thread_artifacts` | episodica | `session_id` | `facts`, `tasks`, `preferences` | write-back con politica (dedup, filtro anti-ruido) + `entity_refs` | ~30 d, y se archiva con su sesion |
 | `thread_summary` | resumen de hilo | `session_id` | `thread` | sintesis mecanica por ventana de turnos (Fase 9) | ~4 h |
 
 Notas:
@@ -35,16 +34,18 @@ Notas:
   se sedimentan (el patron que revele una tarea repetida es un `fact`).
 - Los vectores de pesos y H son los del ADR 0003, configurables por registro.
 
-**Decidido el 2026-09-22 y pendiente de implementar** (ADR 0002, enmienda "no
-era memoria, era el residuo de un hilo"): `episodic` deja de ser memoria y pasa
-a ser `thread_artifacts`, de ambito SESION; `semantic` y la consolidacion de la
-Fase 4 pasan a conscience. Esta tabla describe lo declarado HOY, no lo decidido:
-se actualiza cuando el cambio este implementado.
+**Implementado el 2026-11-05 (v0.6.0)** lo decidido el 2026-09-22 (ADR 0002,
+enmienda "no era memoria, era el residuo de un hilo"): `episodic` pasa a ser
+`thread_artifacts`, de ambito SESION, y los `episodic` anteriores quedan archivados.
+`semantic` pasa a los tipos delegados, con conscience como dueno; extended ya no lo
+escribe. Lo conversacional (`dialog`, `thread_summary`, `thread_artifacts`) no se
+filtra por dominio. Nada que escriba extended sobrevive a su hilo.
 
 ## Tipos delegados (declarados; dueno de escritura: conscience)
 
 | Tipo | Patron | Modo de recuperacion | Scope | Contenido |
 |---|---|---|---|---|
+| `semantic` | semantica, comprimida | ranked; se lee como hoy | `user_id` | lo que conscience consolide (ns `facts`, `preferences`) |
 | `entities` | perfil mutable versionado (no decae, se actualiza) | lookup de perfil; gate por `entity_ref` | `entity_id` propio | perfiles de personas, proyectos, objetos (ns `entities`) |
 | `identity` | sedimento versionado | inyeccion permanente | entidad global | quien soy, que hago; el yo del ente (ns `persona`) |
 | `principles` | registro evolutivo versionado | inyeccion permanente | entidad global | criterios/valores/heuristicas con refuerzo y estados (ns `principles`) |

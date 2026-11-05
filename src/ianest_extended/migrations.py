@@ -13,6 +13,7 @@ MIGRATION_NAMES = (
     "0004_stated_by.sql",
     "0005_thread_synthesis.sql",
     "0006_sessions.sql",
+    "0007_thread_artifacts.sql",
 )
 
 

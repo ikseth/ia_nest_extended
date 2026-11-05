@@ -5,6 +5,34 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+## [0.6.0] - 2026-11-05
+
+### Cambiado
+- **El residuo estructurado del hilo pasa de `episodic` a
+  `thread_artifacts`.** Conserva namespaces, procedencia, contradicciones,
+  orden por fuente y write-back, pero ahora es de ambito sesion: lectura y
+  escritura exigen `session_id`, el contexto usa
+  `[thread_artifacts/<namespace>]`, y una sesion archivada se lleva tambien sus
+  artefactos. Cambian con el mismo nombre el catalogo, `memory.write`, CLI,
+  telemetria y las claves
+  `IANEST_EXTENDED_THREAD_ARTIFACTS_TOP_K` e
+  `IANEST_EXTENDED_THREAD_ARTIFACTS_MIN_SIMILARITY`. No hay alias de entrada:
+  `episodic` produce `UnknownMemoryTypeError`. Cambio de contrato pre-1.0:
+  **MINOR**.
+- `memory.maintain` deja de promocionar a `semantic`; solo archiva sesiones
+  inactivas y su memoria conversacional. `semantic` sigue declarado y se
+  recupera, pero lo escribe `conscience`. La salida de `memory.maintain` retira
+  el contador de promociones. **MINOR**.
+- El dominio deja de filtrar `dialog`, `thread_summary` y `thread_artifacts`
+  dentro de la sesion. El conocimiento RAG conserva su filtro de dominio.
+  **MINOR**.
+
+### Migracion
+- En el primer despliegue, todos los engramas `episodic` existentes pasan a
+  archivo con el motivo `episodic_without_session_retired`. No se les inventa
+  una sesion, no se borran y siguen direccionables por id. La migracion es
+  idempotente.
+
 ## [0.5.5] - 2026-11-04
 
 ### Corregido

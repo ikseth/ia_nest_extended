@@ -102,7 +102,7 @@ def _valid_extraction():
     )
 
 
-def test_vertical_continuity_antinoise_and_telemetry(
+def test_vertical_thread_continuity_antinoise_and_telemetry(
     tmp_path,
     local_service_stub,
 ):
@@ -110,13 +110,15 @@ def test_vertical_continuity_antinoise_and_telemetry(
     enricher = _enricher(tmp_path, local_service_stub, store)
 
     first = enricher.enrich(identity(session="A"), "remember-blue")
-    second = enricher.enrich(identity(session="B"), "smalltalk")
+    second = enricher.enrich(identity(session="A"), "smalltalk")
+    other_session = enricher.recall(identity(session="B"), "remember-blue")
 
     assert "the user prefers blue" in second.context
-    assert "remember-blue" not in second.context
-    episodic = [item for item in store.engrams if item.type_name == "episodic"]
+    assert "the user prefers blue" not in other_session.context
+    assert "[dialog/raw] (fuente: usuario) remember-blue" in second.context
+    thread_artifacts = [item for item in store.engrams if item.type_name == "thread_artifacts"]
     dialog = [item for item in store.engrams if item.type_name == "dialog"]
-    assert len(episodic) == 1
+    assert len(thread_artifacts) == 1
     assert len(dialog) == 4
     assert first.trace["finish_reason"] == "stop"
 
@@ -132,8 +134,8 @@ def test_vertical_continuity_antinoise_and_telemetry(
     assert events[3]["counters"]["items_written"] == 0
 
 
-def test_d4_floor_only_reaches_episodic(tmp_path):
-    """D4: MemoryEnricher solo pasa el suelo a `episodic`.
+def test_d4_floor_only_reaches_thread_artifacts(tmp_path):
+    """D4: MemoryEnricher solo pasa el suelo a `thread_artifacts`.
 
     `semantic`, `dialog` y los delegados no reciben `min_similarity` desde
     esta capa (criterios 3, 4 y 5 del brief). Esta prueba verifica el
@@ -184,7 +186,7 @@ def test_d4_floor_only_reaches_episodic(tmp_path):
         "safety",
     }
     assert bundle.dialog
-    assert floor_by_type["episodic"] == 0.10
+    assert floor_by_type["thread_artifacts"] == 0.10
     assert floor_by_type["semantic"] is None
     assert floor_by_type["dialog"] is None
     assert all(
@@ -198,13 +200,31 @@ def test_write_back_reinforces_duplicate(tmp_path, local_service_stub):
     enricher = _enricher(tmp_path, local_service_stub, store)
 
     enricher.enrich(identity(session="A"), "repeat-fact")
+    enricher.enrich(identity(session="A"), "repeat-fact")
+
+    thread_artifacts = [item for item in store.engrams if item.type_name == "thread_artifacts"]
+    assert len(thread_artifacts) == 1
+    assert thread_artifacts[0].stability == 1
+    assert thread_artifacts[0].unresolved_mentions == ("PostgreSQL",)
+    assert _events(tmp_path)[-1]["counters"]["items_reinforced"] == 1
+
+
+def test_write_back_does_not_deduplicate_across_sessions(
+    tmp_path,
+    local_service_stub,
+):
+    store = InMemoryStore()
+    enricher = _enricher(tmp_path, local_service_stub, store)
+
+    enricher.enrich(identity(session="A"), "repeat-fact")
     enricher.enrich(identity(session="B"), "repeat-fact")
 
-    episodic = [item for item in store.engrams if item.type_name == "episodic"]
-    assert len(episodic) == 1
-    assert episodic[0].stability == 1
-    assert episodic[0].unresolved_mentions == ("PostgreSQL",)
-    assert _events(tmp_path)[-1]["counters"]["items_reinforced"] == 1
+    artifacts = [
+        item for item in store.engrams if item.type_name == "thread_artifacts"
+    ]
+    assert len(artifacts) == 2
+    assert {item.session_id for item in artifacts} == {"A", "B"}
+    assert all(item.stability == 0 for item in artifacts)
 
 
 def test_invalid_extraction_is_discarded_and_traced(
@@ -216,7 +236,7 @@ def test_invalid_extraction_is_discarded_and_traced(
 
     enricher.enrich(identity(), "invalid-json")
 
-    assert not [item for item in store.engrams if item.type_name == "episodic"]
+    assert not [item for item in store.engrams if item.type_name == "thread_artifacts"]
     event = _events(tmp_path)[-1]
     assert event["status"] == "invalid_extraction_json"
     assert event["counters"]["invalid_json"] == 1
@@ -332,7 +352,7 @@ def test_context_lines_put_user_before_unknown_and_model_stably():
     model = store.write(
         Principal.EXTENDED,
         EngramWrite(
-            type_name="episodic",
+            type_name="thread_artifacts",
             content="model first by relevance",
             identity=identity_value,
             namespace="facts",
@@ -342,7 +362,7 @@ def test_context_lines_put_user_before_unknown_and_model_stably():
     user_first = store.write(
         Principal.EXTENDED,
         EngramWrite(
-            type_name="episodic",
+            type_name="thread_artifacts",
             content="user first",
             identity=identity_value,
             namespace="facts",
@@ -352,7 +372,7 @@ def test_context_lines_put_user_before_unknown_and_model_stably():
     unknown = store.write(
         Principal.EXTENDED,
         EngramWrite(
-            type_name="episodic",
+            type_name="thread_artifacts",
             content="unknown between users and model",
             identity=identity_value,
             namespace="facts",
@@ -361,7 +381,7 @@ def test_context_lines_put_user_before_unknown_and_model_stably():
     user_second = store.write(
         Principal.EXTENDED,
         EngramWrite(
-            type_name="episodic",
+            type_name="thread_artifacts",
             content="user second",
             identity=identity_value,
             namespace="facts",
@@ -375,13 +395,13 @@ def test_context_lines_put_user_before_unknown_and_model_stably():
     )
 
     lines = _lines(
-        "episodic",
+        "thread_artifacts",
         (
-            RecallItem("episodic", 1.0, engram=model),
-            RecallItem("episodic", 0.1, engram=user_first),
-            RecallItem("episodic", 0.2, engram=unknown),
-            RecallItem("episodic", 0.5, entity=entity),
-            RecallItem("episodic", 0.3, engram=user_second),
+            RecallItem("thread_artifacts", 1.0, engram=model),
+            RecallItem("thread_artifacts", 0.1, engram=user_first),
+            RecallItem("thread_artifacts", 0.2, engram=unknown),
+            RecallItem("thread_artifacts", 0.5, entity=entity),
+            RecallItem("thread_artifacts", 0.3, engram=user_second),
         ),
     )
 
@@ -389,17 +409,17 @@ def test_context_lines_put_user_before_unknown_and_model_stably():
         "user first",
         "user second",
         "unknown between users and model",
-        "[episodic/entities] entity between unknown and model: {}",
+        "[thread_artifacts/entities] entity between unknown and model: {}",
         "model first by relevance",
     ]
 
 
-def test_context_lines_apply_source_order_to_semantic_and_episodic_only():
+def test_context_lines_apply_source_order_to_semantic_and_thread_artifacts_only():
     store = InMemoryStore()
     identity_value = identity()
     for tier in (
         "semantic",
-        "episodic",
+        "thread_artifacts",
         "dialog",
         "delegated",
         "thread_summary",
@@ -436,7 +456,7 @@ def test_context_lines_apply_source_order_to_semantic_and_episodic_only():
         contents = [line.text.rsplit(") ", 1)[-1] for line in lines]
         expected = (
             [f"{tier} user", f"{tier} model"]
-            if tier in {"semantic", "episodic"}
+            if tier in {"semantic", "thread_artifacts"}
             else [f"{tier} model", f"{tier} user"]
         )
         assert contents == expected
@@ -448,7 +468,7 @@ def test_context_budget_removes_the_same_low_relevance_line_after_reordering():
     model = store.write(
         Principal.EXTENDED,
         EngramWrite(
-            type_name="episodic",
+            type_name="thread_artifacts",
             content="model removed by budget",
             identity=identity_value,
             namespace="facts",
@@ -458,7 +478,7 @@ def test_context_budget_removes_the_same_low_relevance_line_after_reordering():
     user = store.write(
         Principal.EXTENDED,
         EngramWrite(
-            type_name="episodic",
+            type_name="thread_artifacts",
             content="user kept by budget",
             identity=identity_value,
             namespace="facts",
@@ -466,14 +486,14 @@ def test_context_budget_removes_the_same_low_relevance_line_after_reordering():
         ),
     )
     lines = _lines(
-        "episodic",
+        "thread_artifacts",
         (
-            RecallItem("episodic", 0.9, engram=model),
-            RecallItem("episodic", 0.9, engram=user),
+            RecallItem("thread_artifacts", 0.9, engram=model),
+            RecallItem("thread_artifacts", 0.9, engram=user),
         ),
     )
 
-    context = _compose_context(lines, token_budget=36, rag_token_budget=100)
+    context = _compose_context(lines, token_budget=40, rag_token_budget=100)
 
     assert "user kept by budget" in context
     assert "model removed by budget" not in context
@@ -489,9 +509,9 @@ def test_model_claim_is_stored_as_model_not_as_user_fact(
 
     enricher.enrich(identity(), "carpenter-claim")
 
-    episodic = [item for item in store.engrams if item.type_name == "episodic"]
-    assert len(episodic) == 1
-    assert episodic[0].stated_by is StatedBy.MODEL
+    thread_artifacts = [item for item in store.engrams if item.type_name == "thread_artifacts"]
+    assert len(thread_artifacts) == 1
+    assert thread_artifacts[0].stated_by is StatedBy.MODEL
 
 
 def test_unanchored_attribution_falls_back_to_unknown(
@@ -503,9 +523,9 @@ def test_unanchored_attribution_falls_back_to_unknown(
 
     enricher.enrich(identity(), "misattributed")
 
-    episodic = [item for item in store.engrams if item.type_name == "episodic"]
-    assert len(episodic) == 1
-    assert episodic[0].stated_by is StatedBy.UNKNOWN
+    thread_artifacts = [item for item in store.engrams if item.type_name == "thread_artifacts"]
+    assert len(thread_artifacts) == 1
+    assert thread_artifacts[0].stated_by is StatedBy.UNKNOWN
     assert _events(tmp_path)[-1]["counters"]["items_unattributed"] == 1
 
 
@@ -519,8 +539,8 @@ def test_old_single_list_extraction_is_left_unattributed(
 
     enricher.enrich(identity(), "remember-blue")
 
-    episodic = [item for item in store.engrams if item.type_name == "episodic"]
-    assert episodic[0].stated_by is StatedBy.UNKNOWN
+    thread_artifacts = [item for item in store.engrams if item.type_name == "thread_artifacts"]
+    assert thread_artifacts[0].stated_by is StatedBy.UNKNOWN
 
 
 def test_user_version_annotates_the_model_claim_without_retiring_it(
@@ -550,9 +570,9 @@ def test_user_version_annotates_the_model_claim_without_retiring_it(
         "carpenter-correction: la pelicula de carpenter si tiene precuela",
     )
 
-    episodic = [item for item in store.engrams if item.type_name == "episodic"]
-    from_model = [item for item in episodic if item.stated_by is StatedBy.MODEL]
-    from_user = [item for item in episodic if item.stated_by is StatedBy.USER]
+    thread_artifacts = [item for item in store.engrams if item.type_name == "thread_artifacts"]
+    from_model = [item for item in thread_artifacts if item.stated_by is StatedBy.MODEL]
+    from_user = [item for item in thread_artifacts if item.stated_by is StatedBy.USER]
 
     assert len(from_user) == 1
     assert "si tiene precuela" in from_user[0].content
@@ -586,7 +606,7 @@ def test_annotated_claim_is_labelled_and_demoted_in_the_context(
     lines = [
         line
         for line in third.context.splitlines()
-        if line.startswith("[episodic/facts]")
+        if line.startswith("[thread_artifacts/facts]")
     ]
     annotated = [line for line in lines if "version del usuario" in line]
 
@@ -607,9 +627,9 @@ def test_recall_marks_stated_by_in_the_injected_context(
     enricher.enrich(identity(session="A"), "carpenter-claim")
     second = enricher.enrich(identity(session="A"), "smalltalk")
 
-    # El episodico que afirmo el modelo viaja marcado como candidato...
+    # El artefacto que afirmo el modelo viaja marcado como candidato...
     assert (
-        "[episodic/facts] (fuente: modelo, sin verificar) "
+        "[thread_artifacts/facts] (fuente: modelo, sin verificar) "
         "la pelicula de carpenter no tiene precuela"
     ) in second.context
     # ...y el turno que dijo el usuario, como suyo.
@@ -639,7 +659,7 @@ def _core_result(stop_reason):
     )
 
 
-def test_unconverged_response_does_not_reach_episodic(
+def test_unconverged_response_does_not_reach_thread_artifacts(
     tmp_path,
     local_service_stub,
 ):
@@ -654,13 +674,13 @@ def test_unconverged_response_does_not_reach_episodic(
     )
 
     assert status == "ok"
-    assert not [i for i in store.engrams if i.type_name == "episodic"]
+    assert not [i for i in store.engrams if i.type_name == "thread_artifacts"]
     assert counters["items_unconverged"] == 1
     # Los dos turnos siguen en dialog: lo crudo no depende de la convergencia.
     assert len([i for i in store.engrams if i.type_name == "dialog"]) == 2
 
 
-def test_converged_response_does_reach_episodic(tmp_path, local_service_stub):
+def test_converged_response_does_reach_thread_artifacts(tmp_path, local_service_stub):
     store = InMemoryStore()
     enricher = _enricher(tmp_path, local_service_stub, store)
 
@@ -671,8 +691,8 @@ def test_converged_response_does_reach_episodic(tmp_path, local_service_stub):
         core_result=_core_result("task_done"),
     )
 
-    episodic = [i for i in store.engrams if i.type_name == "episodic"]
-    assert [item.stated_by for item in episodic] == [StatedBy.MODEL]
+    thread_artifacts = [i for i in store.engrams if i.type_name == "thread_artifacts"]
+    assert [item.stated_by for item in thread_artifacts] == [StatedBy.MODEL]
     assert counters["items_unconverged"] == 0
 
 
