@@ -65,7 +65,7 @@ class ExtractionCore:
         )
 
 
-def _write_back_enricher(tmp_path, store, core):
+def _write_back_enricher(tmp_path, store, core, **overrides):
     return MemoryEnricher(
         store=store,
         core=core,
@@ -74,6 +74,7 @@ def _write_back_enricher(tmp_path, store, core):
             telemetry_dir=tmp_path,
             embedding_dimension=2,
             memory_budget_tokens=1500,
+            **overrides,
         ),
     )
 
@@ -98,6 +99,33 @@ def _valid_extraction():
                 }
             ],
             "from_assistant": [],
+        }
+    )
+
+
+def _extraction(claimed, content, confidence, namespace="facts"):
+    return json.dumps(
+        {
+            "from_user": [
+                {
+                    "namespace": namespace,
+                    "content": content,
+                    "confidence": confidence,
+                    "mentions": [],
+                }
+            ]
+            if claimed is StatedBy.USER
+            else [],
+            "from_assistant": [
+                {
+                    "namespace": namespace,
+                    "content": content,
+                    "confidence": confidence,
+                    "mentions": [],
+                }
+            ]
+            if claimed is StatedBy.MODEL
+            else [],
         }
     )
 
@@ -284,6 +312,134 @@ def test_valid_extraction_does_not_retry(tmp_path):
     assert status == "ok"
     assert counters["extraction_retried"] == 0
     assert len(core.calls) == 1
+
+
+def test_anchored_low_confidence_user_item_is_written(tmp_path):
+    store = InMemoryStore()
+    core = ExtractionCore([_extraction(StatedBy.USER, "the key is amber", 0.2)])
+    enricher = _write_back_enricher(tmp_path, store, core)
+
+    counters, status = enricher.write_back(
+        request_id="request-1",
+        identity=identity(),
+        prompt="the key is amber",
+        core_result=_write_back_core_result(),
+    )
+
+    artifacts = [item for item in store.engrams if item.type_name == "thread_artifacts"]
+    assert status == "ok"
+    assert [(item.stated_by, item.score) for item in artifacts] == [(StatedBy.USER, 0.2)]
+    assert counters["items_user_below_threshold"] == 1
+    assert counters["items_discarded"] == 0
+    assert counters["items_discarded"] == (
+        counters["items_discarded_invalid"]
+        + counters["items_discarded_low_confidence"]
+    )
+
+
+def test_unanchored_low_confidence_user_item_is_discarded(tmp_path):
+    store = InMemoryStore()
+    core = ExtractionCore([_extraction(StatedBy.USER, "the key is amber", 0.2)])
+    enricher = _write_back_enricher(tmp_path, store, core)
+
+    counters, _ = enricher.write_back(
+        request_id="request-1",
+        identity=identity(),
+        prompt="the color is blue",
+        core_result=_write_back_core_result(),
+    )
+
+    assert not [item for item in store.engrams if item.type_name == "thread_artifacts"]
+    assert counters["items_discarded_low_confidence"] == 1
+    assert counters["items_discarded"] == 1
+    assert counters["items_discarded"] == (
+        counters["items_discarded_invalid"]
+        + counters["items_discarded_low_confidence"]
+    )
+
+
+def test_low_confidence_model_item_is_discarded(tmp_path):
+    store = InMemoryStore()
+    core = ExtractionCore([_extraction(StatedBy.MODEL, "the user prefers blue", 0.2)])
+    enricher = _write_back_enricher(tmp_path, store, core)
+
+    counters, _ = enricher.write_back(
+        request_id="request-1",
+        identity=identity(),
+        prompt="anything",
+        core_result=_write_back_core_result(),
+    )
+
+    assert not [item for item in store.engrams if item.type_name == "thread_artifacts"]
+    assert counters["items_discarded_low_confidence"] == 1
+    assert counters["items_discarded"] == 1
+    assert counters["items_discarded"] == (
+        counters["items_discarded_invalid"]
+        + counters["items_discarded_low_confidence"]
+    )
+
+
+def test_invalid_item_is_counted_as_invalid_discard(tmp_path):
+    store = InMemoryStore()
+    core = ExtractionCore([json.dumps({"from_user": [{"content": None}]})])
+    enricher = _write_back_enricher(tmp_path, store, core)
+
+    counters, _ = enricher.write_back(
+        request_id="request-1",
+        identity=identity(),
+        prompt="the key is amber",
+        core_result=_write_back_core_result(),
+    )
+
+    assert counters["items_discarded_invalid"] == 1
+    assert counters["items_discarded"] == 1
+    assert counters["items_discarded"] == (
+        counters["items_discarded_invalid"]
+        + counters["items_discarded_low_confidence"]
+    )
+
+
+def test_low_confidence_user_correction_records_contradiction(tmp_path):
+    store = InMemoryStore()
+    core = ExtractionCore(
+        [
+            _extraction(StatedBy.MODEL, "key is blue", 0.9),
+            _extraction(StatedBy.USER, "key is amber", 0.2),
+        ]
+    )
+    enricher = _write_back_enricher(tmp_path, store, core, conflict_threshold=0.5)
+    model_result = CoreResult(
+        response="key is blue",
+        trace={"request_id": "core-model"},
+        payload={},
+    )
+    user_result = CoreResult(
+        response="acknowledged",
+        trace={"request_id": "core-user"},
+        payload={},
+    )
+
+    enricher.write_back(
+        request_id="request-1",
+        identity=identity(),
+        prompt="first prompt",
+        core_result=model_result,
+    )
+    counters, _ = enricher.write_back(
+        request_id="request-2",
+        identity=identity(),
+        prompt="key is amber",
+        core_result=user_result,
+    )
+
+    model_item = next(
+        item
+        for item in store.engrams
+        if item.type_name == "thread_artifacts" and item.content == "key is blue"
+    )
+    assert model_item.contradicted is True
+    assert counters["items_user_below_threshold"] == 1
+    assert counters["items_contradicted"] == 1
 
 
 def test_core_error_during_extraction_does_not_retry(tmp_path):

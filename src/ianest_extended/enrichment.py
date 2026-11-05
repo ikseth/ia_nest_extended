@@ -701,6 +701,9 @@ class MemoryEnricher:
             "items_written": 0,
             "items_reinforced": 0,
             "items_discarded": 0,
+            "items_discarded_invalid": 0,
+            "items_discarded_low_confidence": 0,
+            "items_user_below_threshold": 0,
             "items_unattributed": 0,
             "items_contradicted": 0,
             "items_unconverged": 0,
@@ -749,6 +752,7 @@ class MemoryEnricher:
             except (json.JSONDecodeError, ValueError, TypeError):
                 counters["invalid_json"] = 1
                 counters["items_discarded"] = 1
+                counters["items_discarded_invalid"] = 1
                 self._synthesize_thread(identity, source_trace_id)
                 return counters, "invalid_extraction_json"
 
@@ -760,11 +764,9 @@ class MemoryEnricher:
         converged = _downstream_converged(core_result.payload)
         for claimed, item in items:
             parsed = _validate_item(item)
-            if (
-                parsed is None
-                or parsed["confidence"] < self._config.confidence_threshold
-            ):
+            if parsed is None:
                 counters["items_discarded"] += 1
+                counters["items_discarded_invalid"] += 1
                 continue
             # Si el core corto sin aceptar su respuesta, lo que salio de ella no
             # entra en la memoria. Lo que dijo el interlocutor si: su turno no
@@ -778,6 +780,17 @@ class MemoryEnricher:
                 source_texts[claimed],
             ):
                 stated_by = StatedBy.UNKNOWN
+            user_below_threshold = (
+                stated_by is StatedBy.USER
+                and parsed["confidence"] < self._config.confidence_threshold
+            )
+            if (
+                parsed["confidence"] < self._config.confidence_threshold
+                and not user_below_threshold
+            ):
+                counters["items_discarded"] += 1
+                counters["items_discarded_low_confidence"] += 1
+                continue
             if stated_by is StatedBy.UNKNOWN:
                 counters["items_unattributed"] += 1
             existing = self._store.find_similar(
@@ -804,6 +817,8 @@ class MemoryEnricher:
                 ),
             )
             counters["items_written"] += 1
+            if user_below_threshold:
+                counters["items_user_below_threshold"] += 1
             if stated_by is StatedBy.USER:
                 contradicted = self._store.record_contradiction(
                     Principal.EXTENDED,
@@ -934,6 +949,9 @@ class MemoryEnricher:
                     "items_written": 0,
                     "items_reinforced": 0,
                     "items_discarded": 0,
+                    "items_discarded_invalid": 0,
+                    "items_discarded_low_confidence": 0,
+                    "items_user_below_threshold": 0,
                     "items_unattributed": 0,
                     "items_contradicted": 0,
                     "items_unconverged": 0,
