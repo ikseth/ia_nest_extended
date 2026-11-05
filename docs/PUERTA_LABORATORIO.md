@@ -1,8 +1,9 @@
 # Puerta de laboratorio de ia_nest_extended
 
 Estado: reconciliado 2026-11-04. Declarado ANTES de medir.
-Version: 1.5 - 2026-11-04 (bateria del paso cero en version 2, sin cambiar el
-criterio; 1.4 del mismo dia: L5r pasa a "cero fragmentos de conocimiento", por los
+Version: 1.6 - 2026-11-05 (L2 pasa a medir el hilo: cruza dominios dentro de una
+sesion y no cruza de sesion; 1.5 del 2026-11-04: bateria del paso cero en version 2,
+sin cambiar el criterio; 1.4 del mismo dia: L5r pasa a "cero fragmentos de conocimiento", por los
 dos caminos, con la bateria del paso cero; 1.3 del 2026-09-22: L4a desambigua:
 bloquea por composicion, no por
 obediencia del modelo; 1.2 del 2026-09-21 anadio L7, memoria conversacional con
@@ -64,7 +65,7 @@ incorrecto. Ninguna linea usa un modelo del propio sistema como juez.
 | Linea | Que se mide | Pasa | No pasa |
 |---|---|---|---|
 | L1 Forma | `setup.sh` con `VERIFY=strict`; `capability.list` sin degradacion; `knowledge.status` responde | codigo 0 y ninguna degradacion | cualquier otro |
-| L2 Continuidad | el interlocutor dice un testigo aleatorio en la sesion A; se pregunta por el en la sesion B | `memory.recall` de B devuelve el testigo con `stated_by=user`; lo que responda el modelo se registra pero no decide | el recall no lo devuelve |
+| L2 Hilo | en una sesion, el interlocutor dice un testigo aleatorio con un dominio y en el turno siguiente se pregunta por el con otro dominio; despues, misma pregunta en una sesion nueva del mismo usuario | `memory.recall` de la misma sesion, con el segundo dominio, devuelve el testigo con `stated_by=user`; el de la sesion nueva no lo devuelve; lo que responda el modelo se registra pero no decide | el testigo falta en la misma sesion, o aparece en la nueva |
 | L3 Procedencia | se siembra por `memory.write` un candidato con `stated_by=model`; el interlocutor dice lo contrario | el contexto del turno siguiente etiqueta el candidato como del modelo y lo coloca detras de la version del usuario; la anotacion de conflicto se registra con su tasa, pero no decide | sin etiqueta o en otro orden |
 | L4a Coherencia, correccion de un candidato del modelo | hilo de cuatro turnos sobre L3; la ultima pregunta pide el dato | la respuesta contiene el testigo del usuario y no el del modelo | contiene el del modelo, o ninguno |
 | L4b Coherencia, autocorreccion del interlocutor | "la reunion es el martes" ... "perdona, es el jueves" ... "que dia es?" | contiene "jueves" y no "martes" | contiene "martes", o ninguno |
@@ -191,9 +192,16 @@ construido.
 - L5 y L5r dependen de poder declarar N corpus en el instalador. Hasta entonces
   se registran como NO EJECUTABLES, nunca como PASA.
 
-## L2 se retira cuando `episodic` deje de cruzar de sesion
+## L2 mide el hilo, no la memoria entre sesiones
 
-Anotado el 2026-09-22, sin efecto todavia. L2 comprueba que un testigo dicho en
+Aplicado el 2026-11-05, con `episodic` convertido en artefactos del hilo. La L2
+anterior pedia lo contrario de lo decidido: que un testigo dicho en una sesion
+apareciera en otra. Ahora comprueba las dos caras del hilo: se mantiene aunque cambie
+el dominio, porque lo conversacional no se filtra por dominio, y no sobrevive a su
+sesion. Los dominios de la sonda se fijan en la peticion, no los elige el enrutador,
+para que la linea no dependa de una clasificacion.
+
+Historia de la linea, anotada el 2026-09-22: L2 comprueba que un testigo dicho en
 una sesion se recupere en otra, y eso solo es posible con memoria durable de
 ambito usuario. Decidido que `episodic` pasa a ser artefacto del hilo (ADR 0002,
 enmienda del 2026-09-22), L2 pasara a medir algo que extended ya no debe hacer,

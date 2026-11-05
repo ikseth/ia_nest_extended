@@ -102,10 +102,6 @@ class MemoryTypeRegistry:
             raise InvalidMemoryTypeError(
                 "memory_class y writer_principal no son coherentes"
             )
-        if memory_type.scope is Scope.SESSION and len(memory_type.namespaces) > 1:
-            raise InvalidMemoryTypeError(
-                "un tipo de sesion admite como maximo un namespace"
-            )
         if memory_type.scope is not Scope.SESSION and not memory_type.namespaces:
             raise InvalidMemoryTypeError(
                 "los tipos no conversacionales exigen namespaces"
@@ -125,9 +121,14 @@ def derive_memory_key(
             raise ScopeViolationError(
                 "scope session exige user_id y session_id"
             )
-        expected_namespace = (
-            memory_type.namespaces[0] if memory_type.namespaces else None
-        )
+        if memory_type.namespaces:
+            if namespace not in memory_type.namespaces:
+                raise InvalidNamespaceError(
+                    f"namespace {namespace!r} no permitido para {memory_type.name!r}"
+                )
+            expected_namespace = namespace
+        else:
+            expected_namespace = None
         if namespace != expected_namespace:
             raise InvalidNamespaceError(
                 f"namespace {namespace!r} no permitido para {memory_type.name!r}"
@@ -188,11 +189,11 @@ def seed_memory_types() -> tuple[MemoryType, ...]:
             half_life_seconds=4 * 60 * 60,
         ),
         MemoryType(
-            name="episodic",
+            name="thread_artifacts",
             memory_class=MemoryClass.STRICT,
             writer_principal=Principal.EXTENDED,
             retrieval_mode=RetrievalMode.RANKED,
-            scope=Scope.USER,
+            scope=Scope.SESSION,
             namespaces=("facts", "tasks", "preferences"),
             w_recency=0.5,
             w_similarity=0.35,
@@ -202,8 +203,8 @@ def seed_memory_types() -> tuple[MemoryType, ...]:
         ),
         MemoryType(
             name="semantic",
-            memory_class=MemoryClass.STRICT,
-            writer_principal=Principal.EXTENDED,
+            memory_class=MemoryClass.DELEGATED,
+            writer_principal=Principal.CONSCIENCE,
             retrieval_mode=RetrievalMode.RANKED,
             scope=Scope.USER,
             namespaces=("facts", "preferences"),
@@ -212,6 +213,7 @@ def seed_memory_types() -> tuple[MemoryType, ...]:
             w_stability=0.25,
             w_score=0.20,
             half_life_seconds=None,
+            version=2,
         ),
         MemoryType(
             name="entities",

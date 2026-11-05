@@ -180,7 +180,7 @@ def test_phase9_recall_composes_summary_with_both_contradiction_sides(
     model = postgres_store.write(
         Principal.EXTENDED,
         EngramWrite(
-            type_name="episodic",
+            type_name="thread_artifacts",
             content="la clave del refugio es Cobalto",
             identity=identity,
             namespace="facts",
@@ -190,7 +190,7 @@ def test_phase9_recall_composes_summary_with_both_contradiction_sides(
     user = postgres_store.write(
         Principal.EXTENDED,
         EngramWrite(
-            type_name="episodic",
+            type_name="thread_artifacts",
             content="la clave del refugio es Ambar",
             identity=identity,
             namespace="facts",
@@ -200,7 +200,7 @@ def test_phase9_recall_composes_summary_with_both_contradiction_sides(
     ordinary = postgres_store.write(
         Principal.EXTENDED,
         EngramWrite(
-            type_name="episodic",
+            type_name="thread_artifacts",
             content="el inventario tiene tres mantas",
             identity=identity,
             namespace="facts",
@@ -254,7 +254,7 @@ def test_phase9_recall_composes_summary_with_both_contradiction_sides(
             telemetry_dir=tmp_path,
             embedding_dimension=dimension,
             rag_enabled=False,
-            memory_min_similarity=0.0,
+            thread_artifacts_min_similarity=0.0,
             thread_synthesis_enabled=True,
         ),
     )
@@ -264,11 +264,11 @@ def test_phase9_recall_composes_summary_with_both_contradiction_sides(
     assert "[thread_summary/thread]" in context
     assert "el inventario tiene tres mantas" not in context
     user_line = (
-        "[episodic/facts] (fuente: usuario) "
+        "[thread_artifacts/facts] (fuente: usuario) "
         "la clave del refugio es Ambar"
     )
     model_line = (
-        "[episodic/facts] (fuente: modelo, sin verificar; "
+        "[thread_artifacts/facts] (fuente: modelo, sin verificar; "
         "hay una version del usuario sobre esto) "
         "la clave del refugio es Cobalto"
     )

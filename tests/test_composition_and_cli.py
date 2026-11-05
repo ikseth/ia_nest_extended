@@ -49,8 +49,6 @@ def test_maintain_runs_with_core_and_ollama_unreachable(tmp_path):
 
     assert result == {
         "dialog_archived": 0,
-        "episodic_promoted": 0,
-        "candidates_seen": 0,
         "dry_run": False,
     }
     assert composition.core_constructed is False

@@ -279,10 +279,10 @@ def test_clean_stream_writes_both_turns_extracts_and_uses_honest_trace(
     list(stream)
 
     dialog = [item for item in store.engrams if item.type_name == "dialog"]
-    episodic = [item for item in store.engrams if item.type_name == "episodic"]
+    thread_artifacts = [item for item in store.engrams if item.type_name == "thread_artifacts"]
     assert len(dialog) == 2
     assert [item.content for item in dialog][0] == "pregunta original"
-    assert len(episodic) == 1
+    assert len(thread_artifacts) == 1
     assert {item.source_trace_id for item in store.engrams} == {expected_trace}
 
 

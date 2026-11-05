@@ -15,6 +15,7 @@ from ianest_extended import (
     RetrievalMode,
     Scope,
     ScopeViolationError,
+    UnknownMemoryTypeError,
     seed_memory_types,
 )
 from ianest_extended.registry import derive_memory_key
@@ -30,13 +31,20 @@ def test_seed_roster_is_valid():
     assert tuple(item.name for item in registry.list()) == (
         "dialog",
         "thread_summary",
-        "episodic",
+        "thread_artifacts",
         "semantic",
         "entities",
         "identity",
         "principles",
         "safety",
     )
+
+
+def test_episodic_has_no_input_alias():
+    registry = MemoryTypeRegistry(seed_memory_types())
+
+    with pytest.raises(UnknownMemoryTypeError):
+        registry.get("episodic")
 
 
 def test_v1_rejects_declaration_with_all_axes_aliased():
@@ -49,34 +57,42 @@ def test_v1_rejects_declaration_with_all_axes_aliased():
 
 
 def test_v2_rejects_ranked_tier_with_same_scope_weights_and_half_life():
-    episodic = _seeds_by_name()["episodic"]
+    thread_artifacts = _seeds_by_name()["thread_artifacts"]
     duplicate_tier = replace(
-        episodic,
-        name="episodic_copy",
+        thread_artifacts,
+        name="thread_artifacts_copy",
         namespaces=("other",),
     )
-    registry = MemoryTypeRegistry((episodic,))
+    registry = MemoryTypeRegistry((thread_artifacts,))
 
     with pytest.raises(AliasedTierError):
         registry.register(duplicate_tier)
 
 
-def test_user_scope_uses_same_key_across_sessions():
-    episodic = _seeds_by_name()["episodic"]
+def test_thread_artifacts_scope_separates_sessions():
+    thread_artifacts = _seeds_by_name()["thread_artifacts"]
 
     first = derive_memory_key(
-        episodic,
+        thread_artifacts,
         MemoryIdentity(user_id="u1", session_id="A"),
         "facts",
     )
     second = derive_memory_key(
-        episodic,
+        thread_artifacts,
         MemoryIdentity(user_id="u1", session_id="B"),
         "facts",
     )
 
-    assert first == second
-    assert first.session_id is None
+    assert first != second
+    assert first.session_id == "A"
+    assert second.session_id == "B"
+
+    with pytest.raises(ScopeViolationError):
+        derive_memory_key(
+            thread_artifacts,
+            MemoryIdentity(user_id="u1"),
+            "facts",
+        )
 
 
 def test_session_scope_keeps_session_and_requires_identity():
@@ -99,12 +115,12 @@ def test_session_scope_keeps_session_and_requires_identity():
 
 
 def test_v3_rejects_inconsistent_namespace():
-    episodic = _seeds_by_name()["episodic"]
+    thread_artifacts = _seeds_by_name()["thread_artifacts"]
 
     with pytest.raises(InvalidNamespaceError):
         derive_memory_key(
-            episodic,
-            MemoryIdentity(user_id="u1"),
+            thread_artifacts,
+            MemoryIdentity(user_id="u1", session_id="A"),
             "persona",
         )
 

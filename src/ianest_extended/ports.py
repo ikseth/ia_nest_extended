@@ -94,11 +94,12 @@ class MemoryStore(Protocol):
         self,
         *,
         user_id: str,
+        session_id: str,
         namespace: str,
         text: str,
         threshold: float,
     ) -> Engram | None:
-        """Busca el episodico activo mas similar en el mismo scope."""
+        """Busca el artefacto activo mas similar en la misma sesion."""
 
     def reinforce(
         self,
@@ -164,17 +165,7 @@ class MemoryStore(Protocol):
         inactivity_seconds: int,
         reason: str,
     ) -> Sequence[Engram]:
-        """Archiva sesiones inactivas y sus dialogos/sintesis atomicamente."""
-
-    def find_episodic_to_promote(
-        self,
-        *,
-        now: datetime,
-        recency_max: float,
-        min_stability: int,
-        min_score: float,
-    ) -> Sequence[Engram]:
-        """Lista episodicos activos que cumplen recencia y merito."""
+        """Archive inactive sessions and all conversational memory atomically."""
 
     def execute_consolidation(
         self,

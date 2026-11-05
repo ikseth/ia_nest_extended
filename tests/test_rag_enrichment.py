@@ -78,19 +78,19 @@ def _enricher(tmp_path, local_service_stub, memory_store, rag_store, **changes):
     )
 
 
-def test_budget_drops_rag_before_episodic_and_preserves_required_text():
+def test_budget_drops_rag_before_thread_artifacts_and_preserves_required_text():
     lines = [
         _ContextLine("delegated", "identity " + ("i" * 80), 1.0, True),
         _ContextLine("rag", "rag " + ("r" * 180), 0.1),
-        _ContextLine("episodic", "episodic " + ("e" * 60), 0.1),
+        _ContextLine("thread_artifacts", "thread_artifacts " + ("e" * 60), 0.1),
     ]
 
-    context = _compose_context(lines, token_budget=70, rag_token_budget=500)
+    context = _compose_context(lines, token_budget=75, rag_token_budget=500)
     prompt = compose_prompt(context, "USER PROMPT MUST STAY")
 
     assert "## rag" not in context
     assert "## delegated" in context
-    assert "## episodic" in context
+    assert "## thread_artifacts" in context
     assert prompt.endswith("USER PROMPT MUST STAY")
 
 

@@ -38,12 +38,16 @@ class InMemoryStore:
         self.sessions = {}
 
     def write(self, principal, request):
-        session_scoped = request.type_name in {"dialog", "thread_summary"}
+        session_scoped = request.type_name in {
+            "dialog",
+            "thread_summary",
+            "thread_artifacts",
+        }
         now = datetime.now(UTC)
         if session_scoped:
             key = (request.identity.user_id, request.identity.session_id)
             session = self.sessions.get(key)
-            if request.type_name == "dialog" and session is None:
+            if request.type_name in {"dialog", "thread_artifacts"} and session is None:
                 session = Session(
                     user_id=key[0],
                     session_id=key[1],
@@ -75,7 +79,7 @@ class InMemoryStore:
                     "y no admite escrituras",
                     "session_id",
                 )
-            if request.type_name == "dialog":
+            if request.type_name in {"dialog", "thread_artifacts"}:
                 self.sessions[key] = replace(session, last_activity_at=now)
         engram = Engram(
             id=uuid4(),
@@ -109,7 +113,12 @@ class InMemoryStore:
         for engram in reversed(self.engrams):
             if engram.type_name not in query.type_names:
                 continue
-            if engram.domain_tag is not None and engram.domain_tag != query.domain_tag:
+            if (
+                engram.type_name
+                not in {"dialog", "thread_summary", "thread_artifacts"}
+                and engram.domain_tag is not None
+                and engram.domain_tag != query.domain_tag
+            ):
                 continue
             if engram.type_name == "dialog":
                 if (
@@ -117,12 +126,12 @@ class InMemoryStore:
                     or engram.session_id != query.identity.session_id
                 ):
                     continue
-            elif engram.type_name in {"episodic", "semantic", "safety"}:
+            elif engram.type_name in {"semantic", "safety"}:
                 if engram.user_id != query.identity.user_id:
                     continue
                 if engram.namespace != query.namespace:
                     continue
-            elif engram.type_name == "thread_summary":
+            elif engram.type_name in {"thread_summary", "thread_artifacts"}:
                 if (
                     engram.user_id != query.identity.user_id
                     or engram.session_id != query.identity.session_id
@@ -140,13 +149,22 @@ class InMemoryStore:
             )
         return tuple(items[: query.top_k])
 
-    def find_similar(self, *, user_id, namespace, text, threshold):
+    def find_similar(
+        self,
+        *,
+        user_id,
+        session_id,
+        namespace,
+        text,
+        threshold,
+    ):
         return next(
             (
                 engram
                 for engram in self.engrams
-                if engram.type_name == "episodic"
+                if engram.type_name == "thread_artifacts"
                 and engram.user_id == user_id
+                and engram.session_id == session_id
                 and engram.namespace == namespace
                 and engram.content == text
             ),
@@ -172,6 +190,7 @@ class InMemoryStore:
             if (
                 engram.type_name != stated_by_user.type_name
                 or engram.user_id != stated_by_user.user_id
+                or engram.session_id != stated_by_user.session_id
                 or engram.status != EngramStatus.ACTIVE
             ):
                 continue
@@ -228,15 +247,18 @@ class InMemoryStore:
             for item in dialogs
             if item.source_trace_id is not None
         }
-        episodic = [
+        thread_artifacts = [
             item
             for item in self.engrams
-            if item.type_name == "episodic"
+            if item.type_name == "thread_artifacts"
             and item.user_id == identity.user_id
+            and item.session_id == identity.session_id
             and item.status is EngramStatus.ACTIVE
             and item.source_trace_id in trace_ids
         ]
-        return tuple(sorted((*dialogs, *episodic), key=lambda item: item.created_at))
+        return tuple(
+            sorted((*dialogs, *thread_artifacts), key=lambda item: item.created_at)
+        )
 
     def write_thread_summary(
         self,
@@ -407,7 +429,8 @@ class InMemoryStore:
         for index, item in enumerate(self.engrams):
             if (
                 (item.user_id, item.session_id) in inactive
-                and item.type_name in {"dialog", "thread_summary"}
+                and item.type_name
+                in {"dialog", "thread_summary", "thread_artifacts"}
                 and item.status is EngramStatus.ACTIVE
             ):
                 changed = replace(
@@ -420,16 +443,6 @@ class InMemoryStore:
                 self.engrams[index] = changed
                 archived.append(changed)
         return tuple(archived)
-
-    def find_episodic_to_promote(
-        self,
-        *,
-        now,
-        recency_max,
-        min_stability,
-        min_score,
-    ):
-        return ()
 
     def execute_consolidation(self, event):
         raise NotImplementedError

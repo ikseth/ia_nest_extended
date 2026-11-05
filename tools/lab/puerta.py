@@ -47,6 +47,7 @@ L5R_PROBES = (
     "gracias por tu ayuda",
     "que recuerdas de mi",
 )
+L2_DOMAINS = ("medicina", "cultura")
 
 OWN_CAPABILITIES = frozenset(
     {
@@ -66,7 +67,7 @@ OWN_CAPABILITIES = frozenset(
 
 NOT_COVERED = (
     "La veracidad general de las respuestas: solo los testigos fijados.",
-    "El filtro que impide destilar a `episodic` una tarea no convergida: no se "
+    "El filtro que impide destilar a `thread_artifacts` una tarea no convergida: no se "
     "puede forzar la no convergencia de forma reproducible.",
     "Streaming y la piel MCP: solo REST, y MCP solo en lo que comprueba L1.",
     "Rendimiento y capacidad de GPU.",
@@ -233,10 +234,15 @@ def _prompt(
     user_id: str,
     session_id: str,
     prompt: str,
+    *,
+    domain: str | None = None,
 ) -> dict[str, Any]:
     return rest.post(
         "/prompt/run",
-        {"prompt": prompt, "identity": _identity(user_id, session_id)},
+        {
+            "prompt": prompt,
+            "identity": _identity(user_id, session_id, domain=domain),
+        },
     )
 
 
@@ -263,12 +269,14 @@ def _recall(
     user_id: str,
     session_id: str,
     prompt: str,
+    *,
+    domain: str | None = None,
 ) -> dict[str, Any]:
     return rest.post(
         "/memory/recall",
         {
             "prompt": prompt,
-            "identity": _identity(user_id, session_id),
+            "identity": _identity(user_id, session_id, domain=domain),
             "use_memory": True,
             "use_rag": False,
         },
@@ -286,25 +294,56 @@ def _attempt_l2(rest: RestRecorder, user_id: str, repetition: int) -> dict[str, 
         "user_id": user_id,
         "witness": witness,
         "sessions": [session_a, session_b],
+        "domains": list(L2_DOMAINS),
     }
     try:
-        evidence["assertion_response"] = _prompt(rest, user_id, session_a, assertion)
-        answer_payload = _prompt(rest, user_id, session_b, question)
-        recall_payload = _recall(rest, user_id, session_b, question)
+        evidence["assertion_response"] = _prompt(
+            rest,
+            user_id,
+            session_a,
+            assertion,
+            domain=L2_DOMAINS[0],
+        )
+        answer_payload = _prompt(
+            rest,
+            user_id,
+            session_a,
+            question,
+            domain=L2_DOMAINS[1],
+        )
+        recall_payload = _recall(
+            rest,
+            user_id,
+            session_a,
+            question,
+            domain=L2_DOMAINS[1],
+        )
+        other_session_recall = _recall(
+            rest,
+            user_id,
+            session_b,
+            question,
+            domain=L2_DOMAINS[1],
+        )
         answer = _response_text(answer_payload)
         context = recall_payload.get("context")
         context = context if isinstance(context, str) else ""
         matching_lines = [line for line in context.splitlines() if _contains(line, witness)]
         stated_by_user = any(_contains(line, "fuente: usuario") for line in matching_lines)
-        passed = stated_by_user
+        other_context = other_session_recall.get("context")
+        other_context = other_context if isinstance(other_context, str) else ""
+        isolated = not _contains(other_context, witness)
+        passed = stated_by_user and isolated
         evidence.update(
             {
                 "answer": answer_payload,
                 "recall": recall_payload,
+                "other_session_recall": other_session_recall,
                 "matching_context_lines": matching_lines,
                 "checks": {
                     "answer_contains_witness": _contains(answer, witness),
                     "recall_contains_witness_stated_by_user": stated_by_user,
+                    "other_session_excludes_witness": isolated,
                 },
                 "verdict": PASS if passed else FAIL,
             }
@@ -388,7 +427,7 @@ def _attempt_l3_l4a(
             {
                 "principal": "extended",
                 "request": {
-                    "type_name": "episodic",
+                    "type_name": "thread_artifacts",
                     "namespace": "facts",
                     "content": f"La clave del refugio es {incorrect}.",
                     "stated_by": "model",

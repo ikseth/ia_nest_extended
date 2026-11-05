@@ -89,7 +89,7 @@ def test_active_session_keeps_its_first_turn_past_four_hours(
     assert first.id in {item.engram.id for item in recalled}
 
 
-def test_inactive_session_archives_with_dialog_and_summary(
+def test_inactive_session_archives_all_conversational_memory(
     postgres_store,
     tmp_path,
 ):
@@ -103,6 +103,16 @@ def test_inactive_session_archives_with_dialog_and_summary(
         source_ids=(user.id, model.id),
         source_trace_id="summary",
     ).summary
+    artifact = postgres_store.write(
+        Principal.EXTENDED,
+        EngramWrite(
+            type_name="thread_artifacts",
+            content="preferencia nacida en el hilo",
+            identity=identity,
+            namespace="preferences",
+            stated_by=StatedBy.USER,
+        ),
+    )
     now = datetime.now(UTC)
     _set_activity(postgres_store, identity, now - timedelta(hours=5))
 
@@ -121,6 +131,7 @@ def test_inactive_session_archives_with_dialog_and_summary(
     assert postgres_store.get_engram(user.id).status is EngramStatus.ARCHIVED
     assert postgres_store.get_engram(model.id).status is EngramStatus.ARCHIVED
     assert postgres_store.get_engram(summary.id).status is EngramStatus.ARCHIVED
+    assert postgres_store.get_engram(artifact.id).status is EngramStatus.ARCHIVED
 
 
 def test_archived_session_rejects_a_new_turn_with_typed_error(
@@ -311,6 +322,127 @@ def test_sessions_migration_backfills_and_can_be_reapplied(postgres_store):
         assert engram_rows[0][2] == rows[0][2]
         assert engram_rows[1][2] is None
         assert nullable == "NO"
+    finally:
+        with psycopg.connect(postgres_store._dsn, autocommit=True) as connection:
+            connection.execute(
+                sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(
+                    sql.Identifier(schema)
+                )
+            )
+
+
+def test_thread_artifacts_migration_archives_episodic_idempotently(
+    postgres_store,
+):
+    psycopg = pytest.importorskip("psycopg")
+    from psycopg import sql
+    from psycopg.conninfo import conninfo_to_dict, make_conninfo
+
+    schema = f"thread_artifacts_{uuid4().hex}"
+    parameters = conninfo_to_dict(postgres_store._dsn)
+    isolated_dsn = make_conninfo(
+        **{**parameters, "options": f"-c search_path={schema},public"}
+    )
+    try:
+        with psycopg.connect(postgres_store._dsn, autocommit=True) as connection:
+            connection.execute(
+                sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema))
+            )
+        with psycopg.connect(isolated_dsn) as connection:
+            base = migration_resource("0001_memory_registry.sql").read_text(
+                encoding="ascii"
+            ).replace(
+                "{{embedding_dimension}}",
+                str(postgres_store._embedder.dimension),
+            )
+            connection.execute(base)
+            connection.execute(
+                """
+                INSERT INTO memory_types (
+                    name, "class", writer_principal, retrieval_mode, scope,
+                    namespaces, w_recency, w_similarity, w_stability, w_score,
+                    half_life_seconds
+                )
+                VALUES
+                    ('episodic', 'strict', 'extended', 'ranked', 'user',
+                     ARRAY['facts', 'tasks', 'preferences'],
+                     0.5, 0.35, 0.05, 0.10, 2592000),
+                    ('semantic', 'strict', 'extended', 'ranked', 'user',
+                     ARRAY['facts', 'preferences'],
+                     0.15, 0.45, 0.20, 0.20, 15552000)
+                """
+            )
+            vector = postgres_store._embedder.embed("legacy episodic")
+            vector_literal = "[" + ",".join(str(item) for item in vector) + "]"
+            legacy_id = connection.execute(
+                """
+                INSERT INTO engrams (
+                    type_name, user_id, session_id, namespace, content,
+                    embedding
+                )
+                VALUES ('episodic', 'legacy-user', NULL, 'facts',
+                        'legacy episodic', %s::vector)
+                RETURNING id
+                """,
+                (vector_literal,),
+            ).fetchone()[0]
+            connection.execute(
+                migration_resource("0006_sessions.sql").read_text(
+                    encoding="ascii"
+                )
+            )
+            migration = migration_resource(
+                "0007_thread_artifacts.sql"
+            ).read_text(encoding="ascii")
+            connection.execute(migration)
+            first = connection.execute(
+                """
+                SELECT id, status, archived_at, archived_reason, version
+                FROM engrams WHERE id = %s
+                """,
+                (legacy_id,),
+            ).fetchone()
+            connection.execute(migration)
+            second = connection.execute(
+                """
+                SELECT id, status, archived_at, archived_reason, version
+                FROM engrams WHERE id = %s
+                """,
+                (legacy_id,),
+            ).fetchone()
+            types = {
+                row[0]: row[1:]
+                for row in connection.execute(
+                    """
+                    SELECT name, status, scope, "class", writer_principal,
+                           version
+                    FROM memory_types
+                    WHERE name IN ('episodic', 'thread_artifacts', 'semantic')
+                    """
+                ).fetchall()
+            }
+
+        assert first == second
+        assert first[0] == legacy_id
+        assert first[1] == EngramStatus.ARCHIVED.value
+        assert first[2] is not None
+        assert first[3] == "episodic_without_session_retired"
+        assert first[4] == 2
+        assert types["episodic"] == ("retired", "user", "strict", "extended", 2)
+        assert types["thread_artifacts"] == (
+            "active",
+            "session",
+            "strict",
+            "extended",
+            1,
+        )
+        assert types["semantic"] == (
+            "active",
+            "user",
+            "delegated",
+            "conscience",
+            2,
+        )
     finally:
         with psycopg.connect(postgres_store._dsn, autocommit=True) as connection:
             connection.execute(

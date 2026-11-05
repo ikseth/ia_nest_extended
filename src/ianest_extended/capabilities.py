@@ -298,7 +298,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
     ),
     Capability(
         "memory.maintain",
-        "archiva y promociona memoria estricta por umbrales",
+        "archiva sesiones inactivas y sus artefactos",
         False,
         False,
         (_param("dry_run", "boolean", "muestra el resumen sin mutar", default=False),),
@@ -306,7 +306,7 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
         _cli(
             "memory",
             "maintain",
-            "Barrido mecanico: archiva dialog y promociona episodic elegible. No necesita el core ni Ollama.",
+            "Barrido mecanico: archiva sesiones inactivas con dialog, thread_summary y thread_artifacts. No necesita el core ni Ollama.",
         ),
         _mcp("memory.maintain"),
         "own",

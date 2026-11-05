@@ -191,6 +191,12 @@ usa el primer override y sin dominio el segundo; un override ausente cae a la
 base. Por tanto, no declarar las claves nuevas conserva exactamente la politica
 anterior.
 
+La recuperacion de memoria estructurada del hilo usa
+`IANEST_EXTENDED_THREAD_ARTIFACTS_TOP_K` (default `4`) y el suelo
+`IANEST_EXTENDED_THREAD_ARTIFACTS_MIN_SIMILARITY` (default `0.10`). No existen
+alias para las antiguas claves de `episodic`: declararlas no cambia la
+configuracion y usar `episodic` como tipo da `UnknownMemoryTypeError`.
+
 Antes de recuperar RAG, la capa aplica el paso cero de conocimiento. La senal
 por defecto es el dato empaquetado `courtesy_es.txt`: frases de cortesia que, si
 alcanzan `IANEST_EXTENDED_KNOWLEDGE_GATE_THRESHOLD` (default `0.70`), hacen que
@@ -261,11 +267,26 @@ Estado: `implementada` (existe el mecanismo y se expone por las tres pieles) o
 | `memory.recall` | recupera lo que se inyectaria, sin ejecutar inferencia | implementada |
 | `memory.write` | escribe un engrama, con autoridad por principal (ADR 0002) | implementada |
 | `memory.consolidate` | ejecuta un evento de consolidacion (ADR 0007) | implementada |
-| `memory.maintain` | barrido mecanico por umbrales: archiva y promociona | implementada |
+| `memory.maintain` | barrido mecanico: archiva sesiones inactivas y su memoria conversacional | implementada |
 
 `memory.write` y `memory.consolidate` son la costura de `conscience`: emite quien
 tiene la autoridad, ejecuta esta capa. La autoridad se aplica en dos niveles,
 principal en codigo y GRANT del motor (ADR 0010).
+
+El nombre publico del residuo estructurado del hilo es `thread_artifacts`. Es
+de ambito sesion, admite los namespaces `facts`, `tasks` y `preferences`, y
+exige `user_id` y `session_id` tanto al escribir como al recuperar. No hay alias
+de entrada para `episodic`. El contexto compuesto lo etiqueta como
+`[thread_artifacts/<namespace>]`. `dialog`, `thread_summary` y
+`thread_artifacts` se recuperan por sesion sin filtrar por dominio; el dominio
+se puede conservar al escribirlos. El RAG sigue filtrado por sus vinculos de
+dominio.
+
+`semantic` sigue declarado y recuperable como memoria de usuario, pero su
+escritura corresponde a `conscience`. `memory.maintain` no promociona memoria:
+archiva las sesiones inactivas junto con sus `dialog`, `thread_summary` y
+`thread_artifacts`. Su salida publica solo `dialog_archived` y `dry_run`; no
+contiene contador de promociones.
 
 Todo engrama declara su `stated_by` -`user`, `model` o `unknown`-: quien dijo lo
 que guarda (ADR 0013). `memory.write` lo acepta y lo devuelve; omitirlo deja

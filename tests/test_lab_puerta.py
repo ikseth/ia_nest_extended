@@ -47,6 +47,7 @@ def gate_stub():
         l4b_fail=False,
         l2_answer_contains_witness=True,
         l2_recall_contains_witness=True,
+        l2_cross_session_leak=False,
         l2_witnesses={},
         corrections_by_user={},
         l3_annotation=True,
@@ -106,7 +107,7 @@ def gate_stub():
                 self._send(
                     {
                         "id": "00000000-0000-0000-0000-000000000001",
-                        "type_name": "episodic",
+                        "type_name": "thread_artifacts",
                         "namespace": "facts",
                         "status": "active",
                         "stated_by": "model",
@@ -135,11 +136,17 @@ def gate_stub():
                 return
             if prompt.startswith("Mi perro se llama "):
                 witness = prompt.split()[4].rstrip(".")
-                state.l2_witnesses[payload["identity"]["user_id"]] = witness
+                identity = payload["identity"]
+                state.l2_witnesses[
+                    (identity["user_id"], identity["session_id"])
+                ] = witness
                 self._send({"response": "OK"})
                 return
             if prompt.startswith("Como se llama mi perro"):
-                witness = state.l2_witnesses[payload["identity"]["user_id"]]
+                identity = payload["identity"]
+                witness = state.l2_witnesses[
+                    (identity["user_id"], identity["session_id"])
+                ]
                 answer = witness if state.l2_answer_contains_witness else "Xanthe"
                 self._send({"response": answer})
                 return
@@ -207,14 +214,26 @@ def gate_stub():
                     )
                 return
             if "perro" in prompt:
-                witness = state.l2_witnesses[user_id]
-                if not state.l2_recall_contains_witness:
-                    self._send({"context": "", "counters": {"episodic": 0}})
+                session_id = identity["session_id"]
+                witness = state.l2_witnesses.get((user_id, session_id))
+                if witness is None and state.l2_cross_session_leak:
+                    witness = next(
+                        value
+                        for (candidate_user, _), value in state.l2_witnesses.items()
+                        if candidate_user == user_id
+                    )
+                if witness is None or not state.l2_recall_contains_witness:
+                    self._send(
+                        {"context": "", "counters": {"thread_artifacts": 0}}
+                    )
                     return
                 self._send(
                     {
-                        "context": f"[episodic/facts] (fuente: usuario) Mi perro se llama {witness}.",
-                        "counters": {"episodic": 1},
+                        "context": (
+                            "[thread_artifacts/facts] (fuente: usuario) "
+                            f"Mi perro se llama {witness}."
+                        ),
+                        "counters": {"thread_artifacts": 1},
                     }
                 )
                 return
@@ -222,7 +241,7 @@ def gate_stub():
             context_lines = []
             for witnesses in reversed(corrections):
                 user_line = (
-                    "[episodic/tasks] (fuente: usuario) La clave del refugio es "
+                    "[thread_artifacts/tasks] (fuente: usuario) La clave del refugio es "
                     f"{witnesses['correct']}."
                 )
                 model_source = (
@@ -236,7 +255,7 @@ def gate_stub():
                     else ""
                 )
                 model_line = (
-                    f"[episodic/facts] ({model_source}{annotation}) "
+                    f"[thread_artifacts/facts] ({model_source}{annotation}) "
                     f"La clave del refugio es {witnesses['incorrect']}."
                 )
                 pair = (
@@ -248,7 +267,7 @@ def gate_stub():
             self._send(
                 {
                     "context": "\n".join(context_lines),
-                    "counters": {"episodic": len(context_lines)},
+                    "counters": {"thread_artifacts": len(context_lines)},
                 }
             )
 
@@ -363,8 +382,24 @@ def test_l2_passes_by_recall_when_answer_omits_witness(gate_stub, tmp_path, caps
     assert attempt["verdict"] == "PASA"
     assert attempt["checks"]["answer_contains_witness"] is False
     assert attempt["checks"]["recall_contains_witness_stated_by_user"] is True
+    assert attempt["checks"]["other_session_excludes_witness"] is True
+    assert attempt["domains"] == ["medicina", "cultura"]
     assert "answer" in attempt
     assert "recall" in attempt
+    assert "other_session_recall" in attempt
+
+    l2_requests = [
+        payload
+        for _, path, payload, _ in gate_stub.requests
+        if path in {"/prompt/run", "/memory/recall"}
+        and payload["identity"]["user_id"] == attempt["user_id"]
+    ]
+    assert [payload["identity"]["domain_tag"] for payload in l2_requests] == [
+        "medicina",
+        "cultura",
+        "cultura",
+        "cultura",
+    ]
 
 
 def test_l2_fails_without_recall_even_when_answer_has_witness(
@@ -379,6 +414,22 @@ def test_l2_fails_without_recall_even_when_answer_has_witness(
     assert attempt["verdict"] == "NO PASA"
     assert attempt["checks"]["answer_contains_witness"] is True
     assert attempt["checks"]["recall_contains_witness_stated_by_user"] is False
+
+
+def test_l2_fails_when_thread_artifact_leaks_to_new_session(
+    gate_stub,
+    tmp_path,
+    capsys,
+):
+    gate_stub.l2_cross_session_leak = True
+
+    code, _, report = _run(gate_stub, tmp_path, capsys, repetitions=1)
+
+    attempt = _line(report, "L2")["attempts"][0]
+    assert code == 1
+    assert attempt["verdict"] == "NO PASA"
+    assert attempt["checks"]["recall_contains_witness_stated_by_user"] is True
+    assert attempt["checks"]["other_session_excludes_witness"] is False
 
 
 def test_l3_passes_without_annotation_and_reports_its_rate(

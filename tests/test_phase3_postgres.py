@@ -33,18 +33,12 @@ def _enricher(postgres_store, local_service_stub, tmp_path):
     )
 
 
-def _pin_episodic_similarity(store, *, user, content, query_text):
-    """Fija a mano la similitud entre un engrama episodic y una consulta.
+def _pin_thread_artifacts_similarity(store, *, user, content, query_text):
+    """Pin similarity so this test measures session scope, not fake vectors.
 
-    `FakeEmbedder` deriva el vector de un hash del texto: la similitud entre
-    "the user prefers blue" (el hecho escrito por write-back) y "smalltalk"
-    (la consulta de la sesion B) es practicamente aleatoria, y en la
-    practica cae por debajo del suelo D4 -no por un conflicto de diseno, sino
-    porque esta prueba no controla la similitud (docs/handoff/
-    deuda_d4_brief.md)-. Esta prueba es de CONTINUIDAD entre sesiones, no del
-    suelo, asi que se fija el embedding del engrama ya escrito para que su
-    similitud con la consulta de la sesion B sea 1.0, y el suelo deja de
-    interferir con lo que la prueba en realidad verifica.
+    FakeEmbedder hashes text, so unrelated literals can fall below the D4
+    similarity floor. Giving the artifact the query vector makes similarity
+    deterministic while leaving the scope behavior under test unchanged.
     """
     target_vector = store._embedder.embed(query_text)
     literal = "[" + ",".join(str(value) for value in target_vector) + "]"
@@ -52,13 +46,13 @@ def _pin_episodic_similarity(store, *, user, content, query_text):
         connection.execute(
             """
             UPDATE engrams SET embedding = %s::vector
-            WHERE user_id = %s AND type_name = 'episodic' AND content = %s
+            WHERE user_id = %s AND type_name = 'thread_artifacts' AND content = %s
             """,
             (literal, user, content),
         )
 
 
-def test_phase3_a_continuity_across_sessions(
+def test_phase3_a_thread_artifacts_stay_within_the_session(
     postgres_store,
     local_service_stub,
     tmp_path,
@@ -67,16 +61,19 @@ def test_phase3_a_continuity_across_sessions(
     enricher = _enricher(postgres_store, local_service_stub, tmp_path)
 
     enricher.enrich(_identity(user, "A"), "remember-blue")
-    _pin_episodic_similarity(
+    _pin_thread_artifacts_similarity(
         postgres_store,
         user=user,
         content="the user prefers blue",
         query_text="smalltalk",
     )
-    result = enricher.enrich(_identity(user, "B"), "smalltalk")
+    same_session = enricher.enrich(_identity(user, "A"), "smalltalk")
+    other_session = enricher.enrich(_identity(user, "B"), "smalltalk")
 
-    assert "the user prefers blue" in result.context
-    assert "remember-blue" not in result.context
+    assert "the user prefers blue" in same_session.context
+    assert "remember-blue" in same_session.context
+    assert "the user prefers blue" not in other_session.context
+    assert "remember-blue" not in other_session.context
 
 
 def test_phase3_b_smalltalk_writes_only_dialog(
@@ -99,9 +96,9 @@ def test_phase3_b_smalltalk_writes_only_dialog(
             top_k=10,
         )
     )
-    episodic = postgres_store.recall(
+    thread_artifacts = postgres_store.recall(
         RecallQuery(
-            type_names=("episodic",),
+            type_names=("thread_artifacts",),
             identity=identity,
             text="smalltalk",
             namespace="facts",
@@ -110,7 +107,7 @@ def test_phase3_b_smalltalk_writes_only_dialog(
         )
     )
     assert len(dialog) == 2
-    assert episodic == ()
+    assert thread_artifacts == ()
 
 
 def test_phase3_c_duplicate_reinforces_without_inserting(
@@ -122,12 +119,12 @@ def test_phase3_c_duplicate_reinforces_without_inserting(
     enricher = _enricher(postgres_store, local_service_stub, tmp_path)
 
     enricher.enrich(_identity(user, "A"), "repeat-fact")
-    enricher.enrich(_identity(user, "B"), "repeat-fact")
+    enricher.enrich(_identity(user, "A"), "repeat-fact")
 
     items = postgres_store.recall(
         RecallQuery(
-            type_names=("episodic",),
-            identity=_identity(user, "C"),
+            type_names=("thread_artifacts",),
+            identity=_identity(user, "A"),
             text="the project uses PostgreSQL",
             namespace="facts",
             domain_tag="linux",

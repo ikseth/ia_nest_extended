@@ -60,7 +60,8 @@ Fuera del hito, a sabiendas:
 - Escalar el corpus mas alla de la fase A, el indice vectorial, la ingesta
   incremental y el reranker. Son el hito siguiente, y la fase A es lo que dira
   cuales hacen falta.
-- `episodic` como artefacto de sesion (enmienda al ADR 0002), ya decidido.
+- `episodic` como artefacto de sesion (enmienda al ADR 0002): implementado el
+  2026-11-05 en `v0.6.0` como `thread_artifacts`.
 - **La CLI como cliente del servicio.** Hoy la CLI construye la capa en su
   propio proceso (Fase 7a): comparte codigo con REST y MCP, pero no proceso, ni
   usuario, ni el codigo que el servicio tiene cargado. De ahi sale D10, y de ahi

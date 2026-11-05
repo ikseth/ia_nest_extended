@@ -10,11 +10,13 @@ def test_config_reads_prefixed_environment(monkeypatch):
     monkeypatch.setenv("IANEST_EXTENDED_REST_HOST", "127.0.0.2")
     monkeypatch.setenv("IANEST_EXTENDED_REST_PORT", "18001")
     monkeypatch.setenv("IANEST_EXTENDED_DIALOG_TOP_K", "9")
-    monkeypatch.setenv("IANEST_EXTENDED_MEMORY_MIN_SIMILARITY", "0.15")
+    monkeypatch.setenv("IANEST_EXTENDED_THREAD_ARTIFACTS_TOP_K", "7")
+    monkeypatch.setenv(
+        "IANEST_EXTENDED_THREAD_ARTIFACTS_MIN_SIMILARITY", "0.15"
+    )
     monkeypatch.setenv("IANEST_EXTENDED_DEDUP_THRESHOLD", "0.88")
     monkeypatch.setenv("IANEST_EXTENDED_SESSION_INACTIVITY_SECONDS", "7200")
     monkeypatch.setenv("IANEST_EXTENDED_SESSION_ID", "parallel-thread")
-    monkeypatch.setenv("IANEST_EXTENDED_PROMOTE_MIN_STABILITY", "4")
     monkeypatch.setenv("IANEST_EXTENDED_RAG_ENABLED", "false")
     monkeypatch.setenv("IANEST_EXTENDED_KNOWLEDGE_GATE_ENABLED", "false")
     monkeypatch.setenv("IANEST_EXTENDED_KNOWLEDGE_GATE_THRESHOLD", "0.73")
@@ -36,11 +38,11 @@ def test_config_reads_prefixed_environment(monkeypatch):
     assert config.rest_host == "127.0.0.2"
     assert config.rest_port == 18001
     assert config.dialog_top_k == 9
-    assert config.memory_min_similarity == 0.15
+    assert config.thread_artifacts_top_k == 7
+    assert config.thread_artifacts_min_similarity == 0.15
     assert config.dedup_threshold == 0.88
     assert config.session_inactivity_seconds == 7200
     assert config.cli_session_id == "parallel-thread"
-    assert config.promote_min_stability == 4
     assert config.rag_enabled is False
     assert config.knowledge_gate_enabled is False
     assert config.knowledge_gate_threshold == 0.73
@@ -73,19 +75,22 @@ def test_rest_config_defaults_to_loopback_and_rejects_invalid_port(monkeypatch):
         ExtendedConfig.from_env(env_file=None)
 
 
-def test_config_rejects_invalid_maintenance_values(monkeypatch):
-    monkeypatch.setenv("IANEST_EXTENDED_PROMOTE_RECENCY_MAX", "1.1")
-
-    with pytest.raises(ExtendedConfigError):
-        ExtendedConfig.from_env(env_file=None)
-
-
 def test_removed_dialog_hot_window_key_is_not_an_alias(monkeypatch):
     monkeypatch.setenv("IANEST_EXTENDED_DIALOG_HOT_WINDOW", "7200")
 
     config = ExtendedConfig.from_env(env_file=None)
 
     assert config.session_inactivity_seconds == 4 * 60 * 60
+
+
+def test_removed_episodic_config_keys_are_not_aliases(monkeypatch):
+    monkeypatch.setenv("IANEST_EXTENDED_EPISODIC_TOP_K", "99")
+    monkeypatch.setenv("IANEST_EXTENDED_MEMORY_MIN_SIMILARITY", "0.99")
+
+    config = ExtendedConfig.from_env(env_file=None)
+
+    assert config.thread_artifacts_top_k == 4
+    assert config.thread_artifacts_min_similarity == 0.10
 
 
 def test_config_rejects_invalid_rag_values(monkeypatch):
@@ -144,14 +149,16 @@ def test_config_rejects_out_of_range_specific_rag_min_score(monkeypatch, name):
         ExtendedConfig.from_env(env_file=None)
 
 
-def test_config_memory_min_similarity_defaults_to_provisional_floor():
+def test_config_thread_artifacts_min_similarity_defaults_to_provisional_floor():
     config = ExtendedConfig.from_env(env_file=None)
 
-    assert config.memory_min_similarity == 0.10
+    assert config.thread_artifacts_min_similarity == 0.10
 
 
-def test_config_rejects_out_of_range_memory_min_similarity(monkeypatch):
-    monkeypatch.setenv("IANEST_EXTENDED_MEMORY_MIN_SIMILARITY", "1.5")
+def test_config_rejects_out_of_range_thread_artifacts_min_similarity(monkeypatch):
+    monkeypatch.setenv(
+        "IANEST_EXTENDED_THREAD_ARTIFACTS_MIN_SIMILARITY", "1.5"
+    )
 
     with pytest.raises(ExtendedConfigError):
         ExtendedConfig.from_env(env_file=None)

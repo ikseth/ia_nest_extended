@@ -17,7 +17,7 @@ RESOURCE_PARTS = ("src", "ianest_extended", "db", "migrations")
 def test_migrations_are_reachable_in_editable_installation():
     for name in MIGRATION_NAMES:
         sql = migration_resource(name).read_text(encoding="ascii")
-        assert "CREATE" in sql or "ALTER" in sql
+        assert any(statement in sql for statement in ("CREATE", "ALTER", "UPDATE"))
 
 
 def test_wheel_install_contains_reachable_migrations(tmp_path):
@@ -108,13 +108,15 @@ def test_wheel_install_contains_reachable_migrations(tmp_path):
                 "_default_thread_synthesis_migration_path as synthesis; "
                 "from ianest_extended.adapters.postgres import "
                 "_default_sessions_migration_path as sessions; "
+                "from ianest_extended.adapters.postgres import "
+                "_default_thread_artifacts_migration_path as thread_artifacts; "
                 "from ianest_extended.adapters.rag_postgres import "
                 "_default_migration_path as rag, "
                 "_default_domain_migration_path as domains; "
                 "from importlib.resources import files; "
                 "print(json.dumps({'package': ianest_extended.__file__, "
                 "'sql': [resource().read_text(encoding='ascii') "
-                "for resource in (memory, rag, domains, stated_by, synthesis, sessions)], "
+                "for resource in (memory, rag, domains, stated_by, synthesis, sessions, thread_artifacts)], "
                 "'courtesy': files('ianest_extended').joinpath('data/courtesy_es.txt').read_text(encoding='utf-8')}))"
             ),
         ],
