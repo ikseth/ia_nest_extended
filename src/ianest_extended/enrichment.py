@@ -703,6 +703,7 @@ class MemoryEnricher:
             "items_discarded": 0,
             "items_discarded_invalid": 0,
             "items_discarded_low_confidence": 0,
+            "items_missing_confidence": 0,
             "items_user_below_threshold": 0,
             "items_unattributed": 0,
             "items_contradicted": 0,
@@ -763,6 +764,8 @@ class MemoryEnricher:
         }
         converged = _downstream_converged(core_result.payload)
         for claimed, item in items:
+            if isinstance(item, dict) and item.get("confidence") is None:
+                counters["items_missing_confidence"] += 1
             parsed = _validate_item(item)
             if parsed is None:
                 counters["items_discarded"] += 1
@@ -951,6 +954,7 @@ class MemoryEnricher:
                     "items_discarded": 0,
                     "items_discarded_invalid": 0,
                     "items_discarded_low_confidence": 0,
+                    "items_missing_confidence": 0,
                     "items_user_below_threshold": 0,
                     "items_unattributed": 0,
                     "items_contradicted": 0,
@@ -1366,6 +1370,8 @@ def _validate_item(item: Any) -> dict[str, Any] | None:
         return None
     if not isinstance(content, str) or not content.strip():
         return None
+    if confidence is None:
+        confidence = 0.0
     if isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
         return None
     if not 0.0 <= float(confidence) <= 1.0:

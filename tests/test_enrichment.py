@@ -130,6 +130,20 @@ def _extraction(claimed, content, confidence, namespace="facts"):
     )
 
 
+def _extraction_without_confidence(claimed, content, namespace="facts"):
+    item = {
+        "namespace": namespace,
+        "content": content,
+        "mentions": [],
+    }
+    return json.dumps(
+        {
+            "from_user": [item] if claimed is StatedBy.USER else [],
+            "from_assistant": [item] if claimed is StatedBy.MODEL else [],
+        }
+    )
+
+
 def test_vertical_thread_continuity_antinoise_and_telemetry(
     tmp_path,
     local_service_stub,
@@ -337,6 +351,27 @@ def test_anchored_low_confidence_user_item_is_written(tmp_path):
     )
 
 
+def test_anchored_user_item_without_confidence_is_written(tmp_path):
+    store = InMemoryStore()
+    core = ExtractionCore(
+        [_extraction_without_confidence(StatedBy.USER, "the key is amber")]
+    )
+    enricher = _write_back_enricher(tmp_path, store, core)
+
+    counters, status = enricher.write_back(
+        request_id="request-1",
+        identity=identity(),
+        prompt="the key is amber",
+        core_result=_write_back_core_result(),
+    )
+
+    artifacts = [item for item in store.engrams if item.type_name == "thread_artifacts"]
+    assert status == "ok"
+    assert [(item.stated_by, item.score) for item in artifacts] == [(StatedBy.USER, 0.0)]
+    assert counters["items_missing_confidence"] == 1
+    assert counters["items_user_below_threshold"] == 1
+
+
 def test_unanchored_low_confidence_user_item_is_discarded(tmp_path):
     store = InMemoryStore()
     core = ExtractionCore([_extraction(StatedBy.USER, "the key is amber", 0.2)])
@@ -379,6 +414,50 @@ def test_low_confidence_model_item_is_discarded(tmp_path):
     )
 
 
+def test_model_item_without_confidence_is_discarded_for_low_confidence(tmp_path):
+    store = InMemoryStore()
+    core = ExtractionCore(
+        [_extraction_without_confidence(StatedBy.MODEL, "the user prefers blue")]
+    )
+    enricher = _write_back_enricher(tmp_path, store, core)
+
+    counters, _ = enricher.write_back(
+        request_id="request-1",
+        identity=identity(),
+        prompt="anything",
+        core_result=_write_back_core_result(),
+    )
+
+    assert not [item for item in store.engrams if item.type_name == "thread_artifacts"]
+    assert counters["items_missing_confidence"] == 1
+    assert counters["items_discarded_low_confidence"] == 1
+    assert counters["items_discarded_invalid"] == 0
+
+
+def test_text_confidence_remains_an_invalid_item(tmp_path):
+    store = InMemoryStore()
+    core = ExtractionCore([_extraction(StatedBy.USER, "the key is amber", "zero")])
+    enricher = _write_back_enricher(tmp_path, store, core)
+
+    counters, _ = enricher.write_back(
+        request_id="request-1",
+        identity=identity(),
+        prompt="the key is amber",
+        core_result=_write_back_core_result(),
+    )
+
+    assert counters["items_discarded_invalid"] == 1
+    assert counters["items_missing_confidence"] == 0
+    assert _validate_item(
+        {
+            "namespace": "facts",
+            "content": "the key is amber",
+            "confidence": None,
+            "mentions": [],
+        }
+    )["confidence"] == 0.0
+
+
 def test_invalid_item_is_counted_as_invalid_discard(tmp_path):
     store = InMemoryStore()
     core = ExtractionCore([json.dumps({"from_user": [{"content": None}]})])
@@ -404,7 +483,7 @@ def test_low_confidence_user_correction_records_contradiction(tmp_path):
     core = ExtractionCore(
         [
             _extraction(StatedBy.MODEL, "key is blue", 0.9),
-            _extraction(StatedBy.USER, "key is amber", 0.2),
+            _extraction_without_confidence(StatedBy.USER, "key is amber"),
         ]
     )
     enricher = _write_back_enricher(tmp_path, store, core, conflict_threshold=0.5)
@@ -438,6 +517,7 @@ def test_low_confidence_user_correction_records_contradiction(tmp_path):
         if item.type_name == "thread_artifacts" and item.content == "key is blue"
     )
     assert model_item.contradicted is True
+    assert counters["items_missing_confidence"] == 1
     assert counters["items_user_below_threshold"] == 1
     assert counters["items_contradicted"] == 1
 

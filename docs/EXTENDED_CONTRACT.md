@@ -248,8 +248,10 @@ contador `invalid_json` conserva su significado: vale `1` solo si el intento
 final tampoco se puede interpretar como JSON.
 
 El mismo evento declara los contadores aditivos
-`items_discarded_invalid`, `items_discarded_low_confidence` e
-`items_user_below_threshold`. Los dos primeros desglosan
+`items_discarded_invalid`, `items_discarded_low_confidence`,
+`items_missing_confidence` e `items_user_below_threshold`.
+`items_missing_confidence` cuenta cada item que llega sin `confidence` o con `null`,
+se escriba o se descarte. Los dos primeros desglosan
 `items_discarded`: un item invalido o una extraccion final no interpretable
 cuenta como invalido, y un item valido que no alcanza el umbral cuenta como
 baja confianza. Por tanto, `items_discarded` es siempre la suma de ambos.
