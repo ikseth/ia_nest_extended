@@ -18,10 +18,12 @@ from urllib.parse import urlsplit
 from .errors import (
     CoreConnectionError,
     CoreResponseError,
+    CoreTimeoutError,
     DownstreamError,
     InvalidEmbeddingDimensionError,
     OllamaConnectionError,
     OllamaResponseError,
+    OllamaTimeoutError,
 )
 from .models import MemoryIdentity
 
@@ -183,6 +185,7 @@ class CoreClient:
             payload,
             self._timeouts,
             connection_error=CoreConnectionError,
+            timeout_error=CoreTimeoutError,
         )
         try:
             _raise_for_status(
@@ -342,6 +345,7 @@ class CoreClient:
             payload,
             self._timeouts,
             connection_error=CoreConnectionError,
+            timeout_error=CoreTimeoutError,
         )
         try:
             _raise_for_status(
@@ -493,6 +497,7 @@ class CoreClient:
             payload,
             timeouts or self._timeouts,
             connection_error=CoreConnectionError,
+            timeout_error=CoreTimeoutError,
             response_error=CoreResponseError,
             downstream_origin=CORE_ORIGIN,
         )
@@ -504,6 +509,7 @@ class CoreClient:
             None,
             self._timeouts,
             connection_error=CoreConnectionError,
+            timeout_error=CoreTimeoutError,
             response_error=CoreResponseError,
             downstream_origin=CORE_ORIGIN,
         )
@@ -583,6 +589,7 @@ class OllamaEmbedder:
             {"model": self._model, "input": list(texts)},
             self._timeouts,
             connection_error=OllamaConnectionError,
+            timeout_error=OllamaTimeoutError,
             response_error=OllamaResponseError,
         )
         embeddings = data.get("embeddings")
@@ -621,6 +628,7 @@ def _open(
     timeouts: Timeouts,
     *,
     connection_error,
+    timeout_error=None,
 ):
     parts = urlsplit(url)
     factory = HTTPSConnection if parts.scheme == "https" else HTTPConnection
@@ -643,7 +651,8 @@ def _open(
         response = connection.getresponse()
     except (OSError, TimeoutError, HTTPException) as exc:
         connection.close()
-        raise connection_error(f"no se pudo conectar con {url}: {exc}") from exc
+        factory = timeout_error if isinstance(exc, TimeoutError) else connection_error
+        raise factory(f"no se pudo conectar con {url}: {exc}") from exc
     return connection, response
 
 
@@ -654,6 +663,7 @@ def _request_json(
     timeouts: Timeouts,
     *,
     connection_error,
+    timeout_error=None,
     response_error,
     downstream_origin: str | None = None,
 ) -> dict[str, Any]:
@@ -663,6 +673,7 @@ def _request_json(
         payload,
         timeouts,
         connection_error=connection_error,
+        timeout_error=timeout_error,
     )
     try:
         _raise_for_status(
@@ -673,7 +684,8 @@ def _request_json(
         )
         raw = response.read()
     except (OSError, TimeoutError, HTTPException) as exc:
-        raise connection_error(f"no se pudo leer de {url}: {exc}") from exc
+        factory = timeout_error if isinstance(exc, TimeoutError) else connection_error
+        raise factory(f"no se pudo leer de {url}: {exc}") from exc
     finally:
         connection.close()
     return _decode_json(raw, url, response_error)
@@ -733,7 +745,7 @@ def _decode_json_value(raw: bytes, url: str, response_error) -> Any:
     return data
 
 
-def _iter_sse(connection, response) -> Iterator[SseEvent]:
+def _iter_sse(connection, response, *, timeout_error=CoreTimeoutError) -> Iterator[SseEvent]:
     """Retransmite evento a evento; no acumula el flujo ni lo convierte."""
     block: list[str] = []
     try:
@@ -747,6 +759,9 @@ def _iter_sse(connection, response) -> Iterator[SseEvent]:
                 block = []
         if block:
             yield _parse_sse_block(block)
+    except (OSError, TimeoutError, HTTPException) as exc:
+        factory = timeout_error if isinstance(exc, TimeoutError) else CoreConnectionError
+        raise factory(f"no se pudo leer el flujo SSE: {exc}") from exc
     finally:
         connection.close()
 

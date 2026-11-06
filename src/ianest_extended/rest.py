@@ -66,7 +66,7 @@ def create_app(
         return _forwarded_response(result)
 
     async def extended_error_handler(request: Request, exc: ExtendedError):
-        status_code = exc.status_code if isinstance(exc, DownstreamError) else 400
+        status_code = exc.status_code
         return JSONResponse({"error": exc.to_dict()}, status_code=status_code)
 
     routes = [
@@ -126,6 +126,9 @@ def _stream_events(stream: ForwardedStream) -> Iterator[bytes]:
     try:
         for event in stream:
             yield f"{event.raw}\n\n".encode("utf-8")
+    except ExtendedError as exc:
+        envelope = json.dumps({"type": "error", "data": exc.to_dict()})
+        yield f"event: error\ndata: {envelope}\n\n".encode("utf-8")
     finally:
         stream.close()
 

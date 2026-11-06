@@ -15,6 +15,9 @@ import httpx
 
 from ianest_extended import (
     CoreResult,
+    CoreConnectionError,
+    CoreResponseError,
+    CoreTimeoutError,
     DownstreamError,
     EngramWrite,
     ExtendedComposition,
@@ -26,6 +29,7 @@ from ianest_extended import (
     Principal,
     SseEvent,
     TelemetryWriter,
+    RagUnavailableError,
 )
 from ianest_extended import cli
 from ianest_extended.rest import _stream_events, create_app
@@ -389,6 +393,40 @@ def test_own_error_has_extended_origin_and_type(tmp_path):
 
     assert response.status_code == 400
     assert response.json()["error"]["type"] == "EnrichmentParameterError"
+    assert response.json()["error"]["origin"] == "ia_nest_extended"
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_status"),
+    [
+        (CoreTimeoutError("core lento"), 504),
+        (CoreConnectionError("core inalcanzable"), 502),
+        (CoreResponseError("respuesta invalida"), 502),
+        (RagUnavailableError("RAG no disponible"), 503),
+    ],
+)
+def test_own_external_errors_use_their_declared_status(
+    tmp_path, error, expected_status
+):
+    class FailingCore:
+        def prompt_run(self, *args, **kwargs):
+            raise error
+
+    config = _config(tmp_path)
+    service = ExtendedService(ExtendedComposition(config, core=FailingCore()))
+    response = _request(
+        create_app(config, service),
+        "POST",
+        "/prompt/run",
+        json_body={
+            "prompt": "hola",
+            "enrich": False,
+            "identity": {"user_id": "rest-user", "session_id": "rest-thread"},
+        },
+    )
+
+    assert response.status_code == expected_status
+    assert response.json()["error"]["type"] == error.type
     assert response.json()["error"]["origin"] == "ia_nest_extended"
 
 
