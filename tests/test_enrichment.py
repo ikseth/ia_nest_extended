@@ -1,4 +1,6 @@
 import json
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -18,6 +20,7 @@ from ianest_extended import (
     TelemetryWriter,
 )
 from ianest_extended.enrichment import (
+    _ContextLine,
     _compose_context,
     _extraction_prompt,
     _lines,
@@ -692,10 +695,81 @@ def test_context_lines_apply_source_order_to_semantic_and_thread_artifacts_only(
         contents = [line.text.rsplit(") ", 1)[-1] for line in lines]
         expected = (
             [f"{tier} user", f"{tier} model"]
-            if tier in {"semantic", "thread_artifacts"}
+                if tier in {"semantic", "thread_artifacts", "dialog"}
             else [f"{tier} model", f"{tier} user"]
         )
         assert contents == expected
+
+
+def test_context_lines_render_dialog_chronologically_not_by_relevance():
+    store = InMemoryStore()
+    identity_value = identity()
+    newest = store.write(
+        Principal.EXTENDED,
+        EngramWrite(
+            type_name="dialog",
+            content="newest and most relevant",
+            identity=identity_value,
+            stated_by=StatedBy.MODEL,
+        ),
+    )
+    oldest = store.write(
+        Principal.EXTENDED,
+        EngramWrite(
+            type_name="dialog",
+            content="oldest and least relevant",
+            identity=identity_value,
+            stated_by=StatedBy.USER,
+        ),
+    )
+    first_turn = datetime(2026, 11, 1, tzinfo=UTC)
+    lines = _lines(
+        "dialog",
+        (
+            RecallItem(
+                "dialog",
+                1.0,
+                engram=replace(newest, created_at=first_turn + timedelta(seconds=1)),
+            ),
+            RecallItem(
+                "dialog",
+                0.1,
+                engram=replace(oldest, created_at=first_turn),
+            ),
+        ),
+    )
+
+    assert [line.text.rsplit(") ", 1)[-1] for line in lines] == [
+        "oldest and least relevant",
+        "newest and most relevant",
+    ]
+
+
+def test_context_renders_blocks_with_thread_artifacts_last():
+    lines = [
+        _ContextLine(tier, f"{tier} line", relevance=1.0)
+        for tier in (
+            "thread_artifacts",
+            "dialog",
+            "thread_summary",
+            "semantic",
+            "rag",
+            "delegated",
+            "interlocutor",
+        )
+    ]
+
+    context = _compose_context(lines, token_budget=1_000, rag_token_budget=1_000)
+
+    assert [section.split("\n", 1)[0] for section in context.split("\n\n")] == [
+        "## interlocutor",
+        "## delegated",
+        "## rag",
+        "## semantic",
+        "## thread_summary",
+        "## dialog",
+        "## thread_artifacts",
+    ]
 
 
 def test_context_budget_removes_the_same_low_relevance_line_after_reordering():

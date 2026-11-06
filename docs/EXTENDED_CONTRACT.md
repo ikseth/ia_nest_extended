@@ -166,6 +166,15 @@ nada y el prompt conserva su forma anterior. El texto se compone tambien con
 `skip`; write-back, extraccion, dominio y paso cero reciben la pregunta literal
 sin esta seccion.
 
+El contexto compuesto renderiza los bloques, cuando tienen lineas, en este
+orden: `interlocutor`, `delegated`, `rag`, `semantic`, `thread_summary`,
+`dialog`, `thread_artifacts`. Los turnos ya seleccionados de `dialog` se
+presentan por su `created_at`, del mas antiguo al mas reciente, sin usar su
+relevancia para ordenarlos. `thread_artifacts` conserva su orden por fuente
+(`user`, `unknown`, `model`) y es el ultimo bloque antes de la pregunta. Este
+orden solo cambia la presentacion: seleccion, contenido, etiquetas y recorte
+por presupuesto conservan su comportamiento.
+
 ### Parametros de extension del enriquecimiento
 
 Viajan con las capacidades sobreescritas y son propios de esta capa:

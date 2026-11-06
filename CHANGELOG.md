@@ -5,6 +5,14 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+## [0.6.3] - 2026-11-06
+
+### Corregido
+- `dialog` se presenta cronologicamente, del turno mas antiguo al mas reciente,
+  despues de `thread_summary`; `thread_artifacts` conserva su orden por fuente
+  y pasa a ser el ultimo bloque antes de la pregunta. La seleccion y el recorte
+  por presupuesto no cambian. PATCH.
+
 ## [0.6.2] - 2026-11-05
 
 ### Corregido
