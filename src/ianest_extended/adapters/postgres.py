@@ -482,6 +482,31 @@ class PostgresMemoryStore:
             sorted(items, key=lambda item: item.relevance, reverse=True)
         )
 
+    def recent_dialogs(
+        self,
+        identity: MemoryIdentity,
+        *,
+        limit: int,
+    ) -> tuple[Engram, ...]:
+        """Lee el hilo reciente sin invocar el ranking ni el embedder."""
+        if limit <= 0 or identity.user_id is None or identity.session_id is None:
+            return ()
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT *
+                FROM engrams
+                WHERE type_name = 'dialog'
+                  AND status = 'active'
+                  AND user_id = %s
+                  AND session_id = %s
+                ORDER BY created_at DESC, id DESC
+                LIMIT %s
+                """,
+                (identity.user_id, identity.session_id, limit),
+            ).fetchall()
+        return tuple(_engram_from_row(row) for row in rows)
+
     def archive(
         self,
         principal: Principal,

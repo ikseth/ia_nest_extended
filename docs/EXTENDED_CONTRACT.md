@@ -216,6 +216,19 @@ cada instalacion los calibra en su `setup.conf`, sin cambiar codigo. El embeddin
 `search`; un fallo decide `error` y busca. Las subtareas de `task.run` no
 aplican la senal.
 
+Cuando resuelve el dominio automatico y la sesion ya contiene el ultimo par
+completo de `dialog`, `domain.route` recibe exactamente ese turno previo y el
+mensaje actual, con las etiquetas `CONVERSACION RECIENTE`, `Usuario`,
+`Asistente` y `MENSAJE ACTUAL`. Sin un par completo, o si falla su lectura,
+recibe solo el mensaje literal. Este contexto es exclusivo del enrutador: paso
+cero, RAG, memoria, write-back y modelo conservan el mensaje literal.
+
+`IANEST_EXTENDED_CHAT_DOMAINS` es una lista separada por comas, con default
+`charla`. Si el dominio efectivo esta en ella, el modelo lo recibe igual que
+cualquier otro dominio. El RAG solo se salta cuando el paso cero decide `skip`;
+si decide `search`, `not_applied` o `error`, busca sin filtro de dominio. La
+memoria no cambia. Los demas dominios conservan la politica anterior.
+
 La sintesis de hilo (Fase 9) se gobierna con
 `IANEST_EXTENDED_THREAD_SYNTHESIS_ENABLED` (default `false`),
 `IANEST_EXTENDED_THREAD_SYNTHESIS_WINDOW_TURNS` (default `4`) y
@@ -249,6 +262,10 @@ regla aplicada sin reconstruirla desde otros campos.
 Declara tambien `knowledge_gate` con `decision` (`skip`, `search`,
 `not_applied` o `error`), `score`, `threshold` y `nearest`. Un `skip` conserva
 el evento, con `status=skipped` y `k_returned=0`.
+Declara tambien `route_with_thread`; `route_thread_read_failed` senala que el
+enrutador uso el mensaje literal por un fallo al leer el hilo. Cuando el dominio
+es uno de `chat_domains`, `chat_agreement` vale `skip` si tambien salto el paso
+cero, o `search` si se busco conocimiento.
 
 El evento `enrich.write_back` declara `counters.extraction_retried` con `0` o
 `1`. Vale `1` solo cuando la primera respuesta del extractor no se puede

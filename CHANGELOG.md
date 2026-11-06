@@ -5,6 +5,19 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+## [0.6.4] - 2026-11-06
+
+### Anadido
+- El enrutado automatico entrega a `domain.route` el ultimo par completo de
+  `dialog` de la sesion junto al mensaje actual; sin ese par, o si su lectura
+  falla, conserva el mensaje literal. Solo cambia el enrutador: paso cero,
+  RAG, memoria, write-back y modelo siguen usando el mensaje literal.
+  `IANEST_EXTENDED_CHAT_DOMAINS` (default `charla`) permite que un dominio de
+  charla salte RAG solo con acuerdo del paso cero; si se busca, el RAG no filtra
+  por ese dominio y el modelo lo sigue recibiendo. `rag.retrieve` anade
+  `route_with_thread`, `route_thread_read_failed` y, para charla,
+  `chat_agreement`. PATCH.
+
 ## [0.6.3] - 2026-11-06
 
 ### Corregido

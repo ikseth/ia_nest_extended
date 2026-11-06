@@ -290,11 +290,13 @@ class MemoryEnricher:
             self._config.auto_domain if auto_domain is None else auto_domain
         )
         request_id = request_id or str(uuid4())
-        resolved_identity, auto_route, route_confidence = self._resolve_domain(
-            identity,
-            prompt,
-            auto_domain=auto_domain_on,
-        )
+        (
+            resolved_identity,
+            auto_route,
+            route_confidence,
+            route_with_thread,
+            route_thread_read_failed,
+        ) = self._resolve_domain(identity, prompt, auto_domain=auto_domain_on)
         recall_started = time.monotonic()
         try:
             rag, gate_decision = self._retrieve_rag(
@@ -303,6 +305,8 @@ class MemoryEnricher:
                 prompt=prompt,
                 auto_route=auto_route,
                 route_confidence=route_confidence,
+                route_with_thread=route_with_thread,
+                route_thread_read_failed=route_thread_read_failed,
                 use_rag=rag_on,
             )
             bundle = self.recall(
@@ -482,7 +486,7 @@ class MemoryEnricher:
         prompt: str,
         *,
         auto_domain: bool,
-    ) -> tuple[MemoryIdentity, bool, float | None]:
+    ) -> tuple[MemoryIdentity, bool, float | None, bool, bool]:
         if identity.domain_tag is not None:
             domain = identity.domain_tag
             valid_domains = self._core.list_domains()
@@ -493,16 +497,68 @@ class MemoryEnricher:
                     f"dominios validos: {valid}"
                 )
             if domain == "general":
-                return replace(identity, domain_tag=None), False, None
-            return identity, False, None
+                return (
+                    replace(identity, domain_tag=None),
+                    False,
+                    None,
+                    False,
+                    False,
+                )
+            return identity, False, None, False, False
         if not auto_domain:
-            return identity, False, None
-        route = self._core.domain_route(prompt, identity)
+            return identity, False, None, False, False
+        route_prompt, route_with_thread, route_thread_read_failed = (
+            self._route_prompt(identity, prompt)
+        )
+        route = self._core.domain_route(route_prompt, identity)
         if route.confidence < self._config.auto_domain_min_confidence:
-            return identity, True, route.confidence
+            return (
+                identity,
+                True,
+                route.confidence,
+                route_with_thread,
+                route_thread_read_failed,
+            )
         if route.domain == "general":
-            return identity, True, route.confidence
-        return replace(identity, domain_tag=route.domain), True, route.confidence
+            return (
+                identity,
+                True,
+                route.confidence,
+                route_with_thread,
+                route_thread_read_failed,
+            )
+        return (
+            replace(identity, domain_tag=route.domain),
+            True,
+            route.confidence,
+            route_with_thread,
+            route_thread_read_failed,
+        )
+
+    def _route_prompt(
+        self,
+        identity: MemoryIdentity,
+        prompt: str,
+    ) -> tuple[str, bool, bool]:
+        try:
+            recent = tuple(self._store.recent_dialogs(identity, limit=2))
+        except Exception:
+            return prompt, False, True
+        turns = tuple(reversed(recent))
+        if (
+            len(turns) != 2
+            or turns[0].stated_by is not StatedBy.USER
+            or turns[1].stated_by is not StatedBy.MODEL
+        ):
+            return prompt, False, False
+        return (
+            "CONVERSACION RECIENTE:\n"
+            f"Usuario: {turns[0].content}\n"
+            f"Asistente: {turns[1].content}\n\n"
+            f"MENSAJE ACTUAL: {prompt}",
+            True,
+            False,
+        )
 
     def _retrieve_rag(
         self,
@@ -513,14 +569,16 @@ class MemoryEnricher:
         auto_route: bool,
         route_confidence: float | None,
         use_rag: bool,
+        route_with_thread: bool = False,
+        route_thread_read_failed: bool = False,
         apply_gate: bool = True,
     ) -> tuple[tuple[RagChunk, ...], GateDecision]:
         if not use_rag or self._rag_store is None:
             return (), not_applied_decision()
         started = time.monotonic()
-        score_regime, min_score = self._config.rag_score_floor(
-            identity.domain_tag
-        )
+        chat_domain = identity.domain_tag in self._config.chat_domains
+        rag_domain = None if chat_domain else identity.domain_tag
+        score_regime, min_score = self._config.rag_score_floor(rag_domain)
         gate_decision = (
             self._knowledge_gate.decide(prompt)
             if apply_gate and self._knowledge_gate is not None
@@ -533,6 +591,9 @@ class MemoryEnricher:
                 chunks=(),
                 auto_route=auto_route,
                 route_confidence=route_confidence,
+                route_with_thread=route_with_thread,
+                route_thread_read_failed=route_thread_read_failed,
+                chat_agreement="skip" if chat_domain else None,
                 score_regime=score_regime,
                 min_score=min_score,
                 latency_ms=_latency_ms(started),
@@ -544,7 +605,7 @@ class MemoryEnricher:
             chunks = tuple(
                 self._rag_store.retrieve(
                     prompt,
-                    domain=identity.domain_tag,
+                    domain=rag_domain,
                     top_k=self._config.rag_top_k,
                     min_score=min_score,
                     query_embedding=gate_decision.embedding,
@@ -557,6 +618,9 @@ class MemoryEnricher:
                 chunks=(),
                 auto_route=auto_route,
                 route_confidence=route_confidence,
+                route_with_thread=route_with_thread,
+                route_thread_read_failed=route_thread_read_failed,
+                chat_agreement="search" if chat_domain else None,
                 score_regime=score_regime,
                 min_score=min_score,
                 latency_ms=_latency_ms(started),
@@ -570,6 +634,9 @@ class MemoryEnricher:
             chunks=chunks,
             auto_route=auto_route,
             route_confidence=route_confidence,
+            route_with_thread=route_with_thread,
+            route_thread_read_failed=route_thread_read_failed,
+            chat_agreement="search" if chat_domain else None,
             score_regime=score_regime,
             min_score=min_score,
             latency_ms=_latency_ms(started),
@@ -592,6 +659,8 @@ class MemoryEnricher:
             prompt=prompt,
             auto_route=False,
             route_confidence=None,
+            route_with_thread=False,
+            route_thread_read_failed=False,
             use_rag=True,
             apply_gate=False,
         )
@@ -613,6 +682,8 @@ class MemoryEnricher:
             prompt=prompt,
             auto_route=False,
             route_confidence=None,
+            route_with_thread=False,
+            route_thread_read_failed=False,
             use_rag=use_rag,
         )
         return self.recall(
@@ -631,12 +702,28 @@ class MemoryEnricher:
         chunks: tuple[RagChunk, ...],
         auto_route: bool,
         route_confidence: float | None,
+        route_with_thread: bool,
+        route_thread_read_failed: bool,
+        chat_agreement: str | None,
         score_regime: str,
         min_score: float,
         latency_ms: int,
         status: str,
         gate_decision: GateDecision,
     ) -> None:
+        details = {
+            "domain": identity.domain_tag,
+            "corpora": sorted({chunk.corpus_name for chunk in chunks}),
+            "auto_route": auto_route,
+            "auto_route_confidence": route_confidence,
+            "route_with_thread": route_with_thread,
+            "route_thread_read_failed": route_thread_read_failed,
+            "score_regime": score_regime,
+            "min_score": min_score,
+            "knowledge_gate": gate_decision.public_dict(),
+        }
+        if chat_agreement is not None:
+            details["chat_agreement"] = chat_agreement
         self._telemetry.record(
             event="rag.retrieve",
             request_id=request_id,
@@ -648,15 +735,7 @@ class MemoryEnricher:
             },
             latency_ms=latency_ms,
             status=status,
-            details={
-                "domain": identity.domain_tag,
-                "corpora": sorted({chunk.corpus_name for chunk in chunks}),
-                "auto_route": auto_route,
-                "auto_route_confidence": route_confidence,
-                "score_regime": score_regime,
-                "min_score": min_score,
-                "knowledge_gate": gate_decision.public_dict(),
-            },
+            details=details,
         )
 
     def _recall_ranked_namespaces(

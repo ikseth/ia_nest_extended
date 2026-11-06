@@ -91,6 +91,7 @@ class ExtendedConfig:
     rag_chunk_overlap: float = 0.15
     auto_domain: bool = False
     auto_domain_min_confidence: float = 0.7
+    chat_domains: tuple[str, ...] = ("charla",)
     rag_suggest_min_confidence: float = 0.6
     rag_suggest_sample_chars: int = 2000
 
@@ -263,6 +264,7 @@ class ExtendedConfig:
                 "AUTO_DOMAIN_MIN_CONFIDENCE",
                 defaults.auto_domain_min_confidence,
             ),
+            "chat_domains": _env_csv("CHAT_DOMAINS", defaults.chat_domains),
             "rag_suggest_min_confidence": _env_float(
                 "RAG_SUGGEST_MIN_CONFIDENCE",
                 defaults.rag_suggest_min_confidence,
@@ -359,6 +361,11 @@ class ExtendedConfig:
                 "cli_session_id no puede estar vacio",
                 "cli_session_id",
             )
+        if any(not domain for domain in self.chat_domains):
+            raise ExtendedConfigError(
+                "chat_domains no puede contener dominios vacios",
+                "chat_domains",
+            )
 
     @property
     def resolved_synthesis_model(self) -> str:
@@ -438,6 +445,17 @@ def _env_optional_path(name: str, default: Path | None) -> Path | None:
         return default
     value = os.environ[key].strip()
     return Path(value).expanduser() if value else None
+
+
+def _env_csv(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
+    key = f"{PREFIX}{name}"
+    if key not in os.environ:
+        return default
+    return tuple(
+        value.strip()
+        for value in os.environ[key].split(",")
+        if value.strip()
+    )
 
 
 def _env_bool(name: str, default: bool) -> bool:

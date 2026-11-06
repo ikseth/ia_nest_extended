@@ -66,6 +66,17 @@ class MemoryStore(Protocol):
     def recall(self, query: RecallQuery) -> Sequence[RecallItem]:
         """Recupera segun el modo declarado por cada tipo."""
 
+    def recent_dialogs(
+        self,
+        identity: MemoryIdentity,
+        *,
+        limit: int,
+    ) -> Sequence[Engram]:
+        """Devuelve los dialogos activos mas recientes de una sesion.
+
+        Esta lectura cronologica no calcula embeddings ni ordena por relevancia.
+        """
+
     def archive(
         self,
         principal: Principal,
