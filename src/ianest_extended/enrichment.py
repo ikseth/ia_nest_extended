@@ -449,8 +449,8 @@ class MemoryEnricher:
             + _rag_lines(rag)
             + _lines("semantic", semantic)
             + _lines("thread_summary", thread_summary)
-            + _lines("thread_artifacts", visible_thread_artifacts)
             + _lines("dialog", visible_dialog)
+            + _lines("thread_artifacts", visible_thread_artifacts)
         )
         context = _compose_context(
             lines,
@@ -1033,6 +1033,14 @@ def _lines(
     indexed_items = list(enumerate(items))
     if tier in {"semantic", "thread_artifacts"}:
         indexed_items.sort(key=lambda pair: _stated_by_order(pair[1]))
+    elif tier == "dialog":
+        indexed_items.sort(
+            key=lambda pair: (
+                pair[1].engram is None,
+                pair[1].engram.created_at if pair[1].engram is not None else 0,
+                pair[0],
+            )
+        )
     for original_index, item in indexed_items:
         relevance = item.relevance
         if item.engram is not None:
@@ -1176,8 +1184,8 @@ def _render_context(lines: list[_ContextLine]) -> str:
         "rag",
         "semantic",
         "thread_summary",
-        "thread_artifacts",
         "dialog",
+        "thread_artifacts",
     ):
         tier_lines = [line.text for line in lines if line.tier == tier]
         if tier_lines:
