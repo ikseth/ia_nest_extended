@@ -5,6 +5,8 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+## [0.6.5] - 2026-11-06
+
 ### Corregido
 - Los fallos propios de servicios externos ya no salen como HTTP 400: timeout
   del core o embedder devuelve 504, conexion o respuesta externa invalida 502,
