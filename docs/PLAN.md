@@ -181,6 +181,26 @@ tokens de salida; `prompt.run` sigue con el de 512.
 
 ## Hito siguiente: lo que la medida ordena (abierto el 2026-11-03)
 
+**Estado al 2026-11-06 (v0.6.4): la puerta pasa con todas las lineas en verde**, con el
+almacen grande del laboratorio y un ejecutor. Lo que se cerro:
+
+- Paso cero (L5r): el umbral y las frases se ajustan en el `setup.conf` de cada
+  instalacion. Este repo lleva el mecanismo y valores por defecto.
+- `edge CR-0002`: el perfil del interlocutor se transporta y se compone siempre. Queda
+  ver en el laboratorio si el modelo adapta la respuesta (criterio 2 de H08).
+- L4b: pasa sin la sintesis de la Fase 9, solo con el orden del contexto (`dialog`
+  cronologico y los artefactos del hilo al final). La Fase 9 queda en espera: ya no hace
+  falta para L4b.
+- Memoria: `episodic` paso a `thread_artifacts` de ambito sesion (ADR 0002); lo
+  conversacional no se filtra por dominio.
+- El confirmador con enrutador (`ia_nest_meta/docs/EL_CAMINO.md`) ve el turno anterior, y
+  un dominio de charla solo salta el conocimiento si el paso cero coincide.
+
+Lo que sigue abierto pasa a meta, que reordena H08 con el camino principal: la latencia
+(el criterio 7 se revisa), el segundo ejecutor, y los dos fallos de errores (un tiempo de
+espera hacia el core llega como HTTP 400, sobre todo cuando la GPU cambia de modelo; un
+`TimeoutError` a mitad de flujo termina sin evento de error).
+
 El orden respecto a otras capas no se fija aqui: L5r y L4b los vigila el hito
 H08 (entrada de la familia) de la hoja de ruta de meta
 (`ia_nest_meta/docs/plan/HOJA_DE_RUTA.md`, meta ADR 0014). El orden interno de
