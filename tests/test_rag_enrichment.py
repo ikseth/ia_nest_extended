@@ -1,17 +1,20 @@
 import json
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
 
 from ianest_extended import (
     CoreClient,
+    CoreResult,
     EngramWrite,
     ExtendedConfig,
     InvalidCoreDomainError,
     MemoryEnricher,
     Principal,
     RagChunk,
+    StatedBy,
     TelemetryWriter,
 )
 from ianest_extended.enrichment import (
@@ -19,6 +22,7 @@ from ianest_extended.enrichment import (
     _compose_context,
     compose_prompt,
 )
+from ianest_extended.knowledge_gate import GateDecision
 
 from .fakes import InMemoryStore, identity
 
@@ -28,6 +32,7 @@ class InMemoryRagStore:
         self.chunks = tuple(chunks)
         self.domains = []
         self.min_scores = []
+        self.query_texts = []
 
     def retrieve(
         self,
@@ -40,6 +45,7 @@ class InMemoryRagStore:
     ):
         self.domains.append(domain)
         self.min_scores.append(min_score)
+        self.query_texts.append(query_text)
         selected = [
             chunk
             for chunk in self.chunks
@@ -76,6 +82,236 @@ def _enricher(tmp_path, local_service_stub, memory_store, rag_store, **changes):
         telemetry=TelemetryWriter(tmp_path),
         config=config,
     )
+
+
+class RoutingCore:
+    def __init__(self, domain="linux"):
+        self.domain = domain
+        self.route_prompts = []
+        self.prompt_calls = []
+
+    def domain_route(self, prompt, identity):
+        self.route_prompts.append(prompt)
+        return SimpleNamespace(domain=self.domain, confidence=0.9)
+
+    def list_domains(self):
+        return ("general", "charla", "linux")
+
+    def prompt_run(self, prompt, identity, *, model=None, domain=None):
+        self.prompt_calls.append((prompt, identity, domain))
+        return CoreResult(
+            response="OK",
+            trace={"request_id": "core-route", "finish_reason": "stop"},
+        )
+
+
+class RecordingGate:
+    def __init__(self, decision):
+        self.decision = decision
+        self.prompts = []
+
+    def decide(self, prompt):
+        self.prompts.append(prompt)
+        return GateDecision(
+            decision=self.decision,
+            score=None,
+            threshold=0.7,
+            nearest=None,
+            embedding=None,
+        )
+
+
+class FailingRouteThreadStore(InMemoryStore):
+    def recent_dialogs(self, identity, *, limit):
+        raise RuntimeError("route thread unavailable")
+
+
+def _route_enricher(tmp_path, *, domain="linux", store=None, gate=None):
+    rag_store = InMemoryRagStore([_chunk("reference")])
+    core = RoutingCore(domain)
+    enricher = MemoryEnricher(
+        store=store or InMemoryStore(),
+        rag_store=rag_store,
+        core=core,
+        telemetry=TelemetryWriter(tmp_path),
+        config=ExtendedConfig(
+            telemetry_dir=tmp_path,
+            embedding_dimension=2,
+            auto_domain=True,
+            write_back_enabled=False,
+        ),
+        knowledge_gate=gate,
+    )
+    return enricher, core, rag_store
+
+
+def _route_identity():
+    return identity().__class__(user_id="u", session_id="A", service="test")
+
+
+def _rag_events(tmp_path):
+    return [
+        json.loads(line)
+        for path in tmp_path.glob("extended-*.jsonl")
+        for line in path.read_text(encoding="ascii").splitlines()
+        if json.loads(line)["event"] == "rag.retrieve"
+    ]
+
+
+def test_auto_route_receives_literal_message_without_prior_turns(tmp_path):
+    gate = RecordingGate("search")
+    enricher, core, rag_store = _route_enricher(tmp_path, gate=gate)
+    current = "y como mato uno?"
+
+    enricher.enrich(
+        _route_identity(),
+        current,
+        use_memory=False,
+        write_back=False,
+    )
+
+    assert core.route_prompts == [current]
+    assert gate.prompts == [current]
+    assert rag_store.query_texts == [current]
+    assert core.prompt_calls[0][0].endswith(current)
+    event = _rag_events(tmp_path)[0]
+    assert event["route_with_thread"] is False
+    assert event["route_thread_read_failed"] is False
+
+
+def test_auto_route_receives_the_most_recent_complete_dialog_pair(tmp_path):
+    store = InMemoryStore()
+    prior = _route_identity()
+    store.write(
+        Principal.EXTENDED,
+        EngramWrite(
+            type_name="dialog",
+            content="como elimino un proceso?",
+            identity=prior,
+            stated_by=StatedBy.USER,
+        ),
+    )
+    store.write(
+        Principal.EXTENDED,
+        EngramWrite(
+            type_name="dialog",
+            content="usa kill con el PID",
+            identity=prior,
+            stated_by=StatedBy.MODEL,
+        ),
+    )
+    gate = RecordingGate("search")
+    enricher, core, rag_store = _route_enricher(
+        tmp_path,
+        store=store,
+        gate=gate,
+    )
+    current = "y como mato uno?"
+
+    enricher.enrich(
+        prior,
+        current,
+        use_memory=False,
+        write_back=False,
+    )
+
+    assert core.route_prompts == [
+        "CONVERSACION RECIENTE:\n"
+        "Usuario: como elimino un proceso?\n"
+        "Asistente: usa kill con el PID\n\n"
+        "MENSAJE ACTUAL: y como mato uno?"
+    ]
+    assert gate.prompts == [current]
+    assert rag_store.query_texts == [current]
+    assert core.prompt_calls[0][0].endswith(current)
+    assert store.recent_dialog_requests == [(prior, 2)]
+    event = _rag_events(tmp_path)[0]
+    assert event["route_with_thread"] is True
+    assert event["route_thread_read_failed"] is False
+
+
+def test_auto_route_falls_back_to_literal_message_when_thread_read_fails(tmp_path):
+    enricher, core, _ = _route_enricher(
+        tmp_path,
+        store=FailingRouteThreadStore(),
+        gate=RecordingGate("search"),
+    )
+
+    enricher.enrich(
+        _route_identity(),
+        "mensaje actual",
+        use_memory=False,
+        write_back=False,
+    )
+
+    assert core.route_prompts == ["mensaje actual"]
+    event = _rag_events(tmp_path)[0]
+    assert event["route_with_thread"] is False
+    assert event["route_thread_read_failed"] is True
+
+
+def test_chat_domain_skips_only_when_the_knowledge_gate_skips(tmp_path):
+    enricher, core, rag_store = _route_enricher(
+        tmp_path,
+        domain="charla",
+        gate=RecordingGate("skip"),
+    )
+
+    enricher.enrich(
+        _route_identity(),
+        "hola",
+        use_memory=False,
+        write_back=False,
+    )
+
+    assert rag_store.domains == []
+    assert core.prompt_calls[0][2] == "charla"
+    event = _rag_events(tmp_path)[0]
+    assert event["status"] == "skipped"
+    assert event["chat_agreement"] == "skip"
+
+
+@pytest.mark.parametrize("decision", ("search", "not_applied", "error"))
+def test_chat_domain_searches_globally_without_a_gate_skip(tmp_path, decision):
+    enricher, core, rag_store = _route_enricher(
+        tmp_path,
+        domain="charla",
+        gate=RecordingGate(decision),
+    )
+
+    enricher.enrich(
+        _route_identity(),
+        "que significa chmod?",
+        use_memory=False,
+        write_back=False,
+    )
+
+    assert rag_store.domains == [None]
+    assert core.prompt_calls[0][2] == "charla"
+    event = _rag_events(tmp_path)[0]
+    assert event["status"] == "ok"
+    assert event["chat_agreement"] == "search"
+    assert event["domain"] == "charla"
+
+
+def test_non_chat_domain_keeps_the_existing_gate_behavior(tmp_path):
+    enricher, core, rag_store = _route_enricher(
+        tmp_path,
+        domain="linux",
+        gate=RecordingGate("skip"),
+    )
+
+    enricher.enrich(
+        _route_identity(),
+        "hola",
+        use_memory=False,
+        write_back=False,
+    )
+
+    assert rag_store.domains == []
+    assert core.prompt_calls[0][2] == "linux"
+    event = _rag_events(tmp_path)[0]
+    assert "chat_agreement" not in event
 
 
 def test_budget_drops_rag_before_thread_artifacts_and_preserves_required_text():

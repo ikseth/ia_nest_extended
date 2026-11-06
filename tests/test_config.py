@@ -28,6 +28,7 @@ def test_config_reads_prefixed_environment(monkeypatch):
     monkeypatch.setenv("IANEST_EXTENDED_RAG_MIN_SCORE_NO_DOMAIN", "0.46")
     monkeypatch.setenv("IANEST_EXTENDED_RAG_CHUNK_OVERLAP", "0.2")
     monkeypatch.setenv("IANEST_EXTENDED_AUTO_DOMAIN", "yes")
+    monkeypatch.setenv("IANEST_EXTENDED_CHAT_DOMAINS", "charla, soporte")
     monkeypatch.setenv("IANEST_EXTENDED_RAG_SUGGEST_MIN_CONFIDENCE", "0.65")
     monkeypatch.setenv("IANEST_EXTENDED_RAG_SUGGEST_SAMPLE_CHARS", "2400")
     monkeypatch.setenv("IANEST_EXTENDED_TASK_TIMEOUT_SECONDS", "480")
@@ -52,6 +53,7 @@ def test_config_reads_prefixed_environment(monkeypatch):
     assert config.rag_min_score_no_domain == 0.46
     assert config.rag_chunk_overlap == 0.2
     assert config.auto_domain is True
+    assert config.chat_domains == ("charla", "soporte")
     assert config.rag_suggest_min_confidence == 0.65
     assert config.rag_suggest_sample_chars == 2400
     assert config.task_timeout_seconds == 480

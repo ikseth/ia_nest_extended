@@ -1,4 +1,5 @@
 import json
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -45,6 +46,51 @@ def _orthogonal_embedding(store, text):
 
 def _controlled_vector(store, first, second):
     return (first, second, *(0.0 for _ in range(store._embedder.dimension - 2)))
+
+
+def test_recent_dialogs_are_chronological_and_session_scoped(postgres_store):
+    user_id = f"recent-dialogs-{uuid4()}"
+    session_identity = MemoryIdentity(user_id, "A")
+    other_session = MemoryIdentity(user_id, "B")
+    dialogs = [
+        postgres_store.write(
+            Principal.EXTENDED,
+            EngramWrite(
+                type_name="dialog",
+                content=content,
+                identity=session_identity,
+                stated_by=StatedBy.USER,
+            ),
+        )
+        for content in (
+            "first unrelated turn",
+            "second unrelated turn",
+            "third unrelated turn",
+        )
+    ]
+    postgres_store.write(
+        Principal.EXTENDED,
+        EngramWrite(
+            type_name="dialog",
+            content="other session newest turn",
+            identity=other_session,
+            stated_by=StatedBy.USER,
+        ),
+    )
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    with postgres_store._connect() as connection:
+        for offset, dialog in enumerate(dialogs):
+            connection.execute(
+                "UPDATE engrams SET created_at = %s WHERE id = %s",
+                (start + timedelta(seconds=offset), dialog.id),
+            )
+
+    recent = postgres_store.recent_dialogs(session_identity, limit=2)
+
+    assert [engram.content for engram in recent] == [
+        "third unrelated turn",
+        "second unrelated turn",
+    ]
 
 
 def test_thread_artifacts_do_not_cross_sessions(postgres_store):

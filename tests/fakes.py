@@ -31,6 +31,7 @@ class InMemoryStore:
     def __init__(self):
         self.engrams = []
         self.recall_queries = []
+        self.recent_dialog_requests = []
         self.migrated = False
         self.verified = 0
         self.summary_links = {}
@@ -148,6 +149,22 @@ class InMemoryStore:
                 )
             )
         return tuple(items[: query.top_k])
+
+    def recent_dialogs(self, identity, *, limit):
+        self.recent_dialog_requests.append((identity, limit))
+        dialogs = [
+            engram
+            for engram in self.engrams
+            if engram.type_name == "dialog"
+            and engram.status is EngramStatus.ACTIVE
+            and engram.user_id == identity.user_id
+            and engram.session_id == identity.session_id
+        ]
+        return tuple(
+            sorted(dialogs, key=lambda engram: engram.created_at, reverse=True)[
+                :limit
+            ]
+        )
 
     def find_similar(
         self,
