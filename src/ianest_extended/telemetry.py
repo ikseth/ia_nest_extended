@@ -7,6 +7,7 @@ la llamada hacia la capa inmediatamente inferior (meta ADR 0009, punto 4).
 from __future__ import annotations
 
 import json
+import re
 import sys
 import threading
 from datetime import UTC, datetime
@@ -14,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from .models import MemoryIdentity
+from .errors import ExtendedError, ORIGIN
 
 
 class TelemetryWriter:
@@ -35,6 +37,7 @@ class TelemetryWriter:
         latency_ms: int,
         status: str,
         details: dict[str, Any] | None = None,
+        error: Exception | None = None,
     ) -> None:
         path = self._directory
         try:
@@ -58,6 +61,10 @@ class TelemetryWriter:
             }
             if details:
                 payload.update(details)
+            if status == "error":
+                recorded_error = error or sys.exception()
+                if recorded_error is not None:
+                    payload["error"] = _error_payload(recorded_error)
             line = json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
             with self._lock:
                 self._directory.mkdir(parents=True, exist_ok=True)
@@ -88,3 +95,26 @@ class TelemetryWriter:
             )
         except Exception:
             return
+
+
+def _error_payload(error: Exception) -> dict[str, str | None]:
+    if isinstance(error, ExtendedError):
+        error_type = error.type
+        origin = error.origin
+        message = error.message
+    else:
+        error_type = type(error).__name__
+        origin = ORIGIN
+        message = str(error)
+    return {
+        "type": error_type,
+        "origin": origin,
+        "message": _safe_message(message),
+    }
+
+
+def _safe_message(message: str) -> str:
+    """Recorta y oculta valores que no pertenecen a la telemetria."""
+    without_body = re.sub(r"(HTTP \d+ desde [^:]+):.*", r"\1", message)
+    redacted = re.sub(r"(?i)(password|token|secret|api[_-]?key)=([^\s&]+)", r"\1=[redacted]", without_body)
+    return redacted[:300]

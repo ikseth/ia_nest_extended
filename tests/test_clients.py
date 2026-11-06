@@ -5,6 +5,7 @@ import pytest
 from ianest_extended import (
     CoreClient,
     CoreConnectionError,
+    CoreTimeoutError,
     InvalidEmbeddingDimensionError,
     MemoryIdentity,
     OllamaEmbedder,
@@ -113,5 +114,5 @@ def test_prompt_run_keeps_the_short_inactivity_timeout(local_service_stub):
         task_timeout_seconds=0.5,
     )
 
-    with pytest.raises(CoreConnectionError):
+    with pytest.raises(CoreTimeoutError):
         client.prompt_run("slow-prompt", MemoryIdentity(user_id="u"))

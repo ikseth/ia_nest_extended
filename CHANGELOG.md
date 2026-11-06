@@ -5,6 +5,14 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+### Corregido
+- Los fallos propios de servicios externos ya no salen como HTTP 400: timeout
+  del core o embedder devuelve 504, conexion o respuesta externa invalida 502,
+  y RAG no disponible 503. Un flujo SSE que se corta tras abrir envia el evento
+  tipado `error` y cierra limpiamente. Los eventos de telemetria con
+  `status=error` anaden `error` con tipo, origen y mensaje seguro recortado.
+  PATCH.
+
 ## [0.6.4] - 2026-11-06
 
 ### Anadido

@@ -37,6 +37,23 @@ evento. Las respuestas JSON reenviadas son opacas. Un error ajeno conserva su
 codigo HTTP y sus campos `type` y `origin`; un error propio declara
 `origin=ia_nest_extended` (meta ADR 0009).
 
+### Errores
+
+Los errores propios usan la forma tipada del ente (`type`, `message`, `field`,
+`origin`, `request_id`). Su codigo HTTP sale de su clase, en un unico catalogo:
+
+| Caso propio | Tipo | HTTP |
+|---|---|---|
+| El core supera la espera de conexion o lectura | `CoreTimeoutError` | 504 |
+| El core no conecta o devuelve una respuesta invalida | `CoreConnectionError` o `CoreResponseError` | 502 |
+| Un servicio externo de la capa no conecta o devuelve una respuesta invalida | error de conexion o respuesta del adaptador | 502 |
+| Se pidio RAG y su sustrato no esta disponible | `RagUnavailableError` | 503 |
+| Peticion, parametros o invariantes propios invalidos | error propio restante | 400 |
+
+Un `DownstreamError` no pertenece a esa tabla: conserva sin cambios el codigo y
+los campos que emitio la capa inferior. Los timeouts del embedder se distinguen
+como `OllamaTimeoutError` y usan 504.
+
 MCP expone cada herramienta con el nombre exacto de su capacidad, sin alias, y
 deriva sus parametros (tipo, obligatoriedad y valores admitidos) del mismo
 catalogo declarativo que alimenta las otras pieles. Construir el servidor es
@@ -128,6 +145,12 @@ flujo. Desde ese momento retransmiten cada evento del core sin anadir, quitar ni
 reordenar. La respuesta se acumula en paralelo solo para aplicar el write-back
 tras un cierre limpio. Un error o una desconexion del cliente no persiste nada y
 queda declarado en telemetria con estado `error` o `interrupted`.
+
+Si el flujo ya abierto falla al leer del core, la capa envia un ultimo evento
+`error` y lo cierra limpiamente. El evento conserva la envoltura SSE del core:
+`event: error` y `data` JSON con `type: error` y el error tipado en `data`.
+Asi un consumidor que ya reconoce el evento de error no necesita una forma
+nueva.
 
 Los engramas nacidos de `reasoning.stream` conservan el `request_id` que el core
 publica dentro del `trace` de su evento `done`. Los nacidos de `prompt.stream`
@@ -255,6 +278,11 @@ Los eventos de `prompt.run`, `prompt.stream`, `reasoning.run`,
 `reasoning.stream` y `task.run` anaden `interlocutor_context` con `profile`
 (`child`, `adult` o nulo) y `composed`. Esta telemetria se emite tambien con el
 enriquecimiento apagado y en `dry_run` cuando la capacidad lo admite.
+
+Cuando un evento de telemetria con `status=error` corresponde a `prompt.*`,
+`reasoning.*`, `task.*`, `enrich.*` o `rag.retrieve`, anade `error` con
+`type`, `origin` y `message`. El mensaje se recorta a 300 caracteres y no
+incluye cuerpos de peticion ni secretos. Los eventos `ok` no cambian.
 
 Cada evento `rag.retrieve` declara `score_regime` (`domain` o `no_domain`) y
 `min_score`, ademas del dominio efectivo. La calibracion puede asi observar la

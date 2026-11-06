@@ -15,6 +15,8 @@ ORIGIN = "ia_nest_extended"
 class ExtendedError(Exception):
     """Base de todos los errores propios de la capa."""
 
+    status_code = 400
+
     def __init__(
         self,
         message: str,
@@ -175,9 +177,13 @@ class ExternalServiceError(ExtendedError):
 class ExternalServiceConnectionError(ExternalServiceError):
     """No fue posible conectar con un servicio local."""
 
+    status_code = 502
+
 
 class ExternalServiceResponseError(ExternalServiceError):
     """El servicio local devolvio una respuesta no valida."""
+
+    status_code = 502
 
 
 class CoreClientError(ExternalServiceError):
@@ -186,6 +192,12 @@ class CoreClientError(ExternalServiceError):
 
 class CoreConnectionError(CoreClientError, ExternalServiceConnectionError):
     """No fue posible conectar con el core."""
+
+
+class CoreTimeoutError(CoreConnectionError):
+    """El core supero el tiempo de espera configurado."""
+
+    status_code = 504
 
 
 class CoreResponseError(CoreClientError, ExternalServiceResponseError):
@@ -207,6 +219,12 @@ class OllamaConnectionError(
     """No fue posible conectar con Ollama."""
 
 
+class OllamaTimeoutError(OllamaConnectionError):
+    """Ollama supero el tiempo de espera configurado."""
+
+    status_code = 504
+
+
 class OllamaResponseError(OllamaEmbedderError, ExternalServiceResponseError):
     """Ollama devolvio una respuesta no valida."""
 
@@ -225,6 +243,8 @@ class RagSchemaError(RagError):
 
 class RagUnavailableError(RagError):
     """Se pidio RAG y su sustrato no esta disponible."""
+
+    status_code = 503
 
 
 class KnowledgeWorkflowError(RagError):

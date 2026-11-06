@@ -12,6 +12,7 @@ import pytest
 
 from ianest_extended import (
     CoreResult,
+    CoreTimeoutError,
     ExtendedComposition,
     ExtendedConfig,
     ExtendedService,
@@ -326,6 +327,39 @@ def test_stream_error_does_not_write_and_is_traced(tmp_path):
     assert store.engrams == []
     event = next(item for item in _telemetry(tmp_path) if item["event"] == "prompt.stream")
     assert event["status"] == "error"
+
+
+def test_rest_stream_cut_sends_typed_error_event_and_traces_it(tmp_path):
+    class TimeoutStreamingCore(StreamingCore):
+        def prompt_stream(self, *args, **kwargs):
+            def events():
+                yield _event("token", {"text": "parcial"})
+                raise CoreTimeoutError("el core agoto la espera")
+
+            return ForwardedStream(events(), self._close)
+
+    core = TimeoutStreamingCore()
+    service, store, _ = _service(tmp_path, core)
+    body = _stream_events(
+        service.prompt_stream(
+            "pregunta",
+            _identity(),
+            use_memory=False,
+            use_rag=False,
+            write_back=True,
+        )
+    )
+
+    assert next(body).startswith(b"event: token\n")
+    error_event = next(body).decode("utf-8")
+    assert error_event.startswith("event: error\n")
+    assert '"type": "CoreTimeoutError"' in error_event
+    with pytest.raises(StopIteration):
+        next(body)
+    assert store.engrams == []
+    event = next(item for item in _telemetry(tmp_path) if item["event"] == "prompt.stream")
+    assert event["status"] == "error"
+    assert event["error"]["type"] == "CoreTimeoutError"
 
 
 def test_rest_client_disconnect_closes_without_write_back(tmp_path):
