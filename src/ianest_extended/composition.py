@@ -11,8 +11,14 @@ falla con error tipado indicando el comando; nunca migra por su cuenta.
 
 from __future__ import annotations
 
+from threading import Lock
 from typing import Any
 
+from .catalog_cache import (
+    catalog_refresh_due,
+    record_catalog_refresh_attempt,
+    write_catalog_cache,
+)
 from .clients import CoreClient, OllamaEmbedder
 from .config import ExtendedConfig
 from .enrichment import MemoryEnricher
@@ -49,6 +55,8 @@ class ExtendedComposition:
         self._knowledge_gate = knowledge_gate
         self._memory_verified = False
         self._rag_verified = False
+        self._catalog_refresh_lock = Lock()
+        self._catalog_auto_refresh_enabled = False
 
     @property
     def config(self) -> ExtendedConfig:
@@ -68,8 +76,56 @@ class ExtendedComposition:
                     self._config.inactivity_timeout_seconds
                 ),
                 task_timeout_seconds=self._config.task_timeout_seconds,
+                catalog_cache_path=self._config.catalog_cache_path,
+                trusted_providers=lambda: self.memory_store().trusted_providers(
+                    self._config.provider_ceiling
+                ),
+                ensure_catalog_fresh=self.refresh_core_catalog_if_due,
             )
         return self._core
+
+    def refresh_core_catalog(self, *, force: bool = False) -> dict[str, Any] | None:
+        """Consulta y escribe el catalogo del core en un unico camino.
+
+        El error se propaga al llamador que pidio explicitamente
+        ``capability.list``. Los refrescos automaticos lo degradan a ``None``
+        despues de registrar el intento, para que un turno no falle ni golpee
+        al core una vez por peticion.
+        """
+        with self._catalog_refresh_lock:
+            if not force and not catalog_refresh_due(
+                self._config.catalog_cache_path,
+                core_url=self._config.core_url,
+                ttl_seconds=self._config.core_catalog_ttl_seconds,
+            ):
+                return None
+            try:
+                downstream = self.core().list_capabilities()
+            except Exception:
+                record_catalog_refresh_attempt(
+                    self._config.catalog_cache_path,
+                    core_url=self._config.core_url,
+                )
+                if force:
+                    raise
+                return None
+            write_catalog_cache(
+                self._config.catalog_cache_path,
+                core_url=self._config.core_url,
+                core_version=downstream["core_version"],
+                capabilities=downstream["capabilities"],
+            )
+            return downstream
+
+    def refresh_core_catalog_if_due(self) -> None:
+        """Mejor esfuerzo para el camino que necesita ``turn_context``."""
+        if not self._catalog_auto_refresh_enabled:
+            return
+        self.refresh_core_catalog()
+
+    def enable_catalog_auto_refresh(self) -> None:
+        """Activa el refresco automatico para una piel de servicio."""
+        self._catalog_auto_refresh_enabled = True
 
     def embedder(self) -> Embedder:
         if self._embedder is None:

@@ -78,6 +78,26 @@ def test_rest_and_cli_return_the_same_own_capability(tmp_path, capsys):
     assert rest_payload == cli_payload == {"types": []}
 
 
+def test_rest_start_refreshes_the_core_catalog(tmp_path):
+    class CatalogCore:
+        def __init__(self):
+            self.calls = 0
+
+        def list_capabilities(self):
+            self.calls += 1
+            return {"core_version": "next", "capabilities": []}
+
+    config = _config(tmp_path)
+    core = CatalogCore()
+    service = ExtendedService(
+        ExtendedComposition(config, core=core, memory_store=InMemoryStore())
+    )
+
+    create_app(config, service)
+
+    assert core.calls == 1
+
+
 class _CoreSpy:
     def __init__(self):
         self.calls = []

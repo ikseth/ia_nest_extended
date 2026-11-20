@@ -5,6 +5,21 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+### Anadido
+- REST y MCP renuevan al arrancar la cache del catalogo del core. Al preparar
+  `turn_context`, se renueva tambien por edad mediante
+  `IANEST_EXTENDED_CORE_CATALOG_TTL_SECONDS` (300 por defecto; 0 lo desactiva).
+  Un fallo del core o un catalogo invalido conserva el turno sin contexto y
+  marca el intento para respetar el TTL. PATCH.
+- Registro versionado de entidades de `extended ADR 0016`: clase cerrada
+  `provider`, claves externas, partes `observed`/`curated` con autoridad por
+  principal, historico append-only, capacidades `entity.*` solo por CLI,
+  refresco por `IANEST_EXTENDED_PROVIDER_CEILING` y siembra TOML atomica desde
+  `ENTITIES_SEED`. `prompt.run`, `prompt.stream` y `domain.route` envian
+  `turn_context.trusted_providers` solo si el catalogo del core declara el
+  parametro, y `prompt.*` lo registra en telemetria. Cambio de contrato:
+  **MINOR**.
+
 ## [0.6.5] - 2026-11-06
 
 ### Corregido

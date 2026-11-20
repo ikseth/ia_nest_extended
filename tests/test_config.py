@@ -32,6 +32,10 @@ def test_config_reads_prefixed_environment(monkeypatch):
     monkeypatch.setenv("IANEST_EXTENDED_RAG_SUGGEST_MIN_CONFIDENCE", "0.65")
     monkeypatch.setenv("IANEST_EXTENDED_RAG_SUGGEST_SAMPLE_CHARS", "2400")
     monkeypatch.setenv("IANEST_EXTENDED_TASK_TIMEOUT_SECONDS", "480")
+    monkeypatch.setenv("IANEST_EXTENDED_CORE_CATALOG_TTL_SECONDS", "0")
+    monkeypatch.setenv(
+        "IANEST_EXTENDED_PROVIDER_CEILING", "casa_ha, otro"
+    )
 
     config = ExtendedConfig.from_env(env_file=None)
 
@@ -57,12 +61,30 @@ def test_config_reads_prefixed_environment(monkeypatch):
     assert config.rag_suggest_min_confidence == 0.65
     assert config.rag_suggest_sample_chars == 2400
     assert config.task_timeout_seconds == 480
+    assert config.core_catalog_ttl_seconds == 0
+    assert config.provider_ceiling == ("casa_ha", "otro")
+
+
+def test_config_rejects_duplicate_provider_ceiling(monkeypatch):
+    monkeypatch.setenv(
+        "IANEST_EXTENDED_PROVIDER_CEILING", "casa_ha,casa_ha"
+    )
+
+    with pytest.raises(ExtendedConfigError, match="nombres repetidos"):
+        ExtendedConfig.from_env(env_file=None)
 
 
 def test_config_rejects_invalid_values(monkeypatch):
     monkeypatch.setenv("IANEST_EXTENDED_CONFIDENCE_THRESHOLD", "1.5")
 
     with pytest.raises(ExtendedConfigError):
+        ExtendedConfig.from_env(env_file=None)
+
+
+def test_config_rejects_negative_core_catalog_ttl(monkeypatch):
+    monkeypatch.setenv("IANEST_EXTENDED_CORE_CATALOG_TTL_SECONDS", "-1")
+
+    with pytest.raises(ExtendedConfigError, match="no puede ser negativo"):
         ExtendedConfig.from_env(env_file=None)
 
 

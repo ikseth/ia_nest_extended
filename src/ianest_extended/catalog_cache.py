@@ -5,15 +5,17 @@ conocer los parametros del core para ofrecer sus banderas, y construir el
 parser no puede depender de la red (fase anterior, defecto 2 del retrabajo de
 herencia de parametros).
 
-La cache la ESCRIBE `capability.list` como efecto de consultar el core en
-vivo -es su cometido-. El parser SOLO la lee. Una cache de un core distinto
-del configurado no se usa: se declara de que origen es y, si no coincide, se
-ignora y el CLI degrada como si la cache no existiera.
+La cache se escribe por el mismo camino que `capability.list` consulta en
+vivo; REST y MCP lo reutilizan para su refresco automatico. El parser SOLO la
+lee. Una cache de un core distinto del configurado no se usa: se declara de que
+origen es y, si no coincide, se ignora y el CLI degrada como si la cache no
+existiera.
 """
 
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -59,11 +61,48 @@ def write_catalog_cache(
         "core_url": core_url,
         "core_version": core_version,
         "capabilities": capabilities,
+        "last_checked_at": time.time(),
     }
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             json.dumps(document, ensure_ascii=False), encoding="utf-8"
         )
+    except OSError:
+        return
+
+
+def catalog_refresh_due(path: Path, *, core_url: str, ttl_seconds: int) -> bool:
+    """Indica si el servicio debe volver a consultar el catalogo remoto.
+
+    Tambien lee las marcas de intentos fallidos. Asi un core inalcanzable no
+    convierte cada turno en una nueva consulta hasta que venza el TTL.
+    """
+    if ttl_seconds == 0:
+        return False
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return True
+    if not isinstance(document, dict) or document.get("core_url") != core_url:
+        return True
+    checked_at = document.get("last_checked_at")
+    if isinstance(checked_at, bool) or not isinstance(checked_at, (int, float)):
+        return True
+    return time.time() - checked_at >= ttl_seconds
+
+
+def record_catalog_refresh_attempt(path: Path, *, core_url: str) -> None:
+    """Guarda un intento fallido sin borrar la ultima cache utilizable."""
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        document = {}
+    if not isinstance(document, dict) or document.get("core_url") != core_url:
+        document = {"core_url": core_url}
+    document["last_checked_at"] = time.time()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
     except OSError:
         return

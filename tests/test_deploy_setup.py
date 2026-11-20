@@ -55,6 +55,10 @@ def _deployment(
         "  echo \"simulated ingest failure for ${FAKE_FAIL_CORPUS}\" >&2\n"
         "  exit 31\n"
         "fi\n"
+        "if [[ -n ${FAKE_FAIL_SEED:-} && \"$*\" == *'entity apply '* ]]; then\n"
+        "  echo 'InvalidEntitySeedError: entrada 1 (provider:fuera)' >&2\n"
+        "  exit 32\n"
+        "fi\n"
         "if [[ \"$*\" == *'runtime migrate'* ]]; then " + failure + "; fi\n"
         "exit 0\n",
     )
@@ -238,6 +242,7 @@ def test_remote_store_path_is_idempotent_ingests_text_and_never_calls_runtime(tm
     calls = log_path.read_text(encoding="ascii")
     assert "runtime:" not in calls
     assert calls.count("runtime migrate") == 2
+    assert calls.count("entity refresh") == 2
     assert calls.count("knowledge ingest --corpus manual") == 2
     assert calls.count("knowledge confirm --corpus manual --domain linux") == 2
     assert calls.count("knowledge confirm --corpus manual --domain codigo") == 2
@@ -259,6 +264,62 @@ def test_remote_store_path_is_idempotent_ingests_text_and_never_calls_runtime(tm
     assert f"--env-file {env_file} memory_type list" in log_path.read_text(
         encoding="ascii"
     )
+
+
+def test_entities_seed_runs_after_migrate_and_refresh_and_is_repeatable(tmp_path):
+    config, env, install_root, _, log_path = _deployment(tmp_path)
+    seed = tmp_path / "entities.toml"
+    seed.write_text(
+        '[[entity]]\nkey="provider:casa_ha"\nkind="provider"\ntrusted=true\n',
+        encoding="ascii",
+    )
+    config.write_text(
+        config.read_text(encoding="ascii")
+        + "PROVIDER_CEILING=casa_ha\n"
+        + f"ENTITIES_SEED={seed}\n",
+        encoding="ascii",
+    )
+
+    for _ in range(2):
+        result = subprocess.run(
+            [str(SETUP), "--config", str(config)],
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, result.stderr
+
+    calls = log_path.read_text(encoding="ascii").splitlines()
+    for start in [index for index, line in enumerate(calls) if "runtime migrate" in line]:
+        refresh = next(i for i in range(start + 1, len(calls)) if "entity refresh" in calls[i])
+        apply = next(i for i in range(refresh + 1, len(calls)) if "entity apply" in calls[i])
+        assert start < refresh < apply
+    assert sum("entity apply" in line for line in calls) == 2
+    env_file = install_root / "config" / "extended" / "test" / "extended.env"
+    assert "IANEST_EXTENDED_PROVIDER_CEILING=casa_ha" in env_file.read_text(
+        encoding="ascii"
+    )
+
+
+def test_entities_seed_failure_names_entry(tmp_path):
+    config, env, _, _, _ = _deployment(tmp_path)
+    seed = tmp_path / "entities.toml"
+    seed.write_text("[[entity]]\n", encoding="ascii")
+    config.write_text(
+        config.read_text(encoding="ascii") + f"ENTITIES_SEED={seed}\n",
+        encoding="ascii",
+    )
+    env["FAKE_FAIL_SEED"] = "1"
+
+    result = subprocess.run(
+        [str(SETUP), "--config", str(config)],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "entrada 1 (provider:fuera)" in result.stderr
 
 
 def test_manifest_ingests_n_corpora_in_file_order_with_relative_paths(tmp_path):

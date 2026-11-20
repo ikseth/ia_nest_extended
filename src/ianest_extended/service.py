@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
@@ -30,7 +30,6 @@ from .capabilities import (
     local_catalog,
     merge_forwarded,
 )
-from .catalog_cache import write_catalog_cache
 from .clients import CoreResult, ForwardedJson, ForwardedStream
 from .composition import ExtendedComposition
 from .config import ExtendedConfig
@@ -43,6 +42,7 @@ from .errors import (
     SchemaMigrationRequiredError,
     SessionNotFoundError,
 )
+from .entities import read_seed
 from .enrichment import compose_prompt, interlocutor_context
 from .identity import (
     normalize_interlocutor_profile,
@@ -389,6 +389,30 @@ class ExtendedService:
             )
         if capability == "capability.list":
             return self.capability_list()
+        if capability == "entity.apply":
+            return self.entity_apply(
+                Path(_required_text(body, "file")),
+                plan=_bool(body, "plan", False),
+            )
+        if capability == "entity.get":
+            return self.entity_get(_required_text(body, "key"))
+        if capability == "entity.history":
+            return self.entity_history(_required_text(body, "key"))
+        if capability == "entity.list":
+            return self.entity_list(
+                kind=_optional_text(body, "kind"),
+                status=_optional_text(body, "status"),
+            )
+        if capability == "entity.put":
+            return self.entity_put(
+                _required_text(body, "key"),
+                _required_text(body, "kind"),
+                _required_object(body, "fact"),
+            )
+        if capability == "entity.refresh":
+            return self.entity_refresh()
+        if capability == "entity.retire":
+            return self.entity_retire(_required_text(body, "key"))
         if capability == "prompt.run":
             result = self.prompt_run(
                 _required_text(body, "prompt"),
@@ -585,7 +609,7 @@ class ExtendedService:
         """
         local = local_catalog()
         try:
-            downstream = self._composition.core().list_capabilities()
+            downstream = self._composition.refresh_core_catalog(force=True)
         except ExtendedError as exc:
             return {
                 "extended_version": extended_version(),
@@ -594,17 +618,24 @@ class ExtendedService:
                 "error": exc.to_dict(),
             }
 
-        write_catalog_cache(
-            self.config.catalog_cache_path,
-            core_url=self.config.core_url,
-            core_version=downstream["core_version"],
-            capabilities=downstream["capabilities"],
-        )
+        assert downstream is not None
         return {
             "extended_version": extended_version(),
             "core_version": downstream["core_version"],
             "capabilities": merge_forwarded(local, downstream["capabilities"]),
         }
+
+    def refresh_core_catalog_on_start(self) -> None:
+        """Actualiza el catalogo al arrancar una piel de servicio.
+
+        Es mejor esfuerzo: el arranque y los turnos conservan la degradacion
+        actual si el core no responde o su catalogo no es valido.
+        """
+        self._composition.enable_catalog_auto_refresh()
+        try:
+            self._composition.refresh_core_catalog(force=True)
+        except Exception:
+            return
 
     def prompt_run(
         self,
@@ -1500,6 +1531,19 @@ class ExtendedService:
         started: float,
         status: str,
     ) -> None:
+        turn_details: dict[str, Any] = {}
+        if event.startswith("prompt."):
+            sent = False
+            providers: tuple[str, ...] = ()
+            if status != "dry_run":
+                context = getattr(self._composition.core(), "turn_context", None)
+                if context is not None:
+                    sent, providers = context(event)
+            turn_details = (
+                {"trusted_providers": list(providers)}
+                if sent
+                else {"turn_context_sent": False}
+            )
         self._composition.telemetry().record(
             event=event,
             request_id=request_id,
@@ -1517,7 +1561,8 @@ class ExtendedService:
                 "interlocutor_context": {
                     "profile": identity.interlocutor_profile,
                     "composed": identity.interlocutor_profile == "child",
-                }
+                },
+                **turn_details,
             },
         )
 
@@ -1562,6 +1607,57 @@ class ExtendedService:
                 "plan_retried": plan_retried,
             },
         )
+
+    # --- capacidades propias: entidades -----------------------------------
+
+    def entity_put(
+        self, key: str, kind: str, curated: dict[str, Any]
+    ) -> dict[str, Any]:
+        entity = self._composition.memory_store().put_entity(
+            Principal.OPERATOR, key, kind, curated=curated, origin="cli"
+        )
+        return {"entity": _entity_dict(entity)}
+
+    def entity_retire(self, key: str) -> dict[str, Any]:
+        entity = self._composition.memory_store().retire_entity(
+            Principal.OPERATOR, key, origin="cli"
+        )
+        return {"entity": _entity_dict(entity)}
+
+    def entity_get(self, key: str) -> dict[str, Any]:
+        entity = self._composition.memory_store().get_entity(key)
+        return {"entity": _entity_dict(entity)}
+
+    def entity_list(
+        self, *, kind: str | None = None, status: str | None = None
+    ) -> dict[str, Any]:
+        entities = self._composition.memory_store().list_entities(
+            kind=kind, status=status
+        )
+        return {"entities": [_entity_dict(entity) for entity in entities]}
+
+    def entity_history(self, key: str) -> dict[str, Any]:
+        versions = self._composition.memory_store().entity_history(key)
+        return {
+            "versions": [
+                _entity_version_dict(version) for version in versions
+            ]
+        }
+
+    def entity_refresh(self) -> dict[str, Any]:
+        return self._composition.memory_store().refresh_providers(
+            self.config.provider_ceiling
+        )
+
+    def entity_apply(self, path: Path, *, plan: bool = False) -> dict[str, Any]:
+        seed = read_seed(path, self.config.provider_ceiling)
+        return {
+            "origin": seed.origin,
+            "plan": self._composition.memory_store().apply_entity_seed(
+                seed, plan=plan
+            ),
+            "applied": not plan,
+        }
 
     # --- capacidades propias: memoria -------------------------------------
 
@@ -1856,6 +1952,23 @@ def _session_dict(session: Session) -> dict[str, Any]:
             None if session.closed_at is None else session.closed_at.isoformat()
         ),
     }
+
+
+def _entity_dict(entity) -> dict[str, Any]:
+    payload = asdict(entity)
+    payload["id"] = str(entity.id)
+    for name in ("created_at", "updated_at", "retired_at"):
+        value = payload[name]
+        payload[name] = None if value is None else value.isoformat()
+    return payload
+
+
+def _entity_version_dict(version) -> dict[str, Any]:
+    payload = asdict(version)
+    payload["entity_id"] = str(version.entity_id)
+    payload["author"] = version.author.value
+    payload["created_at"] = version.created_at.isoformat()
+    return payload
 
 
 def _session_title(summary: str | None) -> str | None:

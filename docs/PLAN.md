@@ -5,7 +5,7 @@ motivo y su diseno escritos en ella); fase 9 ABIERTA (2026-08-22), con criterio
 reconciliado, mecanismo publicado en `v0.3.0` y medida hecha que NO la cierra.
 La version publicada de la capa no se anota aqui: la dicen `CHANGELOG.md` y los
 tags.
-Version: 0.7 - 2026-10-14
+Version: 0.8 - 2026-11-20
 
 Misma disciplina que el core: fases con criterio de salida falsable; no se abre
 una fase sin validar la anterior; diseno y prueba de aceptacion antes de
@@ -13,6 +13,14 @@ implementar. Memoria primero (la necesita conscience).
 
 El fin de la memoria y su frontera con conscience estan en
 `docs/VISION_MEMORIA.md`; el mecanismo, en ADR 0002.
+
+## Meta H12P7: registro de entidades, proveedores y confianza
+
+Primera entrega del registro decidida en `extended ADR 0016`: clase
+`provider`, techo operativo, confianza curada, historico, CLI y siembra; mas el
+contexto `trusted_providers` preparado para `extended CR-0006` tramo A. El
+orden y la medida pertenecen a meta H12P7; este plan solo conserva el detalle
+interno de la capa.
 
 ## Hito v0.5.0: el ente conversa y consulta su enciclopedia
 

@@ -167,6 +167,51 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
         "overridden",
     ),
     Capability(
+        "entity.apply", "aplica una siembra TOML atomica", False, False,
+        (_param("file", "string", "fichero TOML", required=True, metavar="RUTA"),
+         _param("plan", "boolean", "muestra cambios sin aplicar", default=False)),
+        None, _cli("entity", "apply", "Valida y reconcilia una siembra TOML."),
+        None, "own",
+    ),
+    Capability(
+        "entity.get", "obtiene una entidad por clave", False, False,
+        (_param("key", "string", "clave externa", required=True, metavar="CLAVE"),),
+        None, _cli("entity", "get", "Obtiene una entidad por clave externa."),
+        None, "own",
+    ),
+    Capability(
+        "entity.history", "lista las versiones de una entidad", False, False,
+        (_param("key", "string", "clave externa", required=True, metavar="CLAVE"),),
+        None, _cli("entity", "history", "Lista el historico append-only."),
+        None, "own",
+    ),
+    Capability(
+        "entity.list", "lista entidades", False, False,
+        (_param("kind", "string", "clase opcional", metavar="CLASE"),
+         _param("status", "string", "estado opcional", choices=("active", "retired"), metavar="ESTADO")),
+        None, _cli("entity", "list", "Lista el registro de entidades."),
+        None, "own",
+    ),
+    Capability(
+        "entity.put", "crea o cambia hechos curados por clave", False, False,
+        (_param("key", "string", "clave externa", required=True, metavar="CLAVE"),
+         _param("kind", "string", "clase", required=True, metavar="CLASE"),
+         _param("fact", "object", "hechos curados")),
+        None, _cli("entity", "put", "Escribe hechos curados como operator."),
+        None, "own",
+    ),
+    Capability(
+        "entity.refresh", "reconcilia proveedores con el techo", False, False,
+        (), None, _cli("entity", "refresh", "Refresca proveedores como extended."),
+        None, "own",
+    ),
+    Capability(
+        "entity.retire", "retira una entidad sin borrarla", False, False,
+        (_param("key", "string", "clave externa", required=True, metavar="CLAVE"),),
+        None, _cli("entity", "retire", "Retira una entidad como operator."),
+        None, "own",
+    ),
+    Capability(
         "knowledge.confirm",
         "confirma un vinculo dominio-corpus",
         False,
@@ -580,9 +625,14 @@ def _assert_catalog_invariants() -> None:
     assert len(names) == len(set(names))
     assert "knowledge.retrieve" not in names
     assert "knowledge.corpus.list" not in names
-    assert all(item.rest is not None for item in LOCAL_CAPABILITIES)
     assert all(
-        item.mcp is None if item.streaming else item.mcp is not None
+        item.rest is not None or item.name.startswith("entity.")
+        for item in LOCAL_CAPABILITIES
+    )
+    assert all(
+        item.mcp is None
+        if item.streaming or item.name.startswith("entity.")
+        else item.mcp is not None
         for item in LOCAL_CAPABILITIES
     )
     assert all(
