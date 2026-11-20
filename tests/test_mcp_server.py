@@ -244,7 +244,7 @@ def test_server_starts_offline_with_own_tools_and_declares_gap(tmp_path):
 
     server = create_server(config, service)
 
-    assert core.calls == 0
+    assert core.calls == 1
     assert "memory.recall" in server.tools
     assert "prompt.run" in server.tools
     assert set(server.tools) == {

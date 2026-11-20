@@ -13,6 +13,8 @@ def local_service_stub():
     state = SimpleNamespace(
         requests=[],
         counter=0,
+        catalog_turn_context=False,
+        catalog_down=False,
         stream_gate=None,
         stream_events=(
             ("token", '{"chunk": "uno"}'),
@@ -25,6 +27,9 @@ def local_service_stub():
         def do_GET(self):
             state.requests.append((self.path, None))
             if self.path == "/capability/list":
+                if state.catalog_down:
+                    self._send({"error": "down"}, status=503)
+                    return
                 self._send(
                     {
                         "core_version": "0.4.0",
@@ -51,7 +56,10 @@ def local_service_stub():
                                 "summary": "prompt del core que se sobreescribe",
                                 "identity": True,
                                 "streaming": False,
-                                "params": [],
+                                "params": (
+                                    [{"name": "turn_context"}]
+                                    if state.catalog_turn_context else []
+                                ),
                                 "rest": {"path": "/prompt/run", "method": "POST"},
                                 "cli": {
                                     "group": "prompt",

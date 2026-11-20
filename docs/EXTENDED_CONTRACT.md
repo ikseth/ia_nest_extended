@@ -57,10 +57,10 @@ como `OllamaTimeoutError` y usan 504.
 
 MCP expone cada herramienta con el nombre exacto de su capacidad, sin alias, y
 deriva sus parametros (tipo, obligatoriedad y valores admitidos) del mismo
-catalogo declarativo que alimenta las otras pieles. Construir el servidor es
-siempre local: declara las capacidades propias y sobreescritas desde el catalogo
-local, y las reenviadas desde una cache valida del catalogo del core. Nunca
-consulta al core al arrancar.
+catalogo declarativo que alimenta las otras pieles. REST y MCP intentan renovar
+la cache del catalogo del core al arrancar; si falla, arrancan con las
+capacidades propias y con la ultima cache valida, si existe. MCP declara las
+herramientas desde ese estado local ya renovado.
 
 Sin cache, MCP sirve lo propio y declara que falta el catalogo ajeno en las
 instrucciones del servidor; `capability.list` conserva ademas la degradacion
@@ -104,13 +104,17 @@ enriquecimiento o salida- NO se redeclara: la gobierna la bandera propia, y su
 ayuda lo dice. Regla unica derivada del dato, nunca una lista de casos por
 nombre.
 
-Construir la CLI y MCP es SIEMPRE una operacion local: nunca consulta al core,
-ni siquiera alcanzable. Para eso, el catalogo remoto que alimenta las banderas
-y herramientas reenviadas se cachea como estado local (no versionado);
-`capability.list` es quien la refresca, como efecto de consultar al core en
-vivo. Sin cache, o con una cache de un core distinto del configurado, la CLI
-conserva las banderas propias y lo ajeno se sigue invocando por `--param`; MCP
-conserva las herramientas propias y declara el hueco ajeno.
+Construir la CLI es SIEMPRE una operacion local: nunca consulta al core, ni
+siquiera alcanzable. Para eso, el catalogo remoto que alimenta sus banderas se
+cachea como estado local (no versionado). La misma consulta y escritura de
+`capability.list` la usan REST y MCP al arrancar y, al necesitar
+`turn_context`, cuando han pasado
+`IANEST_EXTENDED_CORE_CATALOG_TTL_SECONDS` segundos (300 por defecto; 0
+desactiva el refresco por edad). Un intento fallido tambien queda marcado para
+no reintentar en cada turno durante el TTL. Sin cache, o con una cache de un
+core distinto del configurado, la CLI conserva las banderas propias y lo ajeno
+se sigue invocando por `--param`; MCP conserva las herramientas propias y
+declara el hueco ajeno.
 
 ### Garantia de transparencia
 
@@ -181,7 +185,9 @@ en la clave de memoria, en `docs/FORMA_ENRIQUECIMIENTO.md`.
 
 Hacia el core, `prompt.run`, `prompt.stream` y `domain.route` anaden
 `turn_context: {"trusted_providers": [...]}` solo cuando el catalogo cacheado
-del core declara el parametro `turn_context` para esa capacidad. La lista esta
+del core declara el parametro `turn_context` para esa capacidad. Antes se
+renueva por edad con la politica anterior; si el core falla o deja de declarar
+el parametro, el turno sigue sin el campo. La lista esta
 ordenada y contiene la interseccion de proveedores activos, con
 `curated.trusted=true`, y `IANEST_EXTENDED_PROVIDER_CEILING`. Una lista vacia
 se envia como dato. Sin cache valida o sin parametro declarado no se anade el

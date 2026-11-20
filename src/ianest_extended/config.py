@@ -22,7 +22,8 @@ def default_catalog_cache_path() -> Path:
 
     Vive junto al resto del estado local que ya persiste la capa (convencion
     XDG). No se versiona: la escribe `capability.list` como efecto de
-    consultar el core, y el parser SOLO la lee, nunca la red.
+    consultar el core; REST/MCP reutilizan ese camino al servir. El parser
+    SOLO la lee, nunca la red.
     """
     base = os.environ.get("XDG_STATE_HOME") or "~/.local/state"
     return Path(base).expanduser() / "ianest_extended" / "catalog_cache.json"
@@ -48,6 +49,7 @@ class ExtendedConfig:
     # sobre el fichero recordado, pero no sobre --session-id.
     cli_session_id: str | None = None
     catalog_cache_path: Path = field(default_factory=default_catalog_cache_path)
+    core_catalog_ttl_seconds: int = 300
     provider_ceiling: tuple[str, ...] = ()
     default_user_id: str = "local_operator"
     default_service: str = "local_cli"
@@ -141,6 +143,10 @@ class ExtendedConfig:
             "catalog_cache_path": Path(
                 _env("CATALOG_CACHE_PATH", str(defaults.catalog_cache_path))
             ).expanduser(),
+            "core_catalog_ttl_seconds": _env_int(
+                "CORE_CATALOG_TTL_SECONDS",
+                defaults.core_catalog_ttl_seconds,
+            ),
             "provider_ceiling": _env_csv("PROVIDER_CEILING", ()),
             "default_user_id": _env("DEFAULT_USER_ID", defaults.default_user_id),
             "default_service": _env("DEFAULT_SERVICE", defaults.default_service),
@@ -307,6 +313,11 @@ class ExtendedConfig:
         ):
             if getattr(self, name) <= 0:
                 raise ExtendedConfigError(f"{name} debe ser mayor que cero")
+        if self.core_catalog_ttl_seconds < 0:
+            raise ExtendedConfigError(
+                "core_catalog_ttl_seconds no puede ser negativo",
+                "core_catalog_ttl_seconds",
+            )
         if self.rest_port > 65535:
             raise ExtendedConfigError(
                 "rest_port debe ser menor o igual que 65535",

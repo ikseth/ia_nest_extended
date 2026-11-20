@@ -22,7 +22,7 @@ def create_app(
     config: ExtendedConfig | None = None,
     service: ExtendedService | None = None,
 ):
-    """Construye la aplicacion sin tocar el core ni el catalogo remoto."""
+    """Construye la aplicacion y refresca el catalogo sin bloquear el servicio."""
     try:
         from starlette.applications import Starlette
         from starlette.requests import Request
@@ -35,6 +35,9 @@ def create_app(
 
     active_config = config or ExtendedConfig.from_env()
     active_service = service or ExtendedService.from_config(active_config)
+    refresh_catalog = getattr(active_service, "refresh_core_catalog_on_start", None)
+    if refresh_catalog is not None:
+        refresh_catalog()
     local_paths = {
         capability.rest.path: capability
         for capability in LOCAL_CAPABILITIES

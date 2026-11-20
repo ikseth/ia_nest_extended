@@ -1,8 +1,8 @@
 """Piel MCP declarativa del contrato uniforme de ia_nest_extended.
 
-MCP tiene que enumerar herramientas. Por eso esta piel se construye solo con
-estado local: el catalogo propio y, si existe y pertenece al core configurado,
-el catalogo ajeno cacheado. Arrancar nunca consulta al core.
+MCP tiene que enumerar herramientas. Al arrancar intenta renovar el catalogo
+del core y despues construye las herramientas desde la cache local. Si el core
+no responde, conserva la cache disponible y las capacidades propias.
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ def create_server(
     host: str = "127.0.0.1",
     port: int = 8091,
 ):
-    """Construye el servidor desde catalogos locales, sin tocar la red."""
+    """Construye el servidor tras un refresco mejor esfuerzo del catalogo."""
     try:
         from mcp.server.fastmcp import FastMCP
     except ImportError as exc:  # pragma: no cover - depende del extra instalado
@@ -56,6 +56,9 @@ def create_server(
         service.config if service is not None else ExtendedConfig.from_env()
     )
     active_service = service or ExtendedService.from_config(active_config)
+    refresh_catalog = getattr(active_service, "refresh_core_catalog_on_start", None)
+    if refresh_catalog is not None:
+        refresh_catalog()
     catalog, cache_available = _startup_catalog(active_config)
     exposed, omitted = _mcp_exposures(catalog)
     instructions = _server_instructions(cache_available, omitted)

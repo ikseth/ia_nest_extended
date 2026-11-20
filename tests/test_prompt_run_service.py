@@ -3,6 +3,7 @@
 import json
 
 import pytest
+import ianest_extended.catalog_cache as catalog_cache
 
 from ianest_extended import (
     EnrichmentParameterError,
@@ -148,6 +149,121 @@ def test_prompt_telemetry_records_trusted_providers_sent(
         "trusted_providers": ["casa_ha", "zeta"]
     }
     assert _events(tmp_path)[0]["trusted_providers"] == ["casa_ha", "zeta"]
+
+
+def test_turn_context_refreshes_catalog_when_ttl_elapsed(
+    tmp_path, local_service_stub, monkeypatch
+):
+    """La cache deja de esconder un parametro nuevo del core."""
+    clock = {"now": 100.0}
+    monkeypatch.setattr(catalog_cache.time, "time", lambda: clock["now"])
+    store = InMemoryStore()
+    store.trusted_providers = lambda ceiling: ()
+    service = _service(
+        tmp_path,
+        local_service_stub,
+        store=store,
+        core_catalog_ttl_seconds=300,
+    )
+
+    service.refresh_core_catalog_on_start()
+    local_service_stub.catalog_turn_context = True
+    clock["now"] = 400.0
+    service.prompt_run("hola", _identity(), enrich=False)
+
+    payload = next(
+        body for path, body in local_service_stub.requests if path == "/prompt/run"
+    )
+    assert payload["turn_context"] == {"trusted_providers": []}
+    assert sum(
+        path == "/capability/list" for path, _ in local_service_stub.requests
+    ) == 2
+
+
+def test_failed_catalog_refresh_does_not_fail_or_repeat_each_turn(
+    tmp_path, local_service_stub, monkeypatch
+):
+    """El marcador de fallo limita los reintentos y el turno conserva su forma."""
+    clock = {"now": 100.0}
+    monkeypatch.setattr(catalog_cache.time, "time", lambda: clock["now"])
+    service = _service(
+        tmp_path,
+        local_service_stub,
+        store=InMemoryStore(),
+        core_catalog_ttl_seconds=300,
+    )
+    local_service_stub.catalog_down = True
+
+    service.refresh_core_catalog_on_start()
+    service.prompt_run("uno", _identity(), enrich=False)
+    service.prompt_run("dos", _identity(), enrich=False)
+
+    prompts = [
+        body for path, body in local_service_stub.requests if path == "/prompt/run"
+    ]
+    assert len(prompts) == 2
+    assert all("turn_context" not in payload for payload in prompts)
+    assert sum(
+        path == "/capability/list" for path, _ in local_service_stub.requests
+    ) == 1
+
+
+def test_catalog_refresh_stops_sending_removed_turn_context(
+    tmp_path, local_service_stub, monkeypatch
+):
+    """Un core degradado retira el campo en cuanto su catalogo lo declara."""
+    clock = {"now": 100.0}
+    monkeypatch.setattr(catalog_cache.time, "time", lambda: clock["now"])
+    local_service_stub.catalog_turn_context = True
+    store = InMemoryStore()
+    store.trusted_providers = lambda ceiling: ()
+    service = _service(
+        tmp_path,
+        local_service_stub,
+        store=store,
+        core_catalog_ttl_seconds=300,
+    )
+
+    service.refresh_core_catalog_on_start()
+    service.prompt_run("antes", _identity(), enrich=False)
+    local_service_stub.catalog_turn_context = False
+    clock["now"] = 400.0
+    service.prompt_run("despues", _identity(), enrich=False)
+
+    prompts = [
+        body for path, body in local_service_stub.requests if path == "/prompt/run"
+    ]
+    assert "turn_context" in prompts[0]
+    assert "turn_context" not in prompts[1]
+
+
+def test_zero_catalog_ttl_disables_refresh_by_age(
+    tmp_path, local_service_stub, monkeypatch
+):
+    clock = {"now": 100.0}
+    monkeypatch.setattr(catalog_cache.time, "time", lambda: clock["now"])
+    local_service_stub.catalog_turn_context = True
+    store = InMemoryStore()
+    store.trusted_providers = lambda ceiling: ()
+    service = _service(
+        tmp_path,
+        local_service_stub,
+        store=store,
+        core_catalog_ttl_seconds=0,
+    )
+
+    service.refresh_core_catalog_on_start()
+    local_service_stub.catalog_turn_context = False
+    clock["now"] = 10_000.0
+    service.prompt_run("sin refresco", _identity(), enrich=False)
+
+    payload = next(
+        body for path, body in local_service_stub.requests if path == "/prompt/run"
+    )
+    assert "turn_context" in payload
+    assert sum(
+        path == "/capability/list" for path, _ in local_service_stub.requests
+    ) == 1
 
 
 @pytest.mark.parametrize(

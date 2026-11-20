@@ -155,6 +155,7 @@ class CoreClient:
         task_timeout_seconds: float = 600.0,
         catalog_cache_path: Path | None = None,
         trusted_providers: Callable[[], tuple[str, ...]] | None = None,
+        ensure_catalog_fresh: Callable[[], None] | None = None,
     ) -> None:
         self._catalog_core_url = base_url
         self._base_url = base_url.rstrip("/")
@@ -169,9 +170,12 @@ class CoreClient:
         self._domain_ids: tuple[str, ...] | None = None
         self._catalog_cache_path = catalog_cache_path
         self._trusted_providers = trusted_providers
+        self._ensure_catalog_fresh = ensure_catalog_fresh
 
     def turn_context(self, capability: str) -> tuple[bool, tuple[str, ...]]:
         """Devuelve contexto solo si el catalogo cacheado declara el parametro."""
+        if self._ensure_catalog_fresh is not None:
+            self._ensure_catalog_fresh()
         if self._catalog_cache_path is None:
             return False, ()
         catalog = read_catalog_cache(

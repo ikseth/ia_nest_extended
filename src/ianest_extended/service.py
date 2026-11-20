@@ -30,7 +30,6 @@ from .capabilities import (
     local_catalog,
     merge_forwarded,
 )
-from .catalog_cache import write_catalog_cache
 from .clients import CoreResult, ForwardedJson, ForwardedStream
 from .composition import ExtendedComposition
 from .config import ExtendedConfig
@@ -610,7 +609,7 @@ class ExtendedService:
         """
         local = local_catalog()
         try:
-            downstream = self._composition.core().list_capabilities()
+            downstream = self._composition.refresh_core_catalog(force=True)
         except ExtendedError as exc:
             return {
                 "extended_version": extended_version(),
@@ -619,17 +618,24 @@ class ExtendedService:
                 "error": exc.to_dict(),
             }
 
-        write_catalog_cache(
-            self.config.catalog_cache_path,
-            core_url=self.config.core_url,
-            core_version=downstream["core_version"],
-            capabilities=downstream["capabilities"],
-        )
+        assert downstream is not None
         return {
             "extended_version": extended_version(),
             "core_version": downstream["core_version"],
             "capabilities": merge_forwarded(local, downstream["capabilities"]),
         }
+
+    def refresh_core_catalog_on_start(self) -> None:
+        """Actualiza el catalogo al arrancar una piel de servicio.
+
+        Es mejor esfuerzo: el arranque y los turnos conservan la degradacion
+        actual si el core no responde o su catalogo no es valido.
+        """
+        self._composition.enable_catalog_auto_refresh()
+        try:
+            self._composition.refresh_core_catalog(force=True)
+        except Exception:
+            return
 
     def prompt_run(
         self,
