@@ -9,7 +9,15 @@ dependencias; el registro de capas del ente es un indice que lo refleja.
 
 ## Depende de
 
-- `ia_nest_core >=0.4.2 <0.5`. El campo `identity.interlocutor_profile` del
+- `ia_nest_core >=0.4.2 <0.7` (desde extended `v0.7.0`). Por que se puede subir
+  el techo: extended solo manda `turn_context` cuando el catalogo del core lo
+  declara (core ADR 0054, `v0.6.0`); con un core anterior la peticion es
+  identica a la de `v0.6.5`, y eso lo prueba la suite (cuerpo enviado sin el
+  parametro declarado). El laboratorio ya corria extended `v0.6.5` contra core
+  `v0.5.0`. Comprobacion en vivo contra el tag `v0.6.0`: al desplegar la tanda A
+  de meta H12 (H12P7), pendiente.
+
+  Rango anterior, `>=0.4.2 <0.5`. El campo `identity.interlocutor_profile` del
   core se reexpone como parte de la identidad del request, y el rango exige la
   version que declara ese campo y su validacion. Comprobacion en vivo contra
   `v0.4.2`, pendiente.

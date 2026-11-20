@@ -5,6 +5,8 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+## [0.7.0] - 2026-11-20
+
 ### Anadido
 - REST y MCP renuevan al arrancar la cache del catalogo del core. Al preparar
   `turn_context`, se renueva tambien por edad mediante
