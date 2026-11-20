@@ -122,6 +122,30 @@ class WriteAuthorityError(MemoryError):
     """El principal no posee la capacidad de escritura."""
 
 
+class EntityError(ExtendedError):
+    """Base de los errores del registro de entidades."""
+
+
+class InvalidEntityError(EntityError):
+    """La entidad, clave o conjunto de hechos no satisface el esquema."""
+
+
+class EntityWriteAuthorityError(EntityError):
+    """El principal no es dueno de la parte de la fila que intenta escribir."""
+
+
+class EntityNotFoundError(EntityError):
+    """La clave solicitada no identifica una entidad."""
+
+
+class DuplicateEntityKeyError(EntityError):
+    """La clave externa ya pertenece a otra entidad vigente."""
+
+
+class InvalidEntitySeedError(EntityError):
+    """El fichero de siembra no es valido como unidad atomica."""
+
+
 class UnsupportedWriteError(MemoryError):
     """El modo de almacenamiento requiere otro contrato de escritura."""
 

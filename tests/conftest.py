@@ -422,6 +422,9 @@ def postgres_rag_store(postgres_store):
 
 _POSTGRES_DATA_TABLES = (
     "engrams",
+    "entity_seed_ownership",
+    "entity_versions",
+    "entity_keys",
     "entities",
     "memory_links",
     "sessions",

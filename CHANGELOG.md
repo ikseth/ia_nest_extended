@@ -5,6 +5,16 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+### Anadido
+- Registro versionado de entidades de `extended ADR 0016`: clase cerrada
+  `provider`, claves externas, partes `observed`/`curated` con autoridad por
+  principal, historico append-only, capacidades `entity.*` solo por CLI,
+  refresco por `IANEST_EXTENDED_PROVIDER_CEILING` y siembra TOML atomica desde
+  `ENTITIES_SEED`. `prompt.run`, `prompt.stream` y `domain.route` envian
+  `turn_context.trusted_providers` solo si el catalogo del core declara el
+  parametro, y `prompt.*` lo registra en telemetria. Cambio de contrato:
+  **MINOR**.
+
 ## [0.6.5] - 2026-11-06
 
 ### Corregido

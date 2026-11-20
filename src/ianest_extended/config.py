@@ -48,6 +48,7 @@ class ExtendedConfig:
     # sobre el fichero recordado, pero no sobre --session-id.
     cli_session_id: str | None = None
     catalog_cache_path: Path = field(default_factory=default_catalog_cache_path)
+    provider_ceiling: tuple[str, ...] = ()
     default_user_id: str = "local_operator"
     default_service: str = "local_cli"
     default_namespace: str = ""
@@ -140,6 +141,7 @@ class ExtendedConfig:
             "catalog_cache_path": Path(
                 _env("CATALOG_CACHE_PATH", str(defaults.catalog_cache_path))
             ).expanduser(),
+            "provider_ceiling": _env_csv("PROVIDER_CEILING", ()),
             "default_user_id": _env("DEFAULT_USER_ID", defaults.default_user_id),
             "default_service": _env("DEFAULT_SERVICE", defaults.default_service),
             "default_namespace": _env(
@@ -279,6 +281,16 @@ class ExtendedConfig:
         return config
 
     def validate(self) -> None:
+        if any(not value.strip() for value in self.provider_ceiling):
+            raise ExtendedConfigError(
+                "provider_ceiling no admite nombres vacios",
+                "provider_ceiling",
+            )
+        if len(set(self.provider_ceiling)) != len(self.provider_ceiling):
+            raise ExtendedConfigError(
+                "provider_ceiling no admite nombres repetidos",
+                "provider_ceiling",
+            )
         for name in (
             "embedding_dimension",
             "rest_port",

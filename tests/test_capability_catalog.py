@@ -73,13 +73,24 @@ def test_own_catalog_declares_all_implemented_capabilities_and_explicit_gaps():
     assert "knowledge.ingest" in by_name
     assert "knowledge.retrieve" not in by_name
     assert "knowledge.corpus.list" not in by_name
-    assert all(item.rest is not None for item in by_name.values())
+    entity_names = {name for name in by_name if name.startswith("entity.")}
+    assert entity_names == {
+        "entity.apply", "entity.get", "entity.history", "entity.list",
+        "entity.put", "entity.refresh", "entity.retire",
+    }
+    assert all(by_name[name].rest is None for name in entity_names)
+    assert all(by_name[name].mcp is None for name in entity_names)
+    assert all(
+        item.rest is not None
+        for name, item in by_name.items()
+        if name not in entity_names
+    )
     assert by_name["prompt.stream"].mcp is None
     assert by_name["reasoning.stream"].mcp is None
     assert all(
         item.mcp is not None
         for item in by_name.values()
-        if not item.streaming
+        if not item.streaming and not item.name.startswith("entity.")
     )
 
 

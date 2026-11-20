@@ -29,11 +29,14 @@ readonly -a CONFIG_KEYS=(
   EMBEDDING_MODEL EMBEDDING_DIMENSION EXTRACTION_MODEL REST_HOST REST_PORT
   MCP_HOST MCP_PORT SERVICE_INSTALL SERVICE_ENABLE VERIFY CORPUS_PATH
   CORPUS_NAME CORPUS_DOMAINS CORPUS_MANIFEST OPERATOR_USER REPLACE_CONFIG
+  PROVIDER_CEILING ENTITIES_SEED
 )
 readonly -a OWN_CAPABILITIES=(
   memory_type.list memory_type.validate memory.recall memory.write
   memory.consolidate memory.maintain knowledge.ingest knowledge.status
   knowledge.suggest knowledge.confirm knowledge.reject
+  entity.put entity.retire entity.get entity.list entity.history entity.refresh
+  entity.apply
 )
 declare -Ar GENERATED_EXTENDED_ENV_OPTIONS=(
   [IANEST_EXTENDED_CORE_URL]='CORE_URL / --core-url'
@@ -47,6 +50,7 @@ declare -Ar GENERATED_EXTENDED_ENV_OPTIONS=(
   [IANEST_EXTENDED_TELEMETRY_DIR]='derivada de INSTANCE_NAME / --instance-name (sin override directo)'
   [IANEST_EXTENDED_SESSION_STATE_PATH]='derivada de INSTANCE_NAME / --instance-name (sin override directo)'
   [IANEST_EXTENDED_CATALOG_CACHE_PATH]='derivada de INSTANCE_NAME / --instance-name (sin override directo)'
+  [IANEST_EXTENDED_PROVIDER_CEILING]='PROVIDER_CEILING / --provider-ceiling'
 )
 
 declare -A VALUES=(
@@ -69,6 +73,8 @@ declare -A VALUES=(
   [CORPUS_NAME]=''
   [CORPUS_DOMAINS]=''
   [CORPUS_MANIFEST]=''
+  [PROVIDER_CEILING]=''
+  [ENTITIES_SEED]=''
   [OPERATOR_USER]="${SUDO_USER:-$(id -un)}"
   [REPLACE_CONFIG]=false
 )
@@ -106,6 +112,7 @@ Overrides:
   --verify strict|warn|skip  --corpus-path PATH
   --corpus-name NAME         --corpus-domains D1,D2
   --corpus-manifest PATH
+  --provider-ceiling N1,N2  --entities-seed PATH
   --operator-user USER       --replace-config BOOL
 EOF
 }
@@ -271,6 +278,10 @@ validate_config() {
     MANIFEST_CORPUS_DOMAINS=()
     MANIFEST_CORPUS_PATHS=()
   fi
+  if [[ -n "${VALUES[ENTITIES_SEED]}" ]]; then
+    [[ -r "${VALUES[ENTITIES_SEED]}" && -f "${VALUES[ENTITIES_SEED]}" ]] ||
+      error "ENTITIES_SEED no es un fichero legible: ${VALUES[ENTITIES_SEED]}"
+  fi
 }
 
 print_config() {
@@ -352,6 +363,7 @@ write_environment() {
     printf 'IANEST_EXTENDED_TELEMETRY_DIR=%s\n' "${STATE_DIR}/telemetry"
     printf 'IANEST_EXTENDED_SESSION_STATE_PATH=%s\n' "${STATE_DIR}/session_id"
     printf 'IANEST_EXTENDED_CATALOG_CACHE_PATH=%s\n' "${STATE_DIR}/catalog_cache.json"
+    printf 'IANEST_EXTENDED_PROVIDER_CEILING=%s\n' "${VALUES[PROVIDER_CEILING]}"
     for index in "${!EXTENDED_ENV_KEYS[@]}"; do
       printf '%s=%s\n' "${EXTENDED_ENV_KEYS[$index]}" "${EXTENDED_ENV_VALUES[$index]}"
     done
@@ -474,6 +486,15 @@ migrate_schema() {
     error "almacen no accesible o migracion fallida con STORE_DSN; causa: ${output:-sin detalle}"
   fi
   printf '%s\n' "$output"
+}
+
+refresh_and_seed_entities() {
+  log "Refrescando proveedores desde PROVIDER_CEILING."
+  extended_cli entity refresh || error "fallo entity.refresh"
+  [[ -n "${VALUES[ENTITIES_SEED]}" ]] || return 0
+  log "Aplicando siembra de entidades ${VALUES[ENTITIES_SEED]}."
+  extended_cli entity apply "${VALUES[ENTITIES_SEED]}" ||
+    error "fallo entity.apply para ENTITIES_SEED=${VALUES[ENTITIES_SEED]}"
 }
 
 ingest_corpus() {
@@ -691,7 +712,7 @@ while (($# > 0)); do
   case "$1" in
     --config) (($# >= 2)) || error "--config requiere una ruta"; CONFIG_FILE="$2"; shift 2 ;;
     --print-config) PRINT_CONFIG=true; shift ;;
-    --instance-name|--store-dsn|--provision-store|--core-url|--embeddings-endpoint|--embedding-model|--embedding-dimension|--extraction-model|--rest-host|--rest-port|--mcp-host|--mcp-port|--service-install|--service-enable|--verify|--corpus-path|--corpus-name|--corpus-domains|--corpus-manifest|--operator-user|--replace-config)
+    --instance-name|--store-dsn|--provision-store|--core-url|--embeddings-endpoint|--embedding-model|--embedding-dimension|--extraction-model|--rest-host|--rest-port|--mcp-host|--mcp-port|--service-install|--service-enable|--verify|--corpus-path|--corpus-name|--corpus-domains|--corpus-manifest|--provider-ceiling|--entities-seed|--operator-user|--replace-config)
       (($# >= 2)) || error "$1 requiere un valor"
       key="${1#--}"; key="${key//-/_}"; set_argument "${key^^}" "$2"; shift 2 ;;
     --help|-h) usage; exit 0 ;;
@@ -721,6 +742,7 @@ chown -R "${VALUES[OPERATOR_USER]}" "$STATE_DIR"
 provision_store
 prepare_venv
 migrate_schema
+refresh_and_seed_entities
 ingest_corpus
 chown -R "${VALUES[OPERATOR_USER]}" "$STATE_DIR"
 install_commands

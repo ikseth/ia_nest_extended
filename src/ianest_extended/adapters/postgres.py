@@ -13,10 +13,14 @@ import psycopg
 from psycopg.rows import dict_row
 
 from ..errors import (
+    DuplicateEntityKeyError,
+    EntityNotFoundError,
+    EntityWriteAuthorityError,
     EngramNotFoundError,
     InvalidConsolidationEventError,
     InvalidEmbeddingDimensionError,
     InvalidEngramError,
+    InvalidEntityError,
     InvalidMemoryTypeError,
     SchemaMigrationRequiredError,
     SessionAlreadyExistsError,
@@ -31,7 +35,9 @@ from ..models import (
     Engram,
     EngramStatus,
     EngramWrite,
+    Entity,
     EntityProfile,
+    EntityVersion,
     MemoryClass,
     MemoryIdentity,
     MemoryType,
@@ -48,6 +54,7 @@ from ..models import (
 from ..migrations import migration_resource
 from ..ports import Embedder
 from ..registry import MemoryTypeRegistry, derive_memory_key, seed_memory_types
+from ..entities import SeedDocument, split_entity_key, validate_facts
 
 
 class PostgresMemoryStore:
@@ -74,6 +81,9 @@ class PostgresMemoryStore:
         self._thread_artifacts_migration_path = (
             _default_thread_artifacts_migration_path()
         )
+        self._entity_registry_migration_path = migration_resource(
+            "0008_entity_registry.sql"
+        )
 
     def verify_schema(self) -> None:
         """Comprueba el esquema SIN mutarlo (migracion explicita, ADR 0011)."""
@@ -83,6 +93,9 @@ class PostgresMemoryStore:
                 "engrams",
                 "memory_links",
                 "sessions",
+                "entity_keys",
+                "entity_versions",
+                "entity_seed_ownership",
             ):
                 exists = connection.execute(
                     "SELECT to_regclass(%s) AS relation",
@@ -173,6 +186,9 @@ class PostgresMemoryStore:
             )
             connection.execute(
                 self._thread_artifacts_migration_path.read_text(encoding="ascii")
+            )
+            connection.execute(
+                self._entity_registry_migration_path.read_text(encoding="ascii")
             )
             self._ensure_embedding_dimension(connection)
         for memory_type in seed_memory_types():
@@ -422,33 +438,494 @@ class PostgresMemoryStore:
             entity.id,
         )
         with self._connect() as connection:
+            current = connection.execute(
+                "SELECT * FROM entities WHERE id = %s FOR UPDATE",
+                (entity.id,),
+            ).fetchone()
+            if current is not None and (
+                current["kind"] == entity.kind
+                and current["name"] == entity.name
+                and tuple(current["aliases"]) == tuple(entity.aliases)
+                and current["profile"] == entity.profile
+                and current["curated"] == entity.profile
+                and current["status"] == entity.status
+            ):
+                return _entity_from_row(current)
+            if current is None:
+                row = connection.execute(
+                    """
+                    INSERT INTO entities (
+                        id, kind, name, aliases, profile, curated, status, version
+                    ) VALUES (%s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s)
+                    RETURNING *
+                    """,
+                    (
+                        entity.id, entity.kind, entity.name, list(entity.aliases),
+                        json.dumps(entity.profile), json.dumps(entity.profile),
+                        entity.status, entity.version,
+                    ),
+                ).fetchone()
+            else:
+                row = connection.execute(
+                    """
+                    UPDATE entities SET kind = %s, name = %s, aliases = %s,
+                        profile = %s::jsonb, curated = %s::jsonb, status = %s,
+                        version = version + 1, updated_at = now()
+                    WHERE id = %s RETURNING *
+                    """,
+                    (
+                        entity.kind, entity.name, list(entity.aliases),
+                        json.dumps(entity.profile), json.dumps(entity.profile),
+                        entity.status, entity.id,
+                    ),
+                ).fetchone()
+            self._append_entity_version(connection, row, principal, "cli")
+        return _entity_from_row(row)
+
+    # --- registro de entidades (extended ADR 0016) -----------------------
+
+    def put_entity(
+        self,
+        principal: Principal,
+        key: str,
+        kind: str,
+        *,
+        observed: dict[str, Any] | None = None,
+        curated: dict[str, Any] | None = None,
+        origin: str = "cli",
+    ) -> Entity:
+        observed_patch = dict(observed or {})
+        curated_patch = dict(curated or {})
+        self._validate_entity_write(
+            principal, kind, observed_patch, curated_patch
+        )
+        namespace, external_id = split_entity_key(key)
+        if namespace != kind:
+            raise InvalidEntityError(
+                "el namespace de la clave debe coincidir con kind", "key"
+            )
+        with self._connect() as connection:
+            row, _ = self._put_entity_in_transaction(
+                connection,
+                principal,
+                namespace,
+                external_id,
+                kind,
+                observed_patch,
+                curated_patch,
+                origin,
+            )
+        return _entity_from_registry_row(row, key=key)
+
+    def retire_entity(
+        self,
+        principal: Principal,
+        key: str,
+        *,
+        origin: str = "cli",
+    ) -> Entity:
+        if principal not in {
+            Principal.EXTENDED,
+            Principal.OPERATOR,
+            Principal.CONSCIENCE,
+        }:
+            raise EntityWriteAuthorityError(
+                f"{principal.value!r} no puede retirar entidades"
+            )
+        namespace, external_id = split_entity_key(key)
+        with self._connect() as connection:
+            row = self._entity_by_key(
+                connection, namespace, external_id, current_only=True, lock=True
+            )
+            if row is None:
+                raise EntityNotFoundError(f"entidad no encontrada: {key!r}", "key")
+            row, _ = self._retire_entity_in_transaction(
+                connection, row, principal, origin
+            )
+        return _entity_from_registry_row(row, key=key)
+
+    def get_entity(self, key: str) -> Entity:
+        namespace, external_id = split_entity_key(key)
+        with self._connect() as connection:
+            row = self._entity_by_key(connection, namespace, external_id)
+        if row is None:
+            raise EntityNotFoundError(f"entidad no encontrada: {key!r}", "key")
+        return _entity_from_registry_row(row, key=key)
+
+    def list_entities(
+        self, *, kind: str | None = None, status: str | None = None
+    ) -> tuple[Entity, ...]:
+        clauses = []
+        values: list[Any] = []
+        if kind is not None:
+            clauses.append("e.kind = %s")
+            values.append(kind)
+        if status is not None:
+            if status not in {"active", "retired"}:
+                raise InvalidEntityError("status debe ser active o retired", "status")
+            clauses.append("e.status = %s")
+            values.append(status)
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT e.*, k.namespace, k.external_id
+                FROM entities e
+                LEFT JOIN LATERAL (
+                    SELECT namespace, external_id
+                    FROM entity_keys
+                    WHERE entity_id = e.id
+                    ORDER BY (retired_at IS NULL) DESC, added_at DESC
+                    LIMIT 1
+                ) k ON true
+                """ + where + " ORDER BY e.kind, e.name, e.id",
+                values,
+            ).fetchall()
+        return tuple(
+            _entity_from_registry_row(
+                row,
+                key=(
+                    f"{row['namespace']}:{row['external_id']}"
+                    if row["namespace"] is not None
+                    else None
+                ),
+            )
+            for row in rows
+        )
+
+    def entity_history(self, key: str) -> tuple[EntityVersion, ...]:
+        namespace, external_id = split_entity_key(key)
+        with self._connect() as connection:
+            entity = self._entity_by_key(connection, namespace, external_id)
+            if entity is None:
+                raise EntityNotFoundError(f"entidad no encontrada: {key!r}", "key")
+            rows = connection.execute(
+                "SELECT * FROM entity_versions WHERE entity_id = %s ORDER BY version",
+                (entity["id"],),
+            ).fetchall()
+        return tuple(_entity_version_from_row(row) for row in rows)
+
+    def refresh_providers(
+        self, provider_ceiling: tuple[str, ...]
+    ) -> dict[str, list[str]]:
+        desired = tuple(dict.fromkeys(provider_ceiling))
+        result = {"created": [], "changed": [], "retired": []}
+        with self._connect() as connection:
+            for name in desired:
+                row, changed = self._put_entity_in_transaction(
+                    connection,
+                    Principal.EXTENDED,
+                    "provider",
+                    name,
+                    "provider",
+                    {"name": name},
+                    {},
+                    f"refresh:{name}",
+                )
+                if changed == "created":
+                    result["created"].append(f"provider:{name}")
+                elif changed:
+                    result["changed"].append(f"provider:{name}")
+            rows = connection.execute(
+                """
+                SELECT e.*, k.namespace, k.external_id
+                FROM entities e JOIN entity_keys k ON k.entity_id = e.id
+                WHERE e.kind = 'provider' AND e.status = 'active'
+                  AND k.namespace = 'provider' AND k.retired_at IS NULL
+                FOR UPDATE OF e, k
+                """
+            ).fetchall()
+            ceiling = set(desired)
+            for row in rows:
+                if row["external_id"] in ceiling:
+                    continue
+                self._retire_entity_in_transaction(
+                    connection,
+                    row,
+                    Principal.EXTENDED,
+                    f"refresh:{row['external_id']}",
+                )
+                result["retired"].append(f"provider:{row['external_id']}")
+        return result
+
+    def trusted_providers(
+        self, provider_ceiling: tuple[str, ...]
+    ) -> tuple[str, ...]:
+        if not provider_ceiling:
+            return ()
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT k.external_id
+                FROM entities e JOIN entity_keys k ON k.entity_id = e.id
+                WHERE e.kind = 'provider' AND e.status = 'active'
+                  AND k.namespace = 'provider' AND k.retired_at IS NULL
+                  AND e.curated @> '{"trusted": true}'::jsonb
+                  AND k.external_id = ANY(%s)
+                ORDER BY k.external_id
+                """,
+                (list(provider_ceiling),),
+            ).fetchall()
+        return tuple(row["external_id"] for row in rows)
+
+    def apply_entity_seed(
+        self, seed: SeedDocument, *, plan: bool = False
+    ) -> dict[str, list[dict[str, Any]]]:
+        result: dict[str, list[dict[str, Any]]] = {
+            "create": [], "change": [], "retire": []
+        }
+        desired = {entry.key: entry for entry in seed.entries}
+        with self._connect() as connection:
+            ownership_rows = connection.execute(
+                """
+                SELECT o.*, e.*, k.namespace, k.external_id
+                FROM entity_seed_ownership o
+                JOIN entities e ON e.id = o.entity_id
+                LEFT JOIN LATERAL (
+                    SELECT namespace, external_id FROM entity_keys
+                    WHERE entity_id = e.id ORDER BY (retired_at IS NULL) DESC,
+                    added_at DESC LIMIT 1
+                ) k ON true
+                FOR UPDATE OF o, e
+                """
+            ).fetchall()
+            owned_by_key = {
+                f"{row['namespace']}:{row['external_id']}": row
+                for row in ownership_rows if row["namespace"] is not None
+            }
+            for entry in seed.entries:
+                namespace, external_id = split_entity_key(entry.key)
+                current = self._entity_by_key(
+                    connection, namespace, external_id, lock=True
+                )
+                previous_owner = owned_by_key.get(entry.key)
+                previous_keys = set(
+                    previous_owner["curated_keys"] if previous_owner else ()
+                )
+                current_curated = dict(current["curated"]) if current else {}
+                target_curated = dict(current_curated)
+                for fact in previous_keys - set(entry.curated):
+                    target_curated.pop(fact, None)
+                target_curated.update(entry.curated)
+                if current is None:
+                    action = "create"
+                elif (
+                    current["status"] != "active"
+                    or current["kind"] != entry.kind
+                    or current_curated != target_curated
+                ):
+                    action = "change"
+                else:
+                    action = ""
+                if action:
+                    result[action].append({"key": entry.key})
+                if not plan:
+                    row, _ = self._put_entity_in_transaction(
+                        connection,
+                        Principal.OPERATOR,
+                        namespace,
+                        external_id,
+                        entry.kind,
+                        {},
+                        target_curated,
+                        seed.origin,
+                        replace_curated=True,
+                    )
+                    connection.execute(
+                        """
+                        INSERT INTO entity_seed_ownership (
+                            entity_id, owns_entity, curated_keys
+                        ) VALUES (%s, %s, %s)
+                        ON CONFLICT (entity_id) DO UPDATE SET
+                            curated_keys = EXCLUDED.curated_keys
+                        """,
+                        (
+                            row["id"],
+                            current is None
+                            or bool(previous_owner and previous_owner["owns_entity"]),
+                            list(entry.curated),
+                        ),
+                    )
+            for key, owner in owned_by_key.items():
+                if key in desired:
+                    continue
+                if owner["owns_entity"]:
+                    if owner["status"] == "active":
+                        result["retire"].append({"key": key})
+                        if not plan:
+                            self._retire_entity_in_transaction(
+                                connection, owner, Principal.OPERATOR, seed.origin
+                            )
+                    # Se conserva `owns_entity`: si vuelve a aparecer y vuelve
+                    # a desaparecer, sigue siendo una entidad de la siembra.
+                    continue
+                if owner["curated_keys"]:
+                    curated = dict(owner["curated"])
+                    for fact in owner["curated_keys"]:
+                        curated.pop(fact, None)
+                    if curated != owner["curated"]:
+                        result["change"].append({"key": key})
+                        if not plan:
+                            namespace, external_id = split_entity_key(key)
+                            self._put_entity_in_transaction(
+                                connection, Principal.OPERATOR, namespace,
+                                external_id, owner["kind"], {}, curated,
+                                seed.origin, replace_curated=True,
+                            )
+                if not plan:
+                    connection.execute(
+                        "DELETE FROM entity_seed_ownership WHERE entity_id = %s",
+                        (owner["id"],),
+                    )
+            if plan:
+                connection.rollback()
+        return result
+
+    @staticmethod
+    def _validate_entity_write(
+        principal: Principal,
+        kind: str,
+        observed: dict[str, Any],
+        curated: dict[str, Any],
+    ) -> None:
+        validate_facts(kind, "observed", observed)
+        validate_facts(kind, "curated", curated)
+        if observed and principal is not Principal.EXTENDED:
+            raise EntityWriteAuthorityError(
+                f"{principal.value!r} no puede escribir hechos observed",
+                next(iter(observed)),
+            )
+        if curated and principal not in {Principal.OPERATOR, Principal.CONSCIENCE}:
+            raise EntityWriteAuthorityError(
+                f"{principal.value!r} no puede escribir hechos curated",
+                next(iter(curated)),
+            )
+
+    def _put_entity_in_transaction(
+        self,
+        connection,
+        principal: Principal,
+        namespace: str,
+        external_id: str,
+        kind: str,
+        observed_patch: dict[str, Any],
+        curated_patch: dict[str, Any],
+        origin: str,
+        *,
+        replace_curated: bool = False,
+    ):
+        self._validate_entity_write(principal, kind, observed_patch, curated_patch)
+        current = self._entity_by_key(
+            connection, namespace, external_id, lock=True
+        )
+        if current is not None and current["kind"] != kind:
+            raise DuplicateEntityKeyError(
+                f"la clave {namespace}:{external_id} pertenece a otra clase", "key"
+            )
+        if current is None:
+            entity_id = uuid4()
+            observed = dict(observed_patch)
+            curated = dict(curated_patch)
+            name = observed.get("name", external_id)
             row = connection.execute(
                 """
                 INSERT INTO entities (
-                    id, kind, name, aliases, profile, status, version
-                )
-                VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s)
-                ON CONFLICT (id) DO UPDATE SET
-                    kind = EXCLUDED.kind,
-                    name = EXCLUDED.name,
-                    aliases = EXCLUDED.aliases,
-                    profile = EXCLUDED.profile,
-                    status = EXCLUDED.status,
-                    version = entities.version + 1,
-                    updated_at = now()
-                RETURNING *
+                    id, kind, name, aliases, profile, observed, curated,
+                    status, version, retired_at
+                ) VALUES (%s, %s, %s, '{}', %s::jsonb, %s::jsonb, %s::jsonb,
+                          'active', 1, NULL) RETURNING *
                 """,
-                (
-                    entity.id,
-                    entity.kind,
-                    entity.name,
-                    list(entity.aliases),
-                    json.dumps(entity.profile),
-                    entity.status,
-                    entity.version,
-                ),
+                (entity_id, kind, name, json.dumps(curated),
+                 json.dumps(observed), json.dumps(curated)),
             ).fetchone()
-        return _entity_from_row(row)
+            connection.execute(
+                """INSERT INTO entity_keys (namespace, external_id, entity_id)
+                   VALUES (%s, %s, %s)""",
+                (namespace, external_id, entity_id),
+            )
+            self._append_entity_version(connection, row, principal, origin)
+            return row, "created"
+        observed = dict(current["observed"])
+        observed.update(observed_patch)
+        curated = (
+            dict(curated_patch)
+            if replace_curated
+            else dict(current["curated"])
+        )
+        if not replace_curated:
+            curated.update(curated_patch)
+        name = observed.get("name", current["name"])
+        changed = (
+            observed != current["observed"] or curated != current["curated"]
+            or name != current["name"] or current["status"] != "active"
+        )
+        if not changed:
+            return current, ""
+        row = connection.execute(
+            """
+            UPDATE entities SET name = %s, profile = %s::jsonb,
+                observed = %s::jsonb, curated = %s::jsonb, status = 'active',
+                retired_at = NULL, version = version + 1, updated_at = now()
+            WHERE id = %s RETURNING *
+            """,
+            (name, json.dumps(curated), json.dumps(observed), json.dumps(curated),
+             current["id"]),
+        ).fetchone()
+        connection.execute(
+            """UPDATE entity_keys SET retired_at = NULL
+               WHERE entity_id = %s AND namespace = %s AND external_id = %s""",
+            (current["id"], namespace, external_id),
+        )
+        self._append_entity_version(connection, row, principal, origin)
+        return row, "changed"
+
+    def _retire_entity_in_transaction(self, connection, current, principal, origin):
+        if current["status"] == "retired":
+            return current, False
+        row = connection.execute(
+            """UPDATE entities SET status = 'retired', retired_at = now(),
+                   version = version + 1, updated_at = now()
+               WHERE id = %s RETURNING *""",
+            (current["id"],),
+        ).fetchone()
+        connection.execute(
+            "UPDATE entity_keys SET retired_at = now() WHERE entity_id = %s AND retired_at IS NULL",
+            (current["id"],),
+        )
+        self._append_entity_version(connection, row, principal, origin)
+        return row, True
+
+    @staticmethod
+    def _append_entity_version(connection, row, principal, origin) -> None:
+        connection.execute(
+            """
+            INSERT INTO entity_versions (
+                entity_id, version, kind, name, aliases, observed, curated,
+                status, author, origin
+            ) VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s)
+            """,
+            (row["id"], row["version"], row["kind"], row["name"],
+             list(row["aliases"]), json.dumps(row["observed"]),
+             json.dumps(row["curated"]), row["status"], principal.value, origin),
+        )
+
+    @staticmethod
+    def _entity_by_key(
+        connection, namespace: str, external_id: str, *,
+        current_only: bool = False, lock: bool = False,
+    ):
+        current = "AND k.retired_at IS NULL" if current_only else ""
+        order = "ORDER BY (k.retired_at IS NULL) DESC, k.added_at DESC"
+        lock_sql = "FOR UPDATE OF e, k" if lock else ""
+        return connection.execute(
+            f"""
+            SELECT e.*, k.namespace, k.external_id, k.retired_at AS key_retired_at
+            FROM entity_keys k JOIN entities e ON e.id = k.entity_id
+            WHERE k.namespace = %s AND k.external_id = %s {current}
+            {order} LIMIT 1 {lock_sql}
+            """,
+            (namespace, external_id),
+        ).fetchone()
 
     def recall(self, query: RecallQuery) -> tuple[RecallItem, ...]:
         if not query.type_names:
@@ -1630,6 +2107,41 @@ def _entity_from_row(row: dict[str, Any]) -> EntityProfile:
         version=row["version"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
+    )
+
+
+def _entity_from_registry_row(
+    row: dict[str, Any], *, key: str | None
+) -> Entity:
+    return Entity(
+        id=row["id"],
+        kind=row["kind"],
+        name=row["name"],
+        aliases=tuple(row["aliases"]),
+        observed=dict(row["observed"]),
+        curated=dict(row["curated"]),
+        status=row["status"],
+        version=row["version"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+        retired_at=row["retired_at"],
+        key=key,
+    )
+
+
+def _entity_version_from_row(row: dict[str, Any]) -> EntityVersion:
+    return EntityVersion(
+        entity_id=row["entity_id"],
+        version=row["version"],
+        kind=row["kind"],
+        name=row["name"],
+        aliases=tuple(row["aliases"]),
+        observed=dict(row["observed"]),
+        curated=dict(row["curated"]),
+        status=row["status"],
+        author=Principal(row["author"]),
+        origin=row["origin"],
+        created_at=row["created_at"],
     )
 
 

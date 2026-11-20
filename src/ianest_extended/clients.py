@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import json
 import math
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from http.client import HTTPConnection, HTTPException, HTTPSConnection
 from typing import Any
+from pathlib import Path
 from urllib.parse import urlsplit
 
+from .catalog_cache import read_catalog_cache
 from .errors import (
     CoreConnectionError,
     CoreResponseError,
@@ -151,7 +153,10 @@ class CoreClient:
         connect_timeout_seconds: float = DEFAULT_CONNECT_TIMEOUT_SECONDS,
         inactivity_timeout_seconds: float = DEFAULT_INACTIVITY_TIMEOUT_SECONDS,
         task_timeout_seconds: float = 600.0,
+        catalog_cache_path: Path | None = None,
+        trusted_providers: Callable[[], tuple[str, ...]] | None = None,
     ) -> None:
+        self._catalog_core_url = base_url
         self._base_url = base_url.rstrip("/")
         self._timeouts = Timeouts(
             connect_seconds=connect_timeout_seconds,
@@ -162,6 +167,39 @@ class CoreClient:
             inactivity_seconds=task_timeout_seconds,
         )
         self._domain_ids: tuple[str, ...] | None = None
+        self._catalog_cache_path = catalog_cache_path
+        self._trusted_providers = trusted_providers
+
+    def turn_context(self, capability: str) -> tuple[bool, tuple[str, ...]]:
+        """Devuelve contexto solo si el catalogo cacheado declara el parametro."""
+        if self._catalog_cache_path is None:
+            return False, ()
+        catalog = read_catalog_cache(
+            self._catalog_cache_path, core_url=self._catalog_core_url
+        )
+        if catalog is None:
+            return False, ()
+        declared = next(
+            (
+                item for item in catalog["capabilities"]
+                if item.get("name") == capability
+            ),
+            None,
+        )
+        if declared is None or not any(
+            isinstance(param, dict) and param.get("name") == "turn_context"
+            for param in declared.get("params", [])
+        ):
+            return False, ()
+        providers = self._trusted_providers() if self._trusted_providers else ()
+        return True, tuple(sorted(providers))
+
+    def _add_turn_context(
+        self, capability: str, payload: dict[str, Any]
+    ) -> None:
+        sent, providers = self.turn_context(capability)
+        if sent:
+            payload["turn_context"] = {"trusted_providers": list(providers)}
 
     # --- reenvio generico (opaco) -----------------------------------------
 
@@ -248,6 +286,7 @@ class CoreClient:
             payload["model"] = model
         if domain is not None:
             payload["domain"] = domain
+        self._add_turn_context("prompt.run", payload)
         data = self._post_json("/prompt/run", payload)
         if not isinstance(data.get("response"), str):
             raise CoreResponseError("el core no devolvio response como texto")
@@ -304,6 +343,7 @@ class CoreClient:
             identity,
             model=model,
             domain=domain,
+            capability="prompt.stream",
         )
 
     def reasoning_stream(
@@ -330,6 +370,7 @@ class CoreClient:
         *,
         model: str | None,
         domain: str | None,
+        capability: str | None = None,
     ) -> ForwardedStream:
         payload: dict[str, Any] = {
             "prompt": prompt,
@@ -339,6 +380,8 @@ class CoreClient:
             payload["model"] = model
         if domain is not None:
             payload["domain"] = domain
+        if capability is not None:
+            self._add_turn_context(capability, payload)
         connection, response = _open(
             f"{self._base_url}{route}",
             "POST",
@@ -433,10 +476,9 @@ class CoreClient:
         prompt: str,
         identity: MemoryIdentity,
     ) -> DomainRouteResult:
-        data = self._post_json(
-            "/domain/route",
-            {"prompt": prompt, "identity": identity.to_core_dict()},
-        )
+        payload = {"prompt": prompt, "identity": identity.to_core_dict()}
+        self._add_turn_context("domain.route", payload)
+        data = self._post_json("/domain/route", payload)
         domain = data.get("domain")
         confidence = data.get("confidence")
         reason = data.get("reason")

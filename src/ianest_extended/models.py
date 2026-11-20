@@ -17,6 +17,7 @@ class MemoryClass(StrEnum):
 class Principal(StrEnum):
     EXTENDED = "extended"
     CONSCIENCE = "conscience"
+    OPERATOR = "operator"
 
 
 class RetrievalMode(StrEnum):
@@ -212,6 +213,37 @@ class EntityProfile:
     version: int = 1
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Entity:
+    id: UUID
+    kind: str
+    name: str
+    aliases: tuple[str, ...]
+    observed: dict[str, Any]
+    curated: dict[str, Any]
+    status: str
+    version: int
+    created_at: datetime
+    updated_at: datetime
+    retired_at: datetime | None = None
+    key: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class EntityVersion:
+    entity_id: UUID
+    version: int
+    kind: str
+    name: str
+    aliases: tuple[str, ...]
+    observed: dict[str, Any]
+    curated: dict[str, Any]
+    status: str
+    author: Principal
+    origin: str
+    created_at: datetime
 
 
 @dataclass(frozen=True, slots=True)

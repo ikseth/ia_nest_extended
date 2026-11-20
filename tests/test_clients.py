@@ -9,6 +9,7 @@ from ianest_extended import (
     InvalidEmbeddingDimensionError,
     MemoryIdentity,
     OllamaEmbedder,
+    write_catalog_cache,
 )
 
 
@@ -77,6 +78,59 @@ def test_core_client_routes_domain(local_service_stub):
     path, payload = local_service_stub.requests[-1]
     assert path == "/domain/route"
     assert payload == {"prompt": "administra linux", "identity": {"user_id": "u"}}
+
+
+def test_turn_context_only_when_declared_in_cached_catalog(
+    local_service_stub, tmp_path
+):
+    cache = tmp_path / "catalog.json"
+    client = CoreClient(
+        local_service_stub.base_url,
+        connect_timeout_seconds=2,
+        catalog_cache_path=cache,
+        trusted_providers=lambda: ("zeta", "casa_ha"),
+    )
+    write_catalog_cache(
+        cache,
+        core_url=local_service_stub.base_url,
+        core_version="next",
+        capabilities=[
+            {"name": "prompt.run", "params": []},
+            {"name": "prompt.stream", "params": [{"name": "turn_context"}]},
+            {"name": "domain.route", "params": [{"name": "turn_context"}]},
+        ],
+    )
+
+    client.prompt_run("hola", MemoryIdentity(user_id="u"))
+    assert "turn_context" not in local_service_stub.requests[-1][1]
+
+    stream = client.prompt_stream("hola", MemoryIdentity(user_id="u"))
+    list(stream)
+    stream_payload = next(
+        payload for path, payload in reversed(local_service_stub.requests)
+        if path == "/prompt/stream"
+    )
+    assert stream_payload["turn_context"] == {
+        "trusted_providers": ["casa_ha", "zeta"]
+    }
+
+    client.domain_route("linux", MemoryIdentity(user_id="u"))
+    assert local_service_stub.requests[-1][1]["turn_context"] == {
+        "trusted_providers": ["casa_ha", "zeta"]
+    }
+
+    write_catalog_cache(
+        cache,
+        core_url=local_service_stub.base_url,
+        core_version="next",
+        capabilities=[
+            {"name": "prompt.run", "params": [{"name": "turn_context"}]},
+        ],
+    )
+    client.prompt_run("hola", MemoryIdentity(user_id="u"))
+    assert local_service_stub.requests[-1][1]["turn_context"] == {
+        "trusted_providers": ["casa_ha", "zeta"]
+    }
 
 
 def test_core_client_lists_domains_once_per_client(local_service_stub):

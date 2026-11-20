@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import datetime
-from typing import Protocol
+from typing import Any, Protocol
 from uuid import UUID
 
 from .models import (
@@ -13,6 +13,8 @@ from .models import (
     Engram,
     EngramWrite,
     EntityProfile,
+    Entity,
+    EntityVersion,
     MemoryIdentity,
     MemoryType,
     Principal,
@@ -65,6 +67,36 @@ class MemoryStore(Protocol):
 
     def recall(self, query: RecallQuery) -> Sequence[RecallItem]:
         """Recupera segun el modo declarado por cada tipo."""
+
+    def put_entity(self, principal: Principal, key: str, kind: str, **kwargs) -> Entity:
+        """Crea o cambia una entidad por clave externa."""
+
+    def retire_entity(self, principal: Principal, key: str, **kwargs) -> Entity:
+        """Retira una entidad sin borrarla."""
+
+    def get_entity(self, key: str) -> Entity:
+        """Obtiene la version actual por clave, incluida una retirada."""
+
+    def list_entities(self, **kwargs) -> Sequence[Entity]:
+        """Lista el registro actual."""
+
+    def entity_history(self, key: str) -> Sequence[EntityVersion]:
+        """Lista el historico append-only de una entidad."""
+
+    def refresh_providers(
+        self, provider_ceiling: tuple[str, ...]
+    ) -> dict[str, list[str]]:
+        """Reconcilia proveedores observados con el techo operativo."""
+
+    def trusted_providers(
+        self, provider_ceiling: tuple[str, ...]
+    ) -> tuple[str, ...]:
+        """Lista proveedores activos, confiados y dentro del techo."""
+
+    def apply_entity_seed(
+        self, seed: Any, *, plan: bool = False
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Planifica o aplica una siembra ya validada como unidad."""
 
     def recent_dialogs(
         self,

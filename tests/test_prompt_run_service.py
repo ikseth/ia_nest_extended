@@ -11,6 +11,7 @@ from ianest_extended import (
     ExtendedService,
     MemoryIdentity,
     RagUnavailableError,
+    write_catalog_cache,
 )
 
 from .fakes import InMemoryRagStore, InMemoryStore
@@ -24,6 +25,7 @@ def _config(tmp_path, local_service_stub, **changes):
         database_dsn=CLOSED_DSN,
         telemetry_dir=tmp_path,
         session_state_path=tmp_path / "session_id",
+        catalog_cache_path=tmp_path / "catalog_cache.json",
         embedding_dimension=2,
         knowledge_gate_enabled=False,
         connect_timeout_seconds=5,
@@ -112,6 +114,40 @@ def test_passthrough_does_not_recall_inject_or_write(
         "write_back": 0,
     }
     assert events[0]["status"] == "ok"
+    assert events[0]["turn_context_sent"] is False
+
+
+def test_prompt_telemetry_records_trusted_providers_sent(
+    tmp_path, local_service_stub
+):
+    store = InMemoryStore()
+    store.trusted_providers = lambda ceiling: tuple(
+        name for name in ("zeta", "casa_ha") if name in ceiling
+    )
+    service = _service(
+        tmp_path,
+        local_service_stub,
+        store=store,
+        provider_ceiling=("zeta", "casa_ha"),
+    )
+    write_catalog_cache(
+        service.config.catalog_cache_path,
+        core_url=service.config.core_url,
+        core_version="next",
+        capabilities=[
+            {"name": "prompt.run", "params": [{"name": "turn_context"}]}
+        ],
+    )
+
+    service.prompt_run("hola", _identity(), enrich=False)
+
+    payload = next(
+        body for path, body in local_service_stub.requests if path == "/prompt/run"
+    )
+    assert payload["turn_context"] == {
+        "trusted_providers": ["casa_ha", "zeta"]
+    }
+    assert _events(tmp_path)[0]["trusted_providers"] == ["casa_ha", "zeta"]
 
 
 @pytest.mark.parametrize(

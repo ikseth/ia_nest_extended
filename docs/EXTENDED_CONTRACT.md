@@ -1,7 +1,7 @@
 # Contrato de ia_nest_extended
 
 Estado: activo
-Version: 1.2 - 2026-09-22
+Version: 1.3 - 2026-11-20
 
 Frontera publica de la capa de enriquecimiento, VIGENTE desde su primer tag
 (Fase 7d). Lo que aqui se declara es promesa, no objetivo. Que cuenta como
@@ -18,9 +18,10 @@ saber cuantas capas hay debajo.
 
 ## Interfaces publicas
 
-Las mismas capacidades por CLI, REST y MCP, como pieles finas de un unico
-servicio en proceso. Ninguna piel llama a otra: las tres llaman al mismo
-`ExtendedService`.
+Las capacidades de consumo usan CLI, REST y MCP como pieles finas de un unico
+servicio en proceso. Las capacidades administrativas `entity.*` son la
+excepcion explicita: solo se proyectan en la CLI local. Ninguna piel llama a
+otra.
 
 La REST escucha por defecto en `127.0.0.1:8001`, configurable con
 `IANEST_EXTENDED_REST_HOST` e `IANEST_EXTENDED_REST_PORT`. No autentica: la
@@ -78,7 +79,7 @@ capacidades de flujo quedan fuera de MCP y su proyeccion nula en
 |---|---|
 | **Reenviadas** sin alterar | las del core que esta capa no enriquece; hoy `runtime.health` y `config.validate` responden por el core, no por la pila |
 | **Sobreescritas** (compuestas o enriquecidas) | `capability.list`, `prompt.run`, `prompt.stream`, `reasoning.run`, `reasoning.stream`, `task.run` |
-| **Propias** | `memory_type.*`, `memory.*`, `knowledge.*`, `session.*` |
+| **Propias** | `memory_type.*`, `memory.*`, `knowledge.*`, `session.*`, `entity.*` |
 
 El reenvio es GENERICO: no hay codigo por capacidad. Una capacidad que el core
 anada es alcanzable a traves de esta capa sin tocar su codigo, y eso se verifica
@@ -177,6 +178,16 @@ ausente o vacio significa sin dato, y otro valor es un error tipado antes de
 llamar al core o escribir memoria. Es procedencia, como `service`: no entra en
 la clave, consulta, sesion ni deduplicacion de memoria. Que subconjunto entra
 en la clave de memoria, en `docs/FORMA_ENRIQUECIMIENTO.md`.
+
+Hacia el core, `prompt.run`, `prompt.stream` y `domain.route` anaden
+`turn_context: {"trusted_providers": [...]}` solo cuando el catalogo cacheado
+del core declara el parametro `turn_context` para esa capacidad. La lista esta
+ordenada y contiene la interseccion de proveedores activos, con
+`curated.trusted=true`, y `IANEST_EXTENDED_PROVIDER_CEILING`. Una lista vacia
+se envia como dato. Sin cache valida o sin parametro declarado no se anade el
+campo y el cuerpo conserva exactamente su forma anterior. Es el tramo A de
+`extended CR-0006`; hasta que el core lo entregue, la compatibilidad es por
+ausencia.
 
 Con `interlocutor_profile=child`, la capa antepone al contexto la seccion
 permanente `## interlocutor`. Su contenido viene de
@@ -279,6 +290,10 @@ Los eventos de `prompt.run`, `prompt.stream`, `reasoning.run`,
 (`child`, `adult` o nulo) y `composed`. Esta telemetria se emite tambien con el
 enriquecimiento apagado y en `dry_run` cuando la capacidad lo admite.
 
+Los eventos `prompt.*` anaden `trusted_providers` con la lista enviada en
+`turn_context`, incluida la lista vacia, o `turn_context_sent=false` cuando no
+se envio el campo.
+
 Cuando un evento de telemetria con `status=error` corresponde a `prompt.*`,
 `reasoning.*`, `task.*`, `enrich.*` o `rag.retrieve`, anade `error` con
 `type`, `origin` y `message`. El mensaje se recorta a 300 caracteres y no
@@ -321,8 +336,47 @@ respuesta de la capacidad.
 
 ## Capacidades propias
 
-Estado: `implementada` (existe el mecanismo y se expone por las tres pieles) o
+Estado: `implementada` (existe el mecanismo y su proyeccion declarada) o
 `prevista` (nombre reservado, sin implementacion).
+
+### Entidades
+
+| capacidad | proposito | proyeccion |
+|---|---|---|
+| `entity.put` | alta o cambio por clave, solo hechos curados | CLI |
+| `entity.retire` | retira sin borrar | CLI |
+| `entity.get` | obtiene la fila actual por clave | CLI |
+| `entity.list` | lista por clase o estado | CLI |
+| `entity.history` | lista versiones de solo anadir | CLI |
+| `entity.refresh` | reconcilia proveedores con el techo | CLI |
+| `entity.apply` | valida, planifica o aplica una siembra TOML atomica | CLI |
+
+El principal nuevo `operator` ejecuta `put`, `retire` y `apply`; `refresh` usa
+`extended`. La lista de clases vive en un unico registro cerrado del codigo.
+En esta entrega solo existe `provider`: `observed.name` es texto y solo lo
+escribe `extended`; `curated.trusted` es booleano y solo lo escriben `operator`
+o `conscience`. Un hecho no declarado o con otro tipo falla con error tipado.
+
+`entities` guarda la fila vigente y `entity_versions` una copia completa por
+cambio, con autor y origen, en la misma transaccion. Retirar crea una version
+`retired`; no borra filas ni claves. Una operacion sin cambio no crea version.
+`entity_versions` rechaza `UPDATE` y `DELETE` tambien en el motor.
+
+`profile` se conserva para el camino delegado `profile_lookup`: es una
+proyeccion de compatibilidad de `curated`. La migracion copia en `curated` los
+perfiles anteriores, las escrituras nuevas del registro mantienen ambos campos
+iguales, y el recall existente sigue leyendo `profile`. `observed` nunca entra
+en esa proyeccion.
+
+`IANEST_EXTENDED_PROVIDER_CEILING` es la lista separada por comas del techo.
+`entity.refresh` crea o reactiva `provider:<nombre>` con `observed.name`, sin
+confianza, y retira los ausentes. `entity.apply` acepta TOML `[[entity]]`, valida
+el fichero completo antes de escribir y usa origen `seed:<sha256>`. La
+propiedad de siembra se guarda en `entity_seed_ownership`: por entidad declara
+si la siembra la creo y que claves curadas posee. Asi un apply posterior
+restaura sus valores, retira solo entidades creadas por ella y, para las demas,
+quita unicamente sus hechos. Reaplicar el mismo fichero deja plan vacio y no
+crea versiones.
 
 ### Memoria
 

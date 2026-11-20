@@ -447,6 +447,44 @@ def _build_parser(
     _add_json_argument(session_new)
     session_new.set_defaults(handler=_session_new)
 
+    entity_group = group(
+        "entity",
+        "registro local de entidades",
+        "Administra entidades solo desde la CLI de la maquina de extended.",
+    )
+    entity_put = _add_local_parser(entity_group, "entity.put")
+    entity_put.add_argument("key", metavar="CLAVE")
+    entity_put.add_argument("kind", metavar="CLASE")
+    entity_put.add_argument(
+        "--fact", action="append", default=[], required=True,
+        metavar="NOMBRE=JSON", help="hecho curado; se puede repetir",
+    )
+    _add_json_argument(entity_put)
+    entity_put.set_defaults(handler=_entity_put)
+
+    for capability, handler in (
+        ("entity.get", _entity_get),
+        ("entity.retire", _entity_retire),
+        ("entity.history", _entity_history),
+    ):
+        item = _add_local_parser(entity_group, capability)
+        item.add_argument("key", metavar="CLAVE")
+        _add_json_argument(item)
+        item.set_defaults(handler=handler)
+    entity_list = _add_local_parser(entity_group, "entity.list")
+    entity_list.add_argument("--kind", metavar="CLASE")
+    entity_list.add_argument("--status", choices=("active", "retired"))
+    _add_json_argument(entity_list)
+    entity_list.set_defaults(handler=_entity_list)
+    entity_refresh = _add_local_parser(entity_group, "entity.refresh")
+    _add_json_argument(entity_refresh)
+    entity_refresh.set_defaults(handler=_entity_refresh)
+    entity_apply = _add_local_parser(entity_group, "entity.apply")
+    entity_apply.add_argument("path", type=Path)
+    entity_apply.add_argument("--plan", action="store_true")
+    _add_json_argument(entity_apply)
+    entity_apply.set_defaults(handler=_entity_apply)
+
     knowledge_group = group(
         "knowledge",
         "conocimiento por dominio",
@@ -1108,6 +1146,69 @@ def _session_new(service, config, args) -> int:
         payload,
         args.json,
         text=f"session_id={payload['session']['session_id']}",
+    )
+
+
+def _entity_put(service, config, args) -> int:
+    facts: dict[str, Any] = {}
+    for declaration in args.fact:
+        name, separator, raw = declaration.partition("=")
+        if not separator or not name or name in facts:
+            raise ExtendedError(
+                f"--fact invalido o repetido: {declaration!r}", "fact"
+            )
+        try:
+            facts[name] = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ExtendedError(
+                f"--fact {name!r} no contiene JSON valido", "fact"
+            ) from exc
+    payload = service.entity_put(args.key, args.kind, facts)
+    return _emit(payload, args.json, text=_entity_text(payload["entity"]))
+
+
+def _entity_get(service, config, args) -> int:
+    payload = service.entity_get(args.key)
+    return _emit(payload, args.json, text=_entity_text(payload["entity"]))
+
+
+def _entity_retire(service, config, args) -> int:
+    payload = service.entity_retire(args.key)
+    return _emit(payload, args.json, text=_entity_text(payload["entity"]))
+
+
+def _entity_list(service, config, args) -> int:
+    payload = service.entity_list(kind=args.kind, status=args.status)
+    return _emit(
+        payload, args.json,
+        text="\n".join(_entity_text(item) for item in payload["entities"]),
+    )
+
+
+def _entity_history(service, config, args) -> int:
+    payload = service.entity_history(args.key)
+    lines = [
+        f"version={item['version']} status={item['status']} "
+        f"author={item['author']} origin={item['origin']}"
+        for item in payload["versions"]
+    ]
+    return _emit(payload, args.json, text="\n".join(lines))
+
+
+def _entity_refresh(service, config, args) -> int:
+    payload = service.entity_refresh()
+    return _emit(payload, args.json, text=json.dumps(payload, sort_keys=True))
+
+
+def _entity_apply(service, config, args) -> int:
+    payload = service.entity_apply(args.path, plan=args.plan)
+    return _emit(payload, args.json, text=json.dumps(payload["plan"], sort_keys=True))
+
+
+def _entity_text(item: dict[str, Any]) -> str:
+    return (
+        f"key={item['key']} kind={item['kind']} status={item['status']} "
+        f"version={item['version']} curated={json.dumps(item['curated'], sort_keys=True)}"
     )
 
 

@@ -124,7 +124,14 @@ def _server_instructions(cache_available: bool, omitted: list[str]) -> str:
             "el hueco tipado si el core sigue inalcanzable."
         )
     if omitted:
-        parts.append("No expuestas por MCP: " + ", ".join(omitted) + ".")
+        cli_only = [name for name in omitted if name.startswith("entity.")]
+        other = [name for name in omitted if name not in cli_only]
+        if other:
+            parts.append("No expuestas por MCP: " + ", ".join(other) + ".")
+        if cli_only:
+            parts.append(
+                "Capacidades solo CLI: " + ", ".join(cli_only) + "."
+            )
     return " ".join(parts)
 
 

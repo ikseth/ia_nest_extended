@@ -110,13 +110,14 @@ def test_wheel_install_contains_reachable_migrations(tmp_path):
                 "_default_sessions_migration_path as sessions; "
                 "from ianest_extended.adapters.postgres import "
                 "_default_thread_artifacts_migration_path as thread_artifacts; "
+                    "from ianest_extended.migrations import migration_resource; "
                 "from ianest_extended.adapters.rag_postgres import "
                 "_default_migration_path as rag, "
                 "_default_domain_migration_path as domains; "
                 "from importlib.resources import files; "
                 "print(json.dumps({'package': ianest_extended.__file__, "
                 "'sql': [resource().read_text(encoding='ascii') "
-                "for resource in (memory, rag, domains, stated_by, synthesis, sessions, thread_artifacts)], "
+                    "for resource in (memory, rag, domains, stated_by, synthesis, sessions, thread_artifacts, lambda: migration_resource('0008_entity_registry.sql'))], "
                 "'courtesy': files('ianest_extended').joinpath('data/courtesy_es.txt').read_text(encoding='utf-8')}))"
             ),
         ],
