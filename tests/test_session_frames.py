@@ -291,9 +291,11 @@ def test_malformed_frame_facts_stop_before_core(tmp_path, frame_facts):
 class _AwaitingCore:
     def __init__(self):
         self.identities = []
+        self.turns = []
 
-    def prompt_run(self, prompt, identity, model=None, domain=None):
+    def prompt_run(self, prompt, identity, model=None, domain=None, turn=False):
         self.identities.append(identity)
+        self.turns.append(turn)
         payload = {
             "response": "donde estas",
             "trace": {"request_id": "core-1", "finish_reason": "stop"},
@@ -320,6 +322,8 @@ def test_service_records_provisional_input_required_shape(tmp_path):
     service.prompt_run("hola", _identity(), enrich=False)
 
     assert store.sessions[("user-1", "session-1")].awaiting_part == "place"
+    # El turno del interlocutor se declara turno: es el unico que lleva marco.
+    assert core.turns == [True]
 
 
 def test_rest_and_mcp_payload_identity_reads_frame_fields(tmp_path):

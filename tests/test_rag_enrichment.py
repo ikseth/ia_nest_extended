@@ -97,7 +97,7 @@ class RoutingCore:
     def list_domains(self):
         return ("general", "charla", "linux")
 
-    def prompt_run(self, prompt, identity, *, model=None, domain=None):
+    def prompt_run(self, prompt, identity, *, model=None, domain=None, turn=False):
         self.prompt_calls.append((prompt, identity, domain))
         return CoreResult(
             response="OK",

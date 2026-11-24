@@ -56,7 +56,7 @@ class ExtractionCore:
         self._extraction_responses = iter(extraction_responses)
         self.calls = []
 
-    def prompt_run(self, prompt, identity, model=None, domain=None):
+    def prompt_run(self, prompt, identity, model=None, domain=None, turn=False):
         self.calls.append((prompt, identity, model, domain))
         response = next(self._extraction_responses)
         if isinstance(response, Exception):

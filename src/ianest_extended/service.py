@@ -1413,6 +1413,7 @@ class ExtendedService:
                 identity,
                 model=plan.model,
                 domain=identity.domain_tag,
+                turn=True,
             )
         except Exception:
             self._record_prompt_run(

@@ -100,7 +100,7 @@ class Phase7bCore:
             },
         )
 
-    def prompt_run(self, prompt, identity, model=None, domain=None):
+    def prompt_run(self, prompt, identity, model=None, domain=None, turn=False):
         self.calls.append(("prompt.run", prompt, identity, model, domain))
         return CoreResult(
             response='{"items":[]}',
@@ -124,7 +124,7 @@ class CondenseCore(Phase7bCore):
         self.rewritten = rewritten
         self.condense_error = condense_error
 
-    def prompt_run(self, prompt, identity, model=None, domain=None):
+    def prompt_run(self, prompt, identity, model=None, domain=None, turn=False):
         self.calls.append(("prompt.run", prompt, identity, model, domain))
         if prompt.startswith("Reescribe la PETICION del usuario"):
             if self.condense_error is not None:

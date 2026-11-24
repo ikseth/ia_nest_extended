@@ -182,10 +182,16 @@ def test_turn_context_frame_is_declared_only_and_identity_stays_clean(
             {"name": "prompt.run", "params": [{"name": "turn_context"}]}
         ],
     )
-    client.prompt_run("dos", identity)
+    client.prompt_run("dos", identity, turn=True)
     assert local_service_stub.requests[-1][1]["turn_context"] == {
         "trusted_providers": [],
         "frame": frame,
+    }
+
+    # Llamada interna (extraccion, sintesis): sin marco (hallazgo de H12P8).
+    client.prompt_run("extrae", identity)
+    assert local_service_stub.requests[-1][1]["turn_context"] == {
+        "trusted_providers": [],
     }
 
 

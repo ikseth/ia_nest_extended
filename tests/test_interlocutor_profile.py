@@ -35,7 +35,7 @@ class ProfileCore:
     def __init__(self) -> None:
         self.calls = []
 
-    def prompt_run(self, prompt, identity, model=None, domain=None):
+    def prompt_run(self, prompt, identity, model=None, domain=None, turn=False):
         self.calls.append(("prompt.run", prompt, identity))
         response = '{"items":[]}' if model else "respuesta"
         return CoreResult(

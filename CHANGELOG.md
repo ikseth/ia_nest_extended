@@ -5,6 +5,15 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+## [v0.8.1] - 2026-11-24
+
+### Corregido
+- `turn_context.frame` solo va en el turno del interlocutor (`prompt.run`
+  conversacional, `prompt.stream` y `domain.route`). Las llamadas internas al
+  core (extraccion de memoria, sintesis de hilo, condensacion de tarea) ya no
+  lo llevan, y el core no clasifica en ellas lo que falta. Hallazgo de meta
+  H12P8 en el laboratorio.
+
 ## [v0.8.0] - 2026-11-24
 
 ### Anadido
