@@ -8,6 +8,7 @@ import re
 import time
 import unicodedata
 from dataclasses import dataclass, field, replace
+from functools import partial
 from typing import Any
 from uuid import uuid4
 
@@ -153,7 +154,8 @@ class MemoryEnricher:
             model=model,
             dry_run=dry_run,
             request_id=request_id,
-            core_run=self._core.prompt_run,
+            # El turno enriquecido es el turno del interlocutor: lleva el marco.
+            core_run=partial(self._core.prompt_run, turn=True),
         )
 
     def enrich_reasoning(

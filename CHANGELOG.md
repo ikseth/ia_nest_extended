@@ -5,6 +5,14 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+## [v0.8.2] - 2026-11-24
+
+### Corregido
+- El turno enriquecido (el camino normal de Open WebUI y Home Assistant) vuelve
+  a llevar `turn_context.frame`: `v0.8.1` solo lo declaraba turno en el camino
+  sin enriquecimiento y el marco dejo de llegar al core. Prueba nueva del
+  camino enriquecido.
+
 ## [v0.8.1] - 2026-11-24
 
 ### Corregido
