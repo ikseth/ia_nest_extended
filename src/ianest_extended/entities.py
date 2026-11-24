@@ -20,6 +20,20 @@ class EntityClass:
 # Unica lista cerrada. Anadir una clase es anadir una entrada y sus hechos.
 ENTITY_CLASSES: dict[str, EntityClass] = {
     "provider": EntityClass(observed={"name": str}, curated={"trusted": bool}),
+    "person": EntityClass(observed={}, curated={"home": str, "language": str}),
+    "device": EntityClass(
+        observed={}, curated={"home": str, "shared": bool, "language": str}
+    ),
+    "home": EntityClass(
+        observed={}, curated={"locality": str, "timezone": str, "provider": str}
+    ),
+}
+
+ENTITY_KEY_NAMESPACES = {
+    "provider": {"provider"},
+    "person": {"directory"},
+    "device": {"account", "directory"},
+    "home": {"seed"},
 }
 
 
@@ -27,6 +41,7 @@ ENTITY_CLASSES: dict[str, EntityClass] = {
 class SeedEntity:
     key: str
     kind: str
+    name: str | None
     curated: dict[str, Any]
     index: int
 
@@ -71,7 +86,28 @@ def validate_facts(kind: str, part: str, facts: dict[str, Any]) -> None:
             )
 
 
-def read_seed(path: Path, provider_ceiling: tuple[str, ...]) -> SeedDocument:
+def validate_entity_key(key: str, kind: str) -> tuple[str, str]:
+    namespace, external_id = split_entity_key(key)
+    if namespace not in ENTITY_KEY_NAMESPACES.get(kind, set()):
+        raise InvalidEntityError(
+            f"namespace {namespace!r} no declarado para {kind!r}", "key"
+        )
+    if kind == "device" and namespace == "account":
+        account, separator, device = external_id.partition(":")
+        if not separator or not account or not device:
+            raise InvalidEntityError(
+                "device con namespace account exige account:<uid>:<device_id>",
+                "key",
+            )
+    return namespace, external_id
+
+
+def read_seed(
+    path: Path,
+    provider_ceiling: tuple[str, ...],
+    *,
+    current_home_keys: tuple[str, ...] = (),
+) -> SeedDocument:
     try:
         raw = path.read_bytes()
     except OSError as exc:
@@ -102,17 +138,18 @@ def read_seed(path: Path, provider_ceiling: tuple[str, ...]) -> SeedDocument:
                 raise InvalidEntityError("key debe ser texto", "key")
             if not isinstance(kind, str):
                 raise InvalidEntityError("kind debe ser texto", "kind")
-            namespace, external_id = split_entity_key(key)
+            namespace, external_id = validate_entity_key(key, kind)
             if key in seen:
                 raise InvalidEntityError("clave repetida", "key")
-            if namespace != kind:
-                raise InvalidEntityError(
-                    "el namespace de key debe coincidir con kind", "key"
-                )
+            name = raw_entry.get("name")
+            if name is not None and (not isinstance(name, str) or not name.strip()):
+                raise InvalidEntityError("name debe ser texto no vacio", "name")
+            if kind in {"person", "device", "home"} and name is None:
+                raise InvalidEntityError("name es obligatorio", "name")
             curated = {
                 name: value
                 for name, value in raw_entry.items()
-                if name not in {"key", "kind"}
+                if name not in {"key", "kind", "name"}
             }
             validate_facts(kind, "curated", curated)
             if kind == "provider" and external_id not in ceiling:
@@ -124,10 +161,33 @@ def read_seed(path: Path, provider_ceiling: tuple[str, ...]) -> SeedDocument:
                 f"{label}: {exc.message}", exc.field or "entity"
             ) from exc
         seen.add(key)
-        entries.append(SeedEntity(key, kind, curated, index))
+        entries.append(SeedEntity(key, kind, name, curated, index))
     extra = set(document) - {"entity"}
     if extra:
         raise InvalidEntitySeedError(
             f"claves TOML no declaradas: {', '.join(sorted(extra))}", "file"
         )
+    home_keys = {
+        entry.key for entry in entries if entry.kind == "home"
+    } | set(current_home_keys)
+    for entry in entries:
+        try:
+            home = entry.curated.get("home")
+            if home is not None and home not in home_keys:
+                raise InvalidEntityError(
+                    f"home {home!r} no identifica una casa vigente o sembrada",
+                    "home",
+                )
+            provider = entry.curated.get("provider")
+            if provider is not None:
+                namespace, external_id = split_entity_key(provider)
+                if namespace != "provider" or external_id not in ceiling:
+                    raise InvalidEntityError(
+                        f"provider {provider!r} no esta en el techo", "provider"
+                    )
+        except InvalidEntityError as exc:
+            raise InvalidEntitySeedError(
+                f"entrada {entry.index} ({entry.key!r}): {exc.message}",
+                exc.field or "entity",
+            ) from exc
     return SeedDocument(tuple(entries), hashlib.sha256(raw).hexdigest())

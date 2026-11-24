@@ -115,6 +115,13 @@ Las migraciones SQL viajan dentro del paquete Python y `runtime migrate` las
 resuelve como recursos instalados. No dependen del checkout ni del directorio
 actual, y existe una sola copia de cada SQL en el repositorio.
 
+La migracion `0009_session_frames.sql` crea el marco append-only y anade
+`sessions.awaiting_part`. Como las demas, se reaplica de forma idempotente. El
+tono general se puede cambiar en `setup.conf` con
+`IANEST_EXTENDED_INTERLOCUTOR_CONTEXT_GENERAL`; un valor vacio impide el
+arranque. El default es el texto apto para todos los publicos declarado en
+extended ADR 0017.
+
 ## Corpus reproducible
 
 La fuente es siempre TEXTO UTF-8 `.txt` o `.md`, como fichero o directorio. No

@@ -25,8 +25,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from ianest_extended import cli
+from ianest_extended import ExtendedComposition, cli
 from ianest_extended.catalog_cache import write_catalog_cache
+
+from .fakes import InMemoryStore
 
 UNREACHABLE = "http://127.0.0.1:1"
 CLOSED_DSN = "postgresql://ianest:local@127.0.0.1:1/ianest_extended"
@@ -156,6 +158,12 @@ def test_collision_does_not_abort_the_cli_and_the_layer_flag_wins(
     que la regla no es una lista de excepciones escrita a mano.
     """
     argv = _cli_env(monkeypatch, tmp_path, widget_stub.base_url)
+    store = InMemoryStore()
+    monkeypatch.setattr(
+        ExtendedComposition,
+        "memory_store",
+        lambda self, verify=True: store,
+    )
 
     # Unica via de refresco: capability list consulta el core y actualiza
     # la cache.
@@ -304,6 +312,12 @@ def test_cli_plan_file_fills_multiple_parameters_from_one_json_file(
 ):
     """Brief criterio 5, via flujo real: un fichero rellena varios parametros."""
     argv = _cli_env(monkeypatch, tmp_path, local_service_stub.base_url)
+    store = InMemoryStore()
+    monkeypatch.setattr(
+        ExtendedComposition,
+        "memory_store",
+        lambda self, verify=True: store,
+    )
     plan_path = tmp_path / "plan.json"
     plan_path.write_text(
         json.dumps(

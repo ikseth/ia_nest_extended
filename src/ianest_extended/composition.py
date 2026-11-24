@@ -29,6 +29,7 @@ from .errors import (
 )
 from .ports import Embedder, MemoryStore, RagStore
 from .knowledge_gate import KnowledgeGate
+from .frames import frame_to_core
 from .telemetry import TelemetryWriter
 
 
@@ -80,9 +81,19 @@ class ExtendedComposition:
                 trusted_providers=lambda: self.memory_store().trusted_providers(
                     self._config.provider_ceiling
                 ),
+                frame_context=lambda identity: self._frame_context(identity),
                 ensure_catalog_fresh=self.refresh_core_catalog_if_due,
             )
         return self._core
+
+    def _frame_context(self, identity):
+        if identity.user_id is None or identity.session_id is None:
+            return None
+        store = self.memory_store()
+        frame = store.get_session_frame(identity.user_id, identity.session_id)
+        if frame is None:
+            return None
+        return frame_to_core(store, frame, channel=identity.service)
 
     def refresh_core_catalog(self, *, force: bool = False) -> dict[str, Any] | None:
         """Consulta y escribe el catalogo del core en un unico camino.

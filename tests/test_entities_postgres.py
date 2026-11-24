@@ -1,4 +1,5 @@
 from pathlib import Path
+from uuid import uuid4
 
 import psycopg
 import pytest
@@ -156,3 +157,32 @@ def test_entity_versions_reject_update_and_delete(postgres_store):
     with pytest.raises(psycopg.errors.InsufficientPrivilege):
         with postgres_store._connect() as connection:
             connection.execute("DELETE FROM entity_versions")
+
+
+def test_seed_names_frame_classes_and_validates_same_file_references(
+    postgres_store, tmp_path
+):
+    suffix = uuid4().hex
+    home_key = f"seed:home-{suffix}"
+    person_key = f"directory:person-{suffix}"
+    device_key = f"account:account-{suffix}:device:with:colon"
+    seed = _seed(
+        tmp_path / "frame-entities.toml",
+        f'[[entity]]\nkey="{person_key}"\nkind="person"\n'
+        f'name="Persona Prueba"\nhome="{home_key}"\nlanguage="es"\n'
+        f'[[entity]]\nkey="{device_key}"\nkind="device"\n'
+        f'name="Dispositivo Prueba"\nhome="{home_key}"\nshared=false\n'
+        f'[[entity]]\nkey="{home_key}"\nkind="home"\n'
+        'name="Casa Prueba"\nlocality="Villa Prueba"\n',
+    )
+
+    result = postgres_store.apply_entity_seed(seed)
+
+    assert result["create"] == [
+        {"key": person_key},
+        {"key": device_key},
+        {"key": home_key},
+    ]
+    assert postgres_store.get_entity(person_key).name == "Persona Prueba"
+    assert postgres_store.get_entity(device_key).name == "Dispositivo Prueba"
+    assert postgres_store.get_entity(home_key).name == "Casa Prueba"

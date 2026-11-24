@@ -6,15 +6,19 @@ from ianest_extended import (
     Engram,
     EngramStatus,
     EngramWrite,
+    Entity,
+    EntityVersion,
     MemoryIdentity,
     RecallItem,
     SchemaMigrationRequiredError,
     Session,
+    SessionFrame,
     SessionAlreadyExistsError,
     SessionNotActiveError,
     SessionStatus,
     StatedBy,
     ThreadSynthesisResult,
+    UnresolvedEntityKey,
 )
 
 
@@ -37,6 +41,9 @@ class InMemoryStore:
         self.summary_links = {}
         self.contradiction_links = set()
         self.sessions = {}
+        self.frames = {}
+        self.entities = {}
+        self.entity_versions = {}
 
     def write(self, principal, request):
         session_scoped = request.type_name in {
@@ -407,6 +414,129 @@ class InMemoryStore:
         )
         self.sessions[key] = session
         return session
+
+    def touch_session(self, user_id, session_id):
+        key = (user_id, session_id)
+        now = datetime.now(UTC)
+        session = self.sessions.get(key)
+        if session is None:
+            session = Session(
+                user_id=user_id,
+                session_id=session_id,
+                created_at=now,
+                last_activity_at=now,
+                status=SessionStatus.ACTIVE,
+                archived_at=None,
+                closed_at=None,
+            )
+        elif session.status is not SessionStatus.ACTIVE:
+            raise SessionNotActiveError(
+                f"la sesion {session_id!r} esta {session.status.value} y no admite turnos",
+                "session_id",
+            )
+        else:
+            session = replace(session, last_activity_at=now)
+        self.sessions[key] = session
+        return session
+
+    def get_session_frame(self, user_id, session_id):
+        frames = self.frames.get((user_id, session_id), [])
+        return frames[-1] if frames else None
+
+    def append_session_frame(self, frame):
+        stored = replace(frame, created_at=datetime.now(UTC))
+        self.frames.setdefault((frame.user_id, frame.session_id), []).append(stored)
+        return stored
+
+    def take_session_awaiting_part(self, user_id, session_id):
+        key = (user_id, session_id)
+        session = self.sessions[key]
+        part = session.awaiting_part
+        if part is not None:
+            self.sessions[key] = replace(session, awaiting_part=None)
+        return part
+
+    def set_session_awaiting_part(self, user_id, session_id, part):
+        key = (user_id, session_id)
+        self.sessions[key] = replace(self.sessions[key], awaiting_part=part)
+
+    def unresolved_frame_keys(self):
+        grouped = {}
+        for frames in self.frames.values():
+            for frame in frames:
+                for part in (frame.person, frame.device, frame.place):
+                    if part["state"] != "unresolved":
+                        continue
+                    key = part["key"]
+                    seen = grouped.setdefault(key, [])
+                    seen.append(frame.created_at)
+        return tuple(
+            UnresolvedEntityKey(key, min(seen), max(seen), len(seen))
+            for key, seen in sorted(grouped.items())
+        )
+
+    @staticmethod
+    def frame_timestamp():
+        return datetime.now(UTC)
+
+    def put_entity(
+        self,
+        principal,
+        key,
+        kind,
+        *,
+        observed=None,
+        curated=None,
+        origin="cli",
+    ):
+        now = datetime.now(UTC)
+        current = self.entities.get(key)
+        entity = Entity(
+            id=uuid4() if current is None else current.id,
+            kind=kind,
+            name=(observed or {}).get("name", current.name if current else key.split(":", 1)[1]),
+            aliases=() if current is None else current.aliases,
+            observed={**({} if current is None else current.observed), **(observed or {})},
+            curated={**({} if current is None else current.curated), **(curated or {})},
+            status="active",
+            version=1 if current is None else current.version + 1,
+            created_at=now if current is None else current.created_at,
+            updated_at=now,
+            key=key,
+        )
+        self.entities[key] = entity
+        version = EntityVersion(
+            entity_id=entity.id,
+            version=entity.version,
+            kind=entity.kind,
+            name=entity.name,
+            aliases=entity.aliases,
+            observed=entity.observed,
+            curated=entity.curated,
+            status=entity.status,
+            author=principal,
+            origin=origin,
+            created_at=now,
+        )
+        self.entity_versions[(entity.id, entity.version)] = version
+        return entity
+
+    def resolve_entity(self, key):
+        entity = self.entities.get(key)
+        return entity if entity is not None and entity.status == "active" else None
+
+    def get_entity(self, key):
+        return self.entities[key]
+
+    def get_entity_version(self, entity_id, version):
+        return self.entity_versions[(entity_id, version)]
+
+    def list_entities(self, *, kind=None, status=None):
+        return tuple(
+            entity for entity in self.entities.values()
+            if (kind is None or entity.kind == kind)
+            and (status is None or entity.status == status)
+        )
 
     def find_dialogs_to_archive(self, *, now, inactivity_seconds):
         cutoff = now.timestamp() - inactivity_seconds

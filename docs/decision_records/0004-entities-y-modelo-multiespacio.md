@@ -79,3 +79,8 @@ codigo.
   `docs/ROSTER_MEMORIA.md`.
 - `docs/VISION_MEMORIA.md` se alinea (entities deja de estar "por decidir").
 - Impacto de version: ninguno (sin contrato publico cortado; Fase 7).
+
+## Estado posterior
+
+Extended ADR 0017 separa el marco de sesion del registro y usa estas entidades
+solo para resolver persona, dispositivo y casa con versiones fijadas.

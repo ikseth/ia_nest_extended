@@ -5,6 +5,14 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+### Anadido
+- Marco versionado de la conversacion de `extended ADR 0017`: identidad con
+  `audience` y `frame_facts`, perfil `restricted` con compatibilidad temporal
+  para `child`, tono `general`, clases `person`, `device` y `home`, migracion
+  append-only `session_frames`, `sessions.awaiting_part`, proyeccion
+  `turn_context.frame`, capacidad CLI `entity.unresolved` y telemetria del
+  marco. Cambio de contrato pre-1.0: **MINOR**.
+
 ## [0.7.0] - 2026-11-20
 
 ### Anadido

@@ -293,6 +293,12 @@ def test_cli_streams_passthrough_events(
     local_service_stub,
 ):
     argv = _cli_env(monkeypatch, tmp_path, local_service_stub)
+    store = InMemoryStore()
+    monkeypatch.setattr(
+        ExtendedComposition,
+        "memory_store",
+        lambda self, verify=True: store,
+    )
 
     code = cli.main(
         [*argv, "prompt", "stream", "--prompt", "hola", "--no-enrich"]

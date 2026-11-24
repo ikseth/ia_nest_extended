@@ -212,6 +212,11 @@ LOCAL_CAPABILITIES: tuple[Capability, ...] = (
         None, "own",
     ),
     Capability(
+        "entity.unresolved", "lista claves no resueltas de los marcos", False, False,
+        (), None, _cli("entity", "unresolved", "Lista claves no resueltas y su frecuencia."),
+        None, "own",
+    ),
+    Capability(
         "knowledge.confirm",
         "confirma un vinculo dominio-corpus",
         False,

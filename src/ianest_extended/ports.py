@@ -24,8 +24,10 @@ from .models import (
     RagChunkWrite,
     RagIngestResult,
     Session,
+    SessionFrame,
     SessionStatus,
     ThreadSynthesisResult,
+    UnresolvedEntityKey,
 )
 
 
@@ -76,6 +78,12 @@ class MemoryStore(Protocol):
 
     def get_entity(self, key: str) -> Entity:
         """Obtiene la version actual por clave, incluida una retirada."""
+
+    def resolve_entity(self, key: str) -> Entity | None:
+        """Resuelve solo una entidad vigente; ausencia y retirada dan None."""
+
+    def get_entity_version(self, entity_id: UUID, version: int) -> EntityVersion:
+        """Obtiene una version historica exacta para un marco abierto."""
 
     def list_entities(self, **kwargs) -> Sequence[Entity]:
         """Lista el registro actual."""
@@ -132,6 +140,33 @@ class MemoryStore(Protocol):
 
     def create_session(self, user_id: str, session_id: str) -> Session:
         """Declara una sesion activa nueva o falla si la clave ya existe."""
+
+    def touch_session(self, user_id: str, session_id: str) -> Session:
+        """Declara o toca una sesion activa; nunca resucita una archivada."""
+
+    def get_session_frame(
+        self, user_id: str, session_id: str
+    ) -> SessionFrame | None:
+        """Devuelve la copia mas reciente del marco de la sesion."""
+
+    def append_session_frame(self, frame: SessionFrame) -> SessionFrame:
+        """Anade una copia completa del marco."""
+
+    def take_session_awaiting_part(
+        self, user_id: str, session_id: str
+    ) -> str | None:
+        """Lee y limpia atomically la parte que esperaba la sesion."""
+
+    def set_session_awaiting_part(
+        self, user_id: str, session_id: str, part: str | None
+    ) -> None:
+        """Registra la parte que el core declaro necesaria."""
+
+    def unresolved_frame_keys(self) -> Sequence[UnresolvedEntityKey]:
+        """Agrupa las claves no resueltas observadas en marcos."""
+
+    def frame_timestamp(self) -> datetime:
+        """Reloj del adaptador para construir el modelo antes del INSERT."""
 
     def find_similar(
         self,

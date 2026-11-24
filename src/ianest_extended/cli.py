@@ -484,6 +484,9 @@ def _build_parser(
     entity_apply.add_argument("--plan", action="store_true")
     _add_json_argument(entity_apply)
     entity_apply.set_defaults(handler=_entity_apply)
+    entity_unresolved = _add_local_parser(entity_group, "entity.unresolved")
+    _add_json_argument(entity_unresolved)
+    entity_unresolved.set_defaults(handler=_entity_unresolved)
 
     knowledge_group = group(
         "knowledge",
@@ -765,7 +768,13 @@ def _add_identity_arguments(
     identity.add_argument(
         "--interlocutor-profile",
         metavar="PERFIL",
-        help="perfil del interlocutor: adult o child",
+        help="nivel de permiso: adult, restricted o child (alias antiguo)",
+    )
+    identity.add_argument(
+        "--audience",
+        choices=("adult", "general", "child"),
+        metavar="TONO",
+        help="tono del interlocutor: adult, general o child",
     )
     identity.add_argument(
         "--domain",
@@ -1008,6 +1017,8 @@ def _catalog_payload(
                 service=getattr(args, "service", None),
                 namespace=getattr(args, "namespace", None),
                 domain=getattr(args, "domain", None),
+                interlocutor_profile=getattr(args, "interlocutor_profile", None),
+                audience=getattr(args, "audience", None),
             )
         else:
             identity = _identity(
@@ -1205,6 +1216,16 @@ def _entity_apply(service, config, args) -> int:
     return _emit(payload, args.json, text=json.dumps(payload["plan"], sort_keys=True))
 
 
+def _entity_unresolved(service, config, args) -> int:
+    payload = service.entity_unresolved()
+    lines = [
+        f"key={item['key']} count={item['count']} "
+        f"first={item['first_seen_at']} last={item['last_seen_at']}"
+        for item in payload["unresolved"]
+    ]
+    return _emit(payload, args.json, text="\n".join(lines))
+
+
 def _entity_text(item: dict[str, Any]) -> str:
     return (
         f"key={item['key']} kind={item['kind']} status={item['status']} "
@@ -1347,6 +1368,7 @@ def _identity(
         namespace=getattr(args, "namespace", None),
         domain=getattr(args, "domain", None) if include_domain else None,
         interlocutor_profile=getattr(args, "interlocutor_profile", None),
+        audience=getattr(args, "audience", None),
         check_remembered=check_remembered,
     )
     if replaced_status is not None:

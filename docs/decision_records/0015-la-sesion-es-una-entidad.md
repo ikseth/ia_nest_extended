@@ -145,3 +145,8 @@ que un fichero unico no permite.
 - **El borrado.** No hay borrado fisico (ADR 0002): archivar no es purgar, y una
   politica de purga es otra decision.
 - **El dueno de `episodic`**, que se debate aparte y no depende de esto.
+
+## Estado posterior
+
+Extended ADR 0017 cuelga de esta entidad `session_frames` y
+`sessions.awaiting_part`; no convierte el marco en memoria del usuario.

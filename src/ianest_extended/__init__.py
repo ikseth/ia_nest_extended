@@ -102,9 +102,11 @@ from .models import (
     RetrievalMode,
     Scope,
     Session,
+    SessionFrame,
     SessionStatus,
     StatedBy,
     ThreadSynthesisResult,
+    UnresolvedEntityKey,
 )
 from .registry import MemoryTypeRegistry, seed_memory_types
 from .ranking import calculate_relevance
@@ -145,9 +147,11 @@ __all__ = [
     "SessionAlreadyExistsError",
     "SessionNotActiveError",
     "SessionNotFoundError",
+    "SessionFrame",
     "SseEvent",
     "TaskPlanResult",
     "TaskRunResult",
+    "UnresolvedEntityKey",
     "remembered_session_id",
     "remember_session_id",
     "resolve_identity",

@@ -36,6 +36,9 @@ def test_config_reads_prefixed_environment(monkeypatch):
     monkeypatch.setenv(
         "IANEST_EXTENDED_PROVIDER_CEILING", "casa_ha, otro"
     )
+    monkeypatch.setenv(
+        "IANEST_EXTENDED_INTERLOCUTOR_CONTEXT_GENERAL", "contexto general"
+    )
 
     config = ExtendedConfig.from_env(env_file=None)
 
@@ -63,6 +66,7 @@ def test_config_reads_prefixed_environment(monkeypatch):
     assert config.task_timeout_seconds == 480
     assert config.core_catalog_ttl_seconds == 0
     assert config.provider_ceiling == ("casa_ha", "otro")
+    assert config.interlocutor_context_general == "contexto general"
 
 
 def test_config_rejects_duplicate_provider_ceiling(monkeypatch):
@@ -234,6 +238,15 @@ def test_interlocutor_context_child_rejects_empty_value(monkeypatch):
         ExtendedConfig.from_env(env_file=None)
 
     assert exc_info.value.field == "interlocutor_context_child"
+
+
+def test_interlocutor_context_general_rejects_empty_value(monkeypatch):
+    monkeypatch.setenv("IANEST_EXTENDED_INTERLOCUTOR_CONTEXT_GENERAL", "")
+
+    with pytest.raises(ExtendedConfigError) as exc_info:
+        ExtendedConfig.from_env(env_file=None)
+
+    assert exc_info.value.field == "interlocutor_context_general"
 
 
 def test_thread_synthesis_config_from_environment(monkeypatch):

@@ -106,3 +106,8 @@ version mas con estado `retired`; no hay borrado fisico (ADR 0002).
 - Las clases del marco y `session_frames` (meta H12P3 D1 y D6; tanda B).
 - Areas, aparatos, resumen y preseleccion (meta `H13`).
 - Autenticacion de principales entre capas: por eso hoy solo escribe la CLI.
+
+## Estado posterior
+
+Extended ADR 0017 anade las clases `person`, `device` y `home`, y consume el
+registro para resolver el marco versionado de cada sesion.
