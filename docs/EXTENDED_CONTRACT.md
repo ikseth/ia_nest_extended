@@ -1,7 +1,7 @@
 # Contrato de ia_nest_extended
 
 Estado: activo
-Version: 1.3 - 2026-11-20
+Version: 1.4 - 2026-11-24
 
 Frontera publica de la capa de enriquecimiento, VIGENTE desde su primer tag
 (Fase 7d). Lo que aqui se declara es promesa, no objetivo. Que cuenta como
@@ -177,34 +177,45 @@ lee ese documento en el rango declarado, y este para lo propio de la capa.
 
 Igual con el **contexto de identidad del request** (`user_id`, `service`,
 `session_id`, `domain_tag`, `namespace`, `interlocutor_profile`): lo define el
-core y esta capa lo reenvia. `interlocutor_profile` admite `adult` o `child`;
-ausente o vacio significa sin dato, y otro valor es un error tipado antes de
-llamar al core o escribir memoria. Es procedencia, como `service`: no entra en
-la clave, consulta, sesion ni deduplicacion de memoria. Que subconjunto entra
-en la clave de memoria, en `docs/FORMA_ENRIQUECIMIENTO.md`.
+core y esta capa lo reenvia. `interlocutor_profile` admite `adult` o
+`restricted`; durante una version acepta el nombre antiguo `child` y lo
+normaliza a `restricted` antes de llamar al core o escribir. Ausente o vacio
+significa sin dato, y otro valor es un error tipado.
+
+Extended acepta ademas `audience` (`adult`, `general` o `child`) y
+`frame_facts`. REST y MCP los leen dentro de `identity`; la CLI expone
+`--audience`. Si falta `audience`, se deduce del perfil entrante antes de
+normalizarlo: `child` da `child`, `restricted` da `general` y `adult` da
+`adult`. `frame_facts` contiene exactamente `account`, `person` y `device`,
+cada uno con `value` (texto o nulo) y `origin` segun edge ADR 0004. Una forma
+invalida falla como peticion. Ninguno de esos dos campos se reenvia dentro de
+la identidad del core ni entra en claves, consultas o deduplicacion de memoria.
 
 Hacia el core, `prompt.run`, `prompt.stream` y `domain.route` anaden
-`turn_context: {"trusted_providers": [...]}` solo cuando el catalogo cacheado
+`turn_context` solo cuando el catalogo cacheado
 del core declara el parametro `turn_context` para esa capacidad. Antes se
 renueva por edad con la politica anterior; si el core falla o deja de declarar
 el parametro, el turno sigue sin el campo. La lista esta
 ordenada y contiene la interseccion de proveedores activos, con
 `curated.trusted=true`, y `IANEST_EXTENDED_PROVIDER_CEILING`. Una lista vacia
 se envia como dato. Sin cache valida o sin parametro declarado no se anade el
-campo y el cuerpo conserva exactamente su forma anterior. Es el tramo A de
-`extended CR-0006`; hasta que el core lo entregue, la compatibilidad es por
-ausencia.
+campo y el cuerpo conserva exactamente su forma anterior. Dentro envia
+`trusted_providers` y `frame`. El marco tiene `channel`, `person`, `device`,
+`place`, `language`, `missing` y, cuando corresponda, `stated`; no contiene
+claves, ids ni versiones internas. Es `extended CR-0006`: si el core todavia no
+declara la costura, la compatibilidad es por ausencia.
 
-Con `interlocutor_profile=child`, la capa antepone al contexto la seccion
-permanente `## interlocutor`. Su contenido viene de
-`IANEST_EXTENDED_INTERLOCUTOR_CONTEXT_CHILD`, cuyo default es `El interlocutor
-es un nino o una nina.`. La clave no admite valor vacio al arrancar. La seccion
-es un hecho configurado, no una instruccion, no consume una fuente de recall y
-no se elimina al recortar presupuesto. Con `adult` o sin dato no se compone
-nada y el prompt conserva su forma anterior. El texto se compone tambien con
-`enrich=false`, sin memoria, sin RAG, y si el paso cero del conocimiento hace
-`skip`; write-back, extraccion, dominio y paso cero reciben la pregunta literal
-sin esta seccion.
+Con `audience=child`, la capa antepone al contexto la seccion permanente
+`## interlocutor` desde `IANEST_EXTENDED_INTERLOCUTOR_CONTEXT_CHILD`, cuyo
+default es `El interlocutor es un nino o una nina.`. Con `audience=general`
+usa `IANEST_EXTENDED_INTERLOCUTOR_CONTEXT_GENERAL`, cuyo default es `No se sabe
+quien habla: puede ser cualquier persona de la casa, tambien un nino o una
+nina. Responde de forma apta para todos los publicos.`. Ninguna clave admite
+valor vacio. Con `adult` o sin dato no se compone nada. La seccion es un hecho
+configurado, no una instruccion ni una fuente de recall, y no se elimina al
+recortar presupuesto. Se compone tambien con `enrich=false`, sin memoria, sin
+RAG, y en el plan y las subtareas de `task.run`; write-back, extraccion,
+dominio y paso cero reciben la pregunta literal sin esta seccion.
 
 El contexto compuesto renderiza los bloques, cuando tienen lineas, en este
 orden: `interlocutor`, `delegated`, `rag`, `semantic`, `thread_summary`,
@@ -293,8 +304,10 @@ reescritura ni el contexto.
 
 Los eventos de `prompt.run`, `prompt.stream`, `reasoning.run`,
 `reasoning.stream` y `task.run` anaden `interlocutor_context` con `profile`
-(`child`, `adult` o nulo) y `composed`. Esta telemetria se emite tambien con el
-enriquecimiento apagado y en `dry_run` cuando la capacidad lo admite.
+(`restricted`, `adult` o nulo), `audience` y `composed`. Anaden tambien `frame`
+con `composed`, `seq`, el estado de cada parte y `missing`. Esta telemetria se
+emite tambien con el enriquecimiento apagado y en `dry_run` cuando la capacidad
+lo admite.
 
 Los eventos `prompt.*` anaden `trusted_providers` con la lista enviada en
 `turn_context`, incluida la lista vacia, o `turn_context_sent=false` cuando no
@@ -356,12 +369,18 @@ Estado: `implementada` (existe el mecanismo y su proyeccion declarada) o
 | `entity.history` | lista versiones de solo anadir | CLI |
 | `entity.refresh` | reconcilia proveedores con el techo | CLI |
 | `entity.apply` | valida, planifica o aplica una siembra TOML atomica | CLI |
+| `entity.unresolved` | agrupa claves no resueltas vistas en marcos | CLI |
 
 El principal nuevo `operator` ejecuta `put`, `retire` y `apply`; `refresh` usa
 `extended`. La lista de clases vive en un unico registro cerrado del codigo.
-En esta entrega solo existe `provider`: `observed.name` es texto y solo lo
-escribe `extended`; `curated.trusted` es booleano y solo lo escriben `operator`
-o `conscience`. Un hecho no declarado o con otro tipo falla con error tipado.
+Las clases son `provider`, `person`, `device` y `home`. `provider` conserva
+`observed.name` y `curated.trusted`; las otras no tienen hechos observados.
+`person` admite `home` y `language`; `device`, `home`, `shared` y `language`;
+`home`, `locality`, `timezone` y `provider`. Sus claves son respectivamente
+`provider:`, `directory:`, `account:<uid>:<device_id>` (o `directory:` para un
+dispositivo compartido) y `seed:`. La siembra exige el nombre de persona,
+dispositivo y casa, y valida las citas a casas y proveedores. Un hecho no
+declarado o con otro tipo falla nombrando la entrada.
 
 `entities` guarda la fila vigente y `entity_versions` una copia completa por
 cambio, con autor y origen, en la misma transaccion. Retirar crea una version
@@ -461,6 +480,15 @@ marcas de archivado/cierre. El titulo no se almacena: se deriva en cada lectura
 del `thread_summary` mas reciente, se recorta a 80 caracteres en frontera de
 palabra y queda nulo si no existe resumen. `session.new` rechaza con error
 tipado un id ya existente para el mismo usuario.
+
+El primer turno conversacional de una sesion crea `session_frames` con `seq 0`.
+Cada copia lleva `account`, `person`, `device`, `place`, `missing`, `cause` y
+`changed`; todas las partes y `missing` existen siempre. El registro solo anade
+una copia cuando cambia un hecho del borde (`cause=edge`) o cuando completa la
+parte que el core habia dejado en `sessions.awaiting_part` (`cause=dialog`).
+Dentro de una sesion conserva las versiones de entidad con las que abrio. El
+marco se compone tambien con enriquecimiento apagado y no escribe `entities` ni
+engramas.
 
 ## No capacidades
 

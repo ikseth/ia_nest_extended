@@ -40,7 +40,8 @@ describe COMO se enriquece; QUE se expone esta en `docs/EXTENDED_CONTRACT.md`.
 ## Decision 1: mapeo identidad -> clave de memoria
 
 Campos de identidad del core: `user_id`, `service`, `session_id`, `domain_tag`,
-`namespace`. Su papel en esta capa:
+`namespace` e `interlocutor_profile`. Extended recibe ademas `audience` y
+`frame_facts`. Su papel en esta capa:
 
 | Campo | Papel |
 |---|---|
@@ -49,6 +50,9 @@ Campos de identidad del core: `user_id`, `service`, `session_id`, `domain_tag`,
 | `session_id` | entra en la clave SOLO para tipos con scope de sesion (decision por tipo, Fase 2) |
 | `service` | PROCEDENCIA (metadato), no clave: segmentar por service fragmentaria la continuidad de la entidad, que el core advierte evitar |
 | `domain_tag` | FACETA de lectura (recuperar lo coherente con el dominio), no clave dura |
+| `interlocutor_profile` | nivel de permiso y procedencia; nunca clave; `child` se normaliza a `restricted` |
+| `audience` | tono para el bloque permanente `interlocutor`; nunca concede ni entra en la clave |
+| `frame_facts` | hechos del borde para el marco versionado de la sesion; no son memoria ni clave |
 
 Existe una identidad local configurada por defecto (core `CORE_CONTRACT.md`): en
 uso local no hay que pasar identidad a mano ni se fragmenta la continuidad.
@@ -64,6 +68,13 @@ que dijo un agente en una bateria de pruebas.
 `user_id` SEGMENTA, no AUTORIZA: la autoridad la dan el principal (ADR 0002) y el
 GRANT del motor (ADR 0010). Nadie autentica esa afirmacion hoy; cuando haga falta,
 el concern esta registrado en `ia_nest_meta/docs/CAPAS_FUTURAS.md`.
+
+El bloque `interlocutor` se compone por `audience`: `child` usa el contexto
+infantil, `general` el contexto apto para cualquier persona de la casa y
+`adult` no anade bloque. Se aplica con o sin las fuentes de enriquecimiento y
+queda fuera de write-back. El marco de `frame_facts` vive en `session_frames`,
+se resuelve contra `entities` y solo se proyecta al core dentro de
+`turn_context.frame`; nunca se convierte en un engrama.
 
 ## Decision 2: composicion y presupuesto
 

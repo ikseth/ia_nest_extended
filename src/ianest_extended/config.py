@@ -55,6 +55,10 @@ class ExtendedConfig:
     default_service: str = "local_cli"
     default_namespace: str = ""
     interlocutor_context_child: str = "El interlocutor es un nino o una nina."
+    interlocutor_context_general: str = (
+        "No se sabe quien habla: puede ser cualquier persona de la casa, "
+        "tambien un nino o una nina. Responde de forma apta para todos los publicos."
+    )
     enrich_enabled: bool = True
     memory_enabled: bool = True
     write_back_enabled: bool = True
@@ -157,6 +161,10 @@ class ExtendedConfig:
             "interlocutor_context_child": _env(
                 "INTERLOCUTOR_CONTEXT_CHILD",
                 defaults.interlocutor_context_child,
+            ),
+            "interlocutor_context_general": _env(
+                "INTERLOCUTOR_CONTEXT_GENERAL",
+                defaults.interlocutor_context_general,
             ),
             "enrich_enabled": _env_bool(
                 "ENRICH_ENABLED",
@@ -366,6 +374,7 @@ class ExtendedConfig:
             "extraction_model",
             "default_service",
             "interlocutor_context_child",
+            "interlocutor_context_general",
         ):
             if not str(getattr(self, name)).strip():
                 raise ExtendedConfigError(f"{name} no puede estar vacio", name)

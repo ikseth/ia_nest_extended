@@ -44,7 +44,14 @@ from .errors import (
 )
 from .entities import read_seed
 from .enrichment import compose_prompt, interlocutor_context
+from .frames import (
+    compose_session_frame,
+    frame_telemetry,
+    input_required_part,
+)
 from .identity import (
+    normalize_audience,
+    normalize_frame_facts,
     normalize_interlocutor_profile,
     replace_remembered_session_id,
     resolve_identity,
@@ -68,6 +75,8 @@ from .models import (
     RetrievalMode,
     Scope,
     Session,
+    SessionFrame,
+    SessionFrame,
     SessionStatus,
     StatedBy,
 )
@@ -161,7 +170,7 @@ class _ObservedStream:
         *,
         capability: str,
         on_complete: Callable[[str, str | None], None],
-        on_finish: Callable[[str, str | None], None],
+        on_finish: Callable[[str, str | None, str | None], None],
     ) -> None:
         self._downstream = downstream
         self._capability = capability
@@ -170,6 +179,7 @@ class _ObservedStream:
         self._parts: list[str] = []
         self._response: str | None = None
         self._downstream_request_id: str | None = None
+        self._input_required_part: str | None = None
         self._done = False
         self._error_event = False
         self._cancelled = False
@@ -240,6 +250,7 @@ class _ObservedStream:
             return
         if event_type != "done":
             return
+        self._input_required_part = input_required_part(data)
         if self._capability == "prompt.stream":
             text = data.get("text")
             self._response = text if isinstance(text, str) else "".join(self._parts)
@@ -261,7 +272,9 @@ class _ObservedStream:
         if self._finished:
             return
         self._finished = True
-        self._on_finish(status, self._downstream_request_id)
+        self._on_finish(
+            status, self._downstream_request_id, self._input_required_part
+        )
 
 
 class _UnavailableMemoryStore:
@@ -301,6 +314,7 @@ class ExtendedService:
         namespace: str | None = None,
         domain: str | None = None,
         interlocutor_profile: str | None = None,
+        audience: str | None = None,
         check_remembered: bool = True,
     ) -> tuple[MemoryIdentity, SessionStatus | None]:
         """Resuelve la identidad local y rota solo una sesion recordada muerta.
@@ -317,6 +331,7 @@ class ExtendedService:
             namespace=namespace,
             domain=domain,
             interlocutor_profile=interlocutor_profile,
+            audience=audience,
         )
         if (
             not check_remembered
@@ -413,6 +428,8 @@ class ExtendedService:
             return self.entity_refresh()
         if capability == "entity.retire":
             return self.entity_retire(_required_text(body, "key"))
+        if capability == "entity.unresolved":
+            return self.entity_unresolved()
         if capability == "prompt.run":
             result = self.prompt_run(
                 _required_text(body, "prompt"),
@@ -588,6 +605,8 @@ class ExtendedService:
             namespace=_identity_text(raw, "namespace"),
             domain=_identity_text(raw, "domain_tag"),
             interlocutor_profile=_identity_text(raw, "interlocutor_profile"),
+            audience=_identity_text(raw, "audience"),
+            frame_facts=raw.get("frame_facts"),
             # El servidor no recuerda sesiones: el fichero de estado es de la
             # CLI. Un servidor que recuerda una sola las mezcla todas.
             remember_session=False,
@@ -751,6 +770,7 @@ class ExtendedService:
         )
         request_id = str(uuid4())
         started = time.monotonic()
+        frame = self._compose_frame(request_identity, prompt, request_id)
         enricher = None
         prepared = None
         try:
@@ -804,6 +824,7 @@ class ExtendedService:
                 plan=plan,
                 started=started,
                 status="error",
+                frame=frame,
             )
             raise
 
@@ -829,7 +850,13 @@ class ExtendedService:
                 source_trace_id=downstream_request_id,
             )
 
-        def finish(status: str, downstream_request_id: str | None) -> None:
+        def finish(
+            status: str,
+            downstream_request_id: str | None,
+            required_part: str | None,
+        ) -> None:
+            if status == "ok" and required_part is not None:
+                self._set_awaiting_part(request_identity, required_part)
             self._record_run(
                 event=capability,
                 request_id=request_id,
@@ -838,6 +865,7 @@ class ExtendedService:
                 plan=plan,
                 started=started,
                 status=status,
+                frame=frame,
             )
 
         return _ObservedStream(
@@ -876,6 +904,7 @@ class ExtendedService:
             request_identity = replace(identity, domain_tag=plan.domain)
         request_id = str(uuid4())
         started = time.monotonic()
+        frame = self._compose_frame(request_identity, prompt, request_id)
         if not plan.enrich:
             if dry_run:
                 self._record_run(
@@ -886,6 +915,7 @@ class ExtendedService:
                     plan=plan,
                     started=started,
                     status="dry_run",
+                    frame=frame,
                 )
                 return ReasoningRunResult(
                     payload={},
@@ -913,6 +943,7 @@ class ExtendedService:
                     plan=plan,
                     started=started,
                     status="error",
+                    frame=frame,
                 )
                 raise
             result = ReasoningRunResult(
@@ -957,6 +988,7 @@ class ExtendedService:
                     plan=plan,
                     started=started,
                     status="error",
+                    frame=frame,
                 )
                 raise
             result = ReasoningRunResult(
@@ -968,6 +1000,8 @@ class ExtendedService:
                 dry_run=dry_run,
                 downstream_request_id=enriched.downstream_request_id,
             )
+        if not dry_run:
+            self._record_awaiting_part(request_identity, result.payload)
         self._record_run(
             event="reasoning.run",
             request_id=request_id,
@@ -976,6 +1010,7 @@ class ExtendedService:
             plan=plan,
             started=started,
             status="dry_run" if dry_run else "ok",
+            frame=frame,
         )
         return result
 
@@ -1012,12 +1047,13 @@ class ExtendedService:
         memory_identity = (
             replace(identity, domain_tag=domain) if domain is not None else identity
         )
+        frame = self._compose_frame(memory_identity, prompt, request_id)
         if not plan.enrich:
             try:
                 outbound_prompt = self._compose_interlocutor_prompt(identity, prompt)
                 outbound_plan = plan_payload
                 subtasks_enriched = 0
-                if identity.interlocutor_profile == "child":
+                if interlocutor_context(identity, self.config):
                     if outbound_plan is None:
                         planned = self._composition.core().task_plan(
                             outbound_prompt,
@@ -1048,8 +1084,10 @@ class ExtendedService:
                     subtasks_enriched=subtasks_enriched,
                     condense_trace=condense_trace,
                     plan_retried=plan_retried,
+                    frame=frame,
                 )
                 raise
+            self._record_awaiting_part(memory_identity, core_result.payload)
             self._record_task_run(
                 request_id=request_id,
                 downstream_request_id=core_result.request_id,
@@ -1060,6 +1098,7 @@ class ExtendedService:
                 subtasks_enriched=subtasks_enriched,
                 condense_trace=condense_trace,
                 plan_retried=plan_retried,
+                frame=frame,
             )
             return TaskRunResult(
                 payload=core_result.payload,
@@ -1184,6 +1223,7 @@ class ExtendedService:
                     prompt=prompt,
                     core_result=core_result,
                 )
+            self._record_awaiting_part(memory_identity, core_result.payload)
         except Exception:
             self._record_task_run(
                 request_id=request_id,
@@ -1195,6 +1235,7 @@ class ExtendedService:
                 subtasks_enriched=subtasks_enriched,
                 condense_trace=condense_trace,
                 plan_retried=plan_retried,
+                frame=frame,
             )
             raise
         self._record_task_run(
@@ -1207,6 +1248,7 @@ class ExtendedService:
             subtasks_enriched=subtasks_enriched,
             condense_trace=condense_trace,
             plan_retried=plan_retried,
+            frame=frame,
         )
         return TaskRunResult(
             payload=core_result.payload,
@@ -1347,6 +1389,7 @@ class ExtendedService:
         outbound_prompt = self._compose_interlocutor_prompt(identity, prompt)
         request_id = str(uuid4())
         started = time.monotonic()
+        frame = self._compose_frame(identity, prompt, request_id)
         if dry_run:
             self._record_prompt_run(
                 request_id=request_id,
@@ -1355,6 +1398,7 @@ class ExtendedService:
                 plan=plan,
                 started=started,
                 status="dry_run",
+                frame=frame,
             )
             return PromptRunResult(
                 payload={},
@@ -1378,8 +1422,10 @@ class ExtendedService:
                 plan=plan,
                 started=started,
                 status="error",
+                frame=frame,
             )
             raise
+        self._record_awaiting_part(identity, result.payload)
         self._record_prompt_run(
             request_id=request_id,
             downstream_request_id=result.request_id,
@@ -1387,6 +1433,7 @@ class ExtendedService:
             plan=plan,
             started=started,
             status="ok",
+            frame=frame,
         )
         return PromptRunResult(
             payload=result.payload,
@@ -1402,6 +1449,35 @@ class ExtendedService:
         prompt: str,
     ) -> str:
         return compose_prompt(interlocutor_context(identity, self.config), prompt)
+
+    def _compose_frame(
+        self,
+        identity: MemoryIdentity,
+        prompt: str,
+        request_id: str,
+    ) -> SessionFrame:
+        return compose_session_frame(
+            self._composition.memory_store(),
+            identity,
+            prompt=prompt,
+            turn=request_id,
+        )
+
+    def _record_awaiting_part(
+        self, identity: MemoryIdentity, payload: dict[str, Any]
+    ) -> None:
+        part = input_required_part(payload)
+        if part is not None:
+            self._set_awaiting_part(identity, part)
+
+    def _set_awaiting_part(
+        self, identity: MemoryIdentity, part: str
+    ) -> None:
+        assert identity.user_id is not None
+        assert identity.session_id is not None
+        self._composition.memory_store().set_session_awaiting_part(
+            identity.user_id, identity.session_id, part
+        )
 
     def _compose_task_plan_interlocutor(
         self,
@@ -1446,6 +1522,7 @@ class ExtendedService:
     ) -> PromptRunResult:
         request_id = str(uuid4())
         started = time.monotonic()
+        frame = self._compose_frame(identity, prompt, request_id)
         rag_store = self._composition.rag_store() if plan.use_rag else None
         if plan.use_memory or plan.write_back:
             memory_store = self._composition.memory_store()
@@ -1475,8 +1552,11 @@ class ExtendedService:
                 plan=plan,
                 started=started,
                 status="error",
+                frame=frame,
             )
             raise
+        if not dry_run:
+            self._record_awaiting_part(identity, result.payload)
         self._record_prompt_run(
             request_id=request_id,
             downstream_request_id=result.downstream_request_id,
@@ -1484,6 +1564,7 @@ class ExtendedService:
             plan=plan,
             started=started,
             status="dry_run" if dry_run else "ok",
+            frame=frame,
         )
         payload = dict(result.payload)
         if not dry_run:
@@ -1509,6 +1590,7 @@ class ExtendedService:
         plan: EnrichmentPlan,
         started: float,
         status: str,
+        frame: SessionFrame,
     ) -> None:
         self._record_run(
             event="prompt.run",
@@ -1518,6 +1600,7 @@ class ExtendedService:
             plan=plan,
             started=started,
             status=status,
+            frame=frame,
         )
 
     def _record_run(
@@ -1530,6 +1613,7 @@ class ExtendedService:
         plan: EnrichmentPlan,
         started: float,
         status: str,
+        frame: SessionFrame,
     ) -> None:
         turn_details: dict[str, Any] = {}
         if event.startswith("prompt."):
@@ -1560,8 +1644,10 @@ class ExtendedService:
             details={
                 "interlocutor_context": {
                     "profile": identity.interlocutor_profile,
-                    "composed": identity.interlocutor_profile == "child",
+                    "audience": identity.audience,
+                    "composed": bool(interlocutor_context(identity, self.config)),
                 },
+                "frame": frame_telemetry(frame),
                 **turn_details,
             },
         )
@@ -1578,6 +1664,7 @@ class ExtendedService:
         subtasks_enriched: int,
         condense_trace: _TaskCondenseTrace,
         plan_retried: bool,
+        frame: SessionFrame,
     ) -> None:
         self._composition.telemetry().record(
             event="task.run",
@@ -1596,8 +1683,10 @@ class ExtendedService:
             details={
                 "interlocutor_context": {
                     "profile": identity.interlocutor_profile,
-                    "composed": identity.interlocutor_profile == "child",
+                    "audience": identity.audience,
+                    "composed": bool(interlocutor_context(identity, self.config)),
                 },
+                "frame": frame_telemetry(frame),
                 "question_rewritten": condense_trace.question_rewritten,
                 "condense_model": condense_trace.model,
                 "condense_latency_ms": condense_trace.latency_ms,
@@ -1650,13 +1739,34 @@ class ExtendedService:
         )
 
     def entity_apply(self, path: Path, *, plan: bool = False) -> dict[str, Any]:
-        seed = read_seed(path, self.config.provider_ceiling)
+        store = self._composition.memory_store()
+        current_homes = tuple(
+            entity.key
+            for entity in store.list_entities(kind="home", status="active")
+            if entity.key is not None
+        )
+        seed = read_seed(
+            path,
+            self.config.provider_ceiling,
+            current_home_keys=current_homes,
+        )
         return {
             "origin": seed.origin,
-            "plan": self._composition.memory_store().apply_entity_seed(
-                seed, plan=plan
-            ),
+            "plan": store.apply_entity_seed(seed, plan=plan),
             "applied": not plan,
+        }
+
+    def entity_unresolved(self) -> dict[str, Any]:
+        return {
+            "unresolved": [
+                {
+                    "key": item.key,
+                    "first_seen_at": item.first_seen_at.isoformat(),
+                    "last_seen_at": item.last_seen_at.isoformat(),
+                    "count": item.count,
+                }
+                for item in self._composition.memory_store().unresolved_frame_keys()
+            ]
         }
 
     # --- capacidades propias: memoria -------------------------------------
@@ -2099,25 +2209,27 @@ def _memory_identity(raw: Any) -> MemoryIdentity:
         return MemoryIdentity()
     if not isinstance(raw, dict):
         raise ExtendedRequestError("'identity' debe ser un objeto", "identity")
+    incoming_profile = _identity_text(raw, "interlocutor_profile")
     return MemoryIdentity(
         user_id=_identity_text(raw, "user_id"),
         session_id=_identity_text(raw, "session_id"),
         service=_identity_text(raw, "service"),
         domain_tag=_identity_text(raw, "domain_tag"),
         namespace=_identity_text(raw, "namespace"),
-        interlocutor_profile=normalize_interlocutor_profile(
-            _identity_text(raw, "interlocutor_profile")
-        ),
+        interlocutor_profile=normalize_interlocutor_profile(incoming_profile),
+        audience=normalize_audience(_identity_text(raw, "audience"), incoming_profile),
+        frame_facts=normalize_frame_facts(raw.get("frame_facts")),
     )
 
 
 def _validated_identity(identity: MemoryIdentity) -> MemoryIdentity:
     """Normaliza el perfil antes de cualquier llamada o escritura local."""
+    incoming_profile = identity.interlocutor_profile
     return replace(
         identity,
-        interlocutor_profile=normalize_interlocutor_profile(
-            identity.interlocutor_profile
-        ),
+        interlocutor_profile=normalize_interlocutor_profile(incoming_profile),
+        audience=normalize_audience(identity.audience, incoming_profile),
+        frame_facts=normalize_frame_facts(identity.frame_facts),
     )
 
 

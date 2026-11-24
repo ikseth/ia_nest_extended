@@ -133,6 +133,62 @@ def test_turn_context_only_when_declared_in_cached_catalog(
     }
 
 
+def test_turn_context_frame_is_declared_only_and_identity_stays_clean(
+    local_service_stub, tmp_path
+):
+    cache = tmp_path / "catalog.json"
+    frame = {
+        "channel": "test",
+        "person": {"state": "unknown"},
+        "device": {"state": "unknown"},
+        "place": {"state": "unknown"},
+        "language": None,
+        "missing": ["person", "device", "place"],
+    }
+    client = CoreClient(
+        local_service_stub.base_url,
+        connect_timeout_seconds=2,
+        catalog_cache_path=cache,
+        frame_context=lambda identity: frame,
+    )
+    identity = MemoryIdentity(
+        user_id="u",
+        session_id="s",
+        audience="general",
+        frame_facts={
+            "account": {"value": "a", "origin": "authenticated"},
+            "person": {"value": None, "origin": "absent"},
+            "device": {"value": None, "origin": "absent"},
+        },
+    )
+    write_catalog_cache(
+        cache,
+        core_url=local_service_stub.base_url,
+        core_version="next",
+        capabilities=[{"name": "prompt.run", "params": []}],
+    )
+
+    client.prompt_run("uno", identity)
+    first = local_service_stub.requests[-1][1]
+    assert "turn_context" not in first
+    assert "audience" not in first["identity"]
+    assert "frame_facts" not in first["identity"]
+
+    write_catalog_cache(
+        cache,
+        core_url=local_service_stub.base_url,
+        core_version="next",
+        capabilities=[
+            {"name": "prompt.run", "params": [{"name": "turn_context"}]}
+        ],
+    )
+    client.prompt_run("dos", identity)
+    assert local_service_stub.requests[-1][1]["turn_context"] == {
+        "trusted_providers": [],
+        "frame": frame,
+    }
+
+
 def test_core_client_lists_domains_once_per_client(local_service_stub):
     client = CoreClient(local_service_stub.base_url, connect_timeout_seconds=2)
 

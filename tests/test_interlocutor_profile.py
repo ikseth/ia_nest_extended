@@ -19,11 +19,16 @@ from ianest_extended import (
     TaskPlanResult,
 )
 from ianest_extended.enrichment import MemoryEnricher
+from ianest_extended.cli import _build_parser
 
 from .fakes import InMemoryRagStore, InMemoryStore
 
 
 CHILD_TEXT = "El interlocutor es un nino o una nina."
+GENERAL_TEXT = (
+    "No se sabe quien habla: puede ser cualquier persona de la casa, tambien "
+    "un nino o una nina. Responde de forma apta para todos los publicos."
+)
 
 
 class ProfileCore:
@@ -111,12 +116,13 @@ def _service(tmp_path):
     return service, core, store
 
 
-def _identity(profile=None):
+def _identity(profile=None, audience=None):
     return MemoryIdentity(
         user_id="same-user",
         session_id="same-session",
         service="test",
         interlocutor_profile=profile,
+        audience=audience,
     )
 
 
@@ -125,10 +131,18 @@ def _events(tmp_path):
     return [json.loads(line) for line in path.read_text(encoding="ascii").splitlines()]
 
 
-@pytest.mark.parametrize("profile,composed", [("child", True), ("adult", False), (None, False)])
+@pytest.mark.parametrize(
+    "profile,audience,context,normalized_profile",
+    [
+        ("child", "child", CHILD_TEXT, "restricted"),
+        ("restricted", "general", GENERAL_TEXT, "restricted"),
+        ("adult", "adult", None, "adult"),
+        (None, None, None, None),
+    ],
+)
 @pytest.mark.parametrize("capability", ["prompt.run", "reasoning.run", "prompt.stream", "reasoning.stream"])
 def test_profile_is_composed_in_all_inference_paths_even_without_enrichment(
-    tmp_path, profile, composed, capability
+    tmp_path, profile, audience, context, normalized_profile, capability
 ):
     service, core, _ = _service(tmp_path)
     identity = _identity(profile)
@@ -142,10 +156,17 @@ def test_profile_is_composed_in_all_inference_paths_even_without_enrichment(
         list(service.reasoning_stream("pregunta literal", identity, enrich=False))
 
     call = next(item for item in core.calls if item[0] == capability)
-    assert (CHILD_TEXT in call[1]) is composed
-    assert call[2].interlocutor_profile == profile
+    assert (context is not None) is ("## interlocutor" in call[1])
+    if context is not None:
+        assert context in call[1]
+    assert call[2].interlocutor_profile == normalized_profile
+    assert call[2].audience == audience
     event = next(item for item in _events(tmp_path) if item["event"] == capability)
-    assert event["interlocutor_context"] == {"profile": profile, "composed": composed}
+    assert event["interlocutor_context"] == {
+        "profile": normalized_profile,
+        "audience": audience,
+        "composed": context is not None,
+    }
 
 
 @pytest.mark.parametrize("enrich", [False, True])
@@ -166,7 +187,11 @@ def test_task_child_reaches_planner_combiner_and_every_subtask(tmp_path, enrich)
     assert CHILD_TEXT in runner[1]
     assert all(CHILD_TEXT in item["prompt"] for item in runner[3]["plan"])
     event = next(item for item in _events(tmp_path) if item["event"] == "task.run")
-    assert event["interlocutor_context"] == {"profile": "child", "composed": True}
+    assert event["interlocutor_context"] == {
+        "profile": "restricted",
+        "audience": "child",
+        "composed": True,
+    }
 
 
 @pytest.mark.parametrize("profile", ["adult", None])
@@ -187,7 +212,11 @@ def test_task_without_child_keeps_prompts_and_telemetry_uncomposed(tmp_path, pro
     assert CHILD_TEXT not in runner[1]
     assert all(CHILD_TEXT not in item["prompt"] for item in runner[3]["plan"])
     event = next(item for item in _events(tmp_path) if item["event"] == "task.run")
-    assert event["interlocutor_context"] == {"profile": profile, "composed": False}
+    assert event["interlocutor_context"] == {
+        "profile": profile,
+        "audience": "adult" if profile == "adult" else None,
+        "composed": False,
+    }
 
 
 def test_child_context_is_permanent_and_memory_key_is_unchanged(tmp_path):
@@ -238,7 +267,45 @@ def test_child_dry_run_composes_and_declares_telemetry(tmp_path):
     assert core.calls == []
     event = next(item for item in _events(tmp_path) if item["event"] == "prompt.run")
     assert event["status"] == "dry_run"
-    assert event["interlocutor_context"] == {"profile": "child", "composed": True}
+    assert event["interlocutor_context"] == {
+        "profile": "restricted",
+        "audience": "child",
+        "composed": True,
+    }
+
+
+def test_explicit_general_audience_with_restricted_profile_is_not_child(tmp_path):
+    service, core, _ = _service(tmp_path)
+
+    service.prompt_run(
+        "pregunta literal",
+        _identity("restricted", "general"),
+        enrich=False,
+    )
+
+    call = next(item for item in core.calls if item[0] == "prompt.run")
+    assert GENERAL_TEXT in call[1]
+    assert CHILD_TEXT not in call[1]
+    assert call[2].to_core_dict()["interlocutor_profile"] == "restricted"
+    assert "audience" not in call[2].to_core_dict()
+
+
+def test_cli_declares_audience_next_to_the_legacy_profile():
+    args = _build_parser().parse_args(
+        [
+            "prompt",
+            "run",
+            "--prompt",
+            "hola",
+            "--interlocutor-profile",
+            "restricted",
+            "--audience",
+            "general",
+        ]
+    )
+
+    assert args.interlocutor_profile == "restricted"
+    assert args.audience == "general"
 
 
 def test_rest_and_mcp_service_input_reject_invalid_profile_before_work(tmp_path):

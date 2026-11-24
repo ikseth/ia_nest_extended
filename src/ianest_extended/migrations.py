@@ -15,6 +15,7 @@ MIGRATION_NAMES = (
     "0006_sessions.sql",
     "0007_thread_artifacts.sql",
     "0008_entity_registry.sql",
+    "0009_session_frames.sql",
 )
 
 

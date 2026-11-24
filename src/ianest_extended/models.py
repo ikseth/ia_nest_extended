@@ -105,6 +105,8 @@ class MemoryIdentity:
     domain_tag: str | None = None
     namespace: str | None = None
     interlocutor_profile: str | None = None
+    audience: str | None = None
+    frame_facts: dict[str, dict[str, str | None]] | None = None
 
     def to_core_dict(self) -> dict[str, str]:
         return {
@@ -130,9 +132,33 @@ class Session:
     status: SessionStatus
     archived_at: datetime | None
     closed_at: datetime | None
+    awaiting_part: str | None = None
     # Derivado del thread_summary mas reciente al leer; no se almacena en
     # sessions y el servicio aplica el recorte publico de 80 caracteres.
     title: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SessionFrame:
+    user_id: str
+    session_id: str
+    seq: int
+    account: dict[str, Any]
+    person: dict[str, Any]
+    device: dict[str, Any]
+    place: dict[str, Any]
+    missing: tuple[str, ...]
+    cause: str
+    changed: tuple[str, ...]
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class UnresolvedEntityKey:
+    key: str
+    first_seen_at: datetime
+    last_seen_at: datetime
+    count: int
 
 
 @dataclass(frozen=True, slots=True)

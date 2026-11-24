@@ -117,7 +117,7 @@ def test_wheel_install_contains_reachable_migrations(tmp_path):
                 "from importlib.resources import files; "
                 "print(json.dumps({'package': ianest_extended.__file__, "
                 "'sql': [resource().read_text(encoding='ascii') "
-                    "for resource in (memory, rag, domains, stated_by, synthesis, sessions, thread_artifacts, lambda: migration_resource('0008_entity_registry.sql'))], "
+                    "for resource in (memory, rag, domains, stated_by, synthesis, sessions, thread_artifacts, lambda: migration_resource('0008_entity_registry.sql'), lambda: migration_resource('0009_session_frames.sql'))], "
                 "'courtesy': files('ianest_extended').joinpath('data/courtesy_es.txt').read_text(encoding='utf-8')}))"
             ),
         ],

@@ -53,6 +53,17 @@ def _identity():
     return MemoryIdentity(user_id="u", session_id="A", service="local_cli")
 
 
+def _unknown_frame():
+    return {
+        "channel": "local_cli",
+        "person": {"state": "unknown"},
+        "device": {"state": "unknown"},
+        "place": {"state": "unknown"},
+        "language": None,
+        "missing": ["person", "device", "place"],
+    }
+
+
 def test_overridden_prompt_run_keeps_core_shape(tmp_path, local_service_stub):
     """Criterio 4: misma FORMA que el core, con response y trace intactos."""
     store = InMemoryStore()
@@ -146,7 +157,8 @@ def test_prompt_telemetry_records_trusted_providers_sent(
         body for path, body in local_service_stub.requests if path == "/prompt/run"
     )
     assert payload["turn_context"] == {
-        "trusted_providers": ["casa_ha", "zeta"]
+        "trusted_providers": ["casa_ha", "zeta"],
+        "frame": _unknown_frame(),
     }
     assert _events(tmp_path)[0]["trusted_providers"] == ["casa_ha", "zeta"]
 
@@ -174,7 +186,10 @@ def test_turn_context_refreshes_catalog_when_ttl_elapsed(
     payload = next(
         body for path, body in local_service_stub.requests if path == "/prompt/run"
     )
-    assert payload["turn_context"] == {"trusted_providers": []}
+    assert payload["turn_context"] == {
+        "trusted_providers": [],
+        "frame": _unknown_frame(),
+    }
     assert sum(
         path == "/capability/list" for path, _ in local_service_stub.requests
     ) == 2

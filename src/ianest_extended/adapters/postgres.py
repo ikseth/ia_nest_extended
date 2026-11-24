@@ -25,6 +25,7 @@ from ..errors import (
     SchemaMigrationRequiredError,
     SessionAlreadyExistsError,
     SessionNotActiveError,
+    SessionNotFoundError,
     ScopeViolationError,
     UnsupportedWriteError,
     WriteAuthorityError,
@@ -47,14 +48,21 @@ from ..models import (
     RetrievalMode,
     Scope,
     Session,
+    SessionFrame,
     SessionStatus,
     StatedBy,
     ThreadSynthesisResult,
+    UnresolvedEntityKey,
 )
 from ..migrations import migration_resource
 from ..ports import Embedder
 from ..registry import MemoryTypeRegistry, derive_memory_key, seed_memory_types
-from ..entities import SeedDocument, split_entity_key, validate_facts
+from ..entities import (
+    SeedDocument,
+    split_entity_key,
+    validate_entity_key,
+    validate_facts,
+)
 
 
 class PostgresMemoryStore:
@@ -84,6 +92,9 @@ class PostgresMemoryStore:
         self._entity_registry_migration_path = migration_resource(
             "0008_entity_registry.sql"
         )
+        self._session_frames_migration_path = migration_resource(
+            "0009_session_frames.sql"
+        )
 
     def verify_schema(self) -> None:
         """Comprueba el esquema SIN mutarlo (migracion explicita, ADR 0011)."""
@@ -96,6 +107,7 @@ class PostgresMemoryStore:
                 "entity_keys",
                 "entity_versions",
                 "entity_seed_ownership",
+                "session_frames",
             ):
                 exists = connection.execute(
                     "SELECT to_regclass(%s) AS relation",
@@ -189,6 +201,9 @@ class PostgresMemoryStore:
             )
             connection.execute(
                 self._entity_registry_migration_path.read_text(encoding="ascii")
+            )
+            connection.execute(
+                self._session_frames_migration_path.read_text(encoding="ascii")
             )
             self._ensure_embedding_dimension(connection)
         for memory_type in seed_memory_types():
@@ -499,11 +514,7 @@ class PostgresMemoryStore:
         self._validate_entity_write(
             principal, kind, observed_patch, curated_patch
         )
-        namespace, external_id = split_entity_key(key)
-        if namespace != kind:
-            raise InvalidEntityError(
-                "el namespace de la clave debe coincidir con kind", "key"
-            )
+        namespace, external_id = validate_entity_key(key, kind)
         with self._connect() as connection:
             row, _ = self._put_entity_in_transaction(
                 connection,
@@ -551,6 +562,29 @@ class PostgresMemoryStore:
         if row is None:
             raise EntityNotFoundError(f"entidad no encontrada: {key!r}", "key")
         return _entity_from_registry_row(row, key=key)
+
+    def resolve_entity(self, key: str) -> Entity | None:
+        namespace, external_id = split_entity_key(key)
+        with self._connect() as connection:
+            row = self._entity_by_key(
+                connection, namespace, external_id, current_only=True
+            )
+        if row is None or row["status"] != "active":
+            return None
+        return _entity_from_registry_row(row, key=key)
+
+    def get_entity_version(self, entity_id: UUID, version: int) -> EntityVersion:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM entity_versions WHERE entity_id = %s AND version = %s",
+                (entity_id, version),
+            ).fetchone()
+        if row is None:
+            raise EntityNotFoundError(
+                f"version de entidad no encontrada: {entity_id}/{version}",
+                "entity_id",
+            )
+        return _entity_version_from_row(row)
 
     def list_entities(
         self, *, kind: str | None = None, status: str | None = None
@@ -712,6 +746,7 @@ class PostgresMemoryStore:
                 elif (
                     current["status"] != "active"
                     or current["kind"] != entry.kind
+                    or current["name"] != (entry.name or current["name"])
                     or current_curated != target_curated
                 ):
                     action = "change"
@@ -730,6 +765,7 @@ class PostgresMemoryStore:
                         target_curated,
                         seed.origin,
                         replace_curated=True,
+                        name=entry.name,
                     )
                     connection.execute(
                         """
@@ -813,6 +849,7 @@ class PostgresMemoryStore:
         origin: str,
         *,
         replace_curated: bool = False,
+        name: str | None = None,
     ):
         self._validate_entity_write(principal, kind, observed_patch, curated_patch)
         current = self._entity_by_key(
@@ -826,7 +863,7 @@ class PostgresMemoryStore:
             entity_id = uuid4()
             observed = dict(observed_patch)
             curated = dict(curated_patch)
-            name = observed.get("name", external_id)
+            entity_name = name or observed.get("name", external_id)
             row = connection.execute(
                 """
                 INSERT INTO entities (
@@ -835,7 +872,7 @@ class PostgresMemoryStore:
                 ) VALUES (%s, %s, %s, '{}', %s::jsonb, %s::jsonb, %s::jsonb,
                           'active', 1, NULL) RETURNING *
                 """,
-                (entity_id, kind, name, json.dumps(curated),
+                (entity_id, kind, entity_name, json.dumps(curated),
                  json.dumps(observed), json.dumps(curated)),
             ).fetchone()
             connection.execute(
@@ -854,10 +891,10 @@ class PostgresMemoryStore:
         )
         if not replace_curated:
             curated.update(curated_patch)
-        name = observed.get("name", current["name"])
+        entity_name = name or observed.get("name", current["name"])
         changed = (
             observed != current["observed"] or curated != current["curated"]
-            or name != current["name"] or current["status"] != "active"
+            or entity_name != current["name"] or current["status"] != "active"
         )
         if not changed:
             return current, ""
@@ -868,7 +905,7 @@ class PostgresMemoryStore:
                 retired_at = NULL, version = version + 1, updated_at = now()
             WHERE id = %s RETURNING *
             """,
-            (name, json.dumps(curated), json.dumps(observed), json.dumps(curated),
+            (entity_name, json.dumps(curated), json.dumps(observed), json.dumps(curated),
              current["id"]),
         ).fetchone()
         connection.execute(
@@ -1026,7 +1063,7 @@ class PostgresMemoryStore:
                 """
                 SELECT s.user_id, s.session_id, s.created_at,
                        s.last_activity_at, s.status, s.archived_at,
-                       s.closed_at, summary.content AS title
+                       s.closed_at, s.awaiting_part, summary.content AS title
                 FROM sessions s
                 LEFT JOIN LATERAL (
                     SELECT e.content
@@ -1058,7 +1095,7 @@ class PostgresMemoryStore:
                 f"""
                 SELECT s.user_id, s.session_id, s.created_at,
                        s.last_activity_at, s.status, s.archived_at,
-                       s.closed_at, summary.content AS title
+                       s.closed_at, s.awaiting_part, summary.content AS title
                 FROM sessions s
                 LEFT JOIN LATERAL (
                     SELECT e.content
@@ -1086,7 +1123,8 @@ class PostgresMemoryStore:
                 VALUES (%s, %s, now(), now(), 'activa')
                 ON CONFLICT (user_id, session_id) DO NOTHING
                 RETURNING user_id, session_id, created_at, last_activity_at,
-                          status, archived_at, closed_at, NULL::text AS title
+                          status, archived_at, closed_at, awaiting_part,
+                          NULL::text AS title
                 """,
                 (user_id, session_id),
             ).fetchone()
@@ -1096,6 +1134,143 @@ class PostgresMemoryStore:
                 "session_id",
             )
         return _session_from_row(row)
+
+    def touch_session(self, user_id: str, session_id: str) -> Session:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                INSERT INTO sessions (
+                    user_id, session_id, created_at, last_activity_at, status
+                ) VALUES (%s, %s, now(), now(), 'activa')
+                ON CONFLICT (user_id, session_id) DO UPDATE SET
+                    last_activity_at = CASE
+                        WHEN sessions.status = 'activa' THEN now()
+                        ELSE sessions.last_activity_at
+                    END
+                RETURNING user_id, session_id, created_at, last_activity_at,
+                          status, archived_at, closed_at, awaiting_part,
+                          NULL::text AS title
+                """,
+                (user_id, session_id),
+            ).fetchone()
+        session = _session_from_row(row)
+        if session.status is not SessionStatus.ACTIVE:
+            raise SessionNotActiveError(
+                f"la sesion {session_id!r} esta {session.status.value} y no admite turnos",
+                "session_id",
+            )
+        return session
+
+    def get_session_frame(
+        self, user_id: str, session_id: str
+    ) -> SessionFrame | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM session_frames
+                WHERE user_id = %s AND session_id = %s
+                ORDER BY seq DESC LIMIT 1
+                """,
+                (user_id, session_id),
+            ).fetchone()
+        return None if row is None else _session_frame_from_row(row)
+
+    def append_session_frame(self, frame: SessionFrame) -> SessionFrame:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                INSERT INTO session_frames (
+                    user_id, session_id, seq, account, person, device, place,
+                    missing, cause, changed
+                ) VALUES (
+                    %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb,
+                    %s::jsonb, %s, %s::jsonb
+                ) RETURNING *
+                """,
+                (
+                    frame.user_id,
+                    frame.session_id,
+                    frame.seq,
+                    json.dumps(frame.account),
+                    json.dumps(frame.person),
+                    json.dumps(frame.device),
+                    json.dumps(frame.place),
+                    json.dumps(list(frame.missing)),
+                    frame.cause,
+                    json.dumps(list(frame.changed)),
+                ),
+            ).fetchone()
+        return _session_frame_from_row(row)
+
+    def take_session_awaiting_part(
+        self, user_id: str, session_id: str
+    ) -> str | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT awaiting_part FROM sessions
+                WHERE user_id = %s AND session_id = %s FOR UPDATE
+                """,
+                (user_id, session_id),
+            ).fetchone()
+            if row is None:
+                raise SessionNotFoundError(
+                    f"la sesion {session_id!r} no existe para el usuario {user_id!r}",
+                    "session_id",
+                )
+            part = row["awaiting_part"]
+            if part is not None:
+                connection.execute(
+                    """UPDATE sessions SET awaiting_part = NULL
+                       WHERE user_id = %s AND session_id = %s""",
+                    (user_id, session_id),
+                )
+        return part
+
+    def set_session_awaiting_part(
+        self, user_id: str, session_id: str, part: str | None
+    ) -> None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """UPDATE sessions SET awaiting_part = %s
+                   WHERE user_id = %s AND session_id = %s
+                   RETURNING user_id""",
+                (part, user_id, session_id),
+            ).fetchone()
+        if row is None:
+            raise SessionNotFoundError(
+                f"la sesion {session_id!r} no existe para el usuario {user_id!r}",
+                "session_id",
+            )
+
+    def unresolved_frame_keys(self) -> tuple[UnresolvedEntityKey, ...]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT part->>'key' AS key, min(created_at) AS first_seen_at,
+                       max(created_at) AS last_seen_at, count(*) AS count
+                FROM session_frames
+                CROSS JOIN LATERAL (
+                    VALUES (person), (device), (place)
+                ) AS parts(part)
+                WHERE part->>'state' = 'unresolved'
+                GROUP BY part->>'key'
+                ORDER BY first_seen_at, key
+                """
+            ).fetchall()
+        return tuple(
+            UnresolvedEntityKey(
+                key=row["key"],
+                first_seen_at=row["first_seen_at"],
+                last_seen_at=row["last_seen_at"],
+                count=row["count"],
+            )
+            for row in rows
+        )
+
+    @staticmethod
+    def frame_timestamp() -> datetime:
+        return datetime.now(UTC)
 
     def find_similar(
         self,
@@ -2092,7 +2267,24 @@ def _session_from_row(row: dict[str, Any]) -> Session:
         status=SessionStatus(row["status"]),
         archived_at=row["archived_at"],
         closed_at=row["closed_at"],
+        awaiting_part=row.get("awaiting_part"),
         title=row.get("title"),
+    )
+
+
+def _session_frame_from_row(row: dict[str, Any]) -> SessionFrame:
+    return SessionFrame(
+        user_id=row["user_id"],
+        session_id=row["session_id"],
+        seq=row["seq"],
+        account=dict(row["account"]),
+        person=dict(row["person"]),
+        device=dict(row["device"]),
+        place=dict(row["place"]),
+        missing=tuple(row["missing"]),
+        cause=row["cause"],
+        changed=tuple(row["changed"]),
+        created_at=row["created_at"],
     )
 
 

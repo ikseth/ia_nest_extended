@@ -1274,25 +1274,45 @@ def _render_context(lines: list[_ContextLine]) -> str:
 
 def interlocutor_context(identity: MemoryIdentity, config: ExtendedConfig) -> str:
     """Devuelve el hecho de interlocucion que no compite con el presupuesto."""
-    if identity.interlocutor_profile != "child":
+    audience = _effective_audience(identity)
+    if audience == "child":
+        text = config.interlocutor_context_child
+    elif audience == "general":
+        text = config.interlocutor_context_general
+    else:
         return ""
-    return "## interlocutor\n" + config.interlocutor_context_child
+    return "## interlocutor\n" + text
 
 
 def _interlocutor_lines(
     identity: MemoryIdentity,
     config: ExtendedConfig,
 ) -> list[_ContextLine]:
-    if identity.interlocutor_profile != "child":
+    audience = _effective_audience(identity)
+    if audience == "child":
+        text = config.interlocutor_context_child
+    elif audience == "general":
+        text = config.interlocutor_context_general
+    else:
         return []
     return [
         _ContextLine(
             "interlocutor",
-            config.interlocutor_context_child,
+            text,
             relevance=0.0,
             permanent=True,
         )
     ]
+
+
+def _effective_audience(identity: MemoryIdentity) -> str | None:
+    if identity.audience is not None:
+        return identity.audience
+    return {
+        "child": "child",
+        "restricted": "general",
+        "adult": "adult",
+    }.get(identity.interlocutor_profile)
 
 
 def _render_tier(lines: list[_ContextLine], tier: str) -> str:

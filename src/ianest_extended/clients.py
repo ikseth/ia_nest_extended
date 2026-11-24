@@ -155,6 +155,7 @@ class CoreClient:
         task_timeout_seconds: float = 600.0,
         catalog_cache_path: Path | None = None,
         trusted_providers: Callable[[], tuple[str, ...]] | None = None,
+        frame_context: Callable[[MemoryIdentity], dict[str, Any] | None] | None = None,
         ensure_catalog_fresh: Callable[[], None] | None = None,
     ) -> None:
         self._catalog_core_url = base_url
@@ -170,6 +171,7 @@ class CoreClient:
         self._domain_ids: tuple[str, ...] | None = None
         self._catalog_cache_path = catalog_cache_path
         self._trusted_providers = trusted_providers
+        self._frame_context = frame_context
         self._ensure_catalog_fresh = ensure_catalog_fresh
 
     def turn_context(self, capability: str) -> tuple[bool, tuple[str, ...]]:
@@ -199,11 +201,18 @@ class CoreClient:
         return True, tuple(sorted(providers))
 
     def _add_turn_context(
-        self, capability: str, payload: dict[str, Any]
+        self,
+        capability: str,
+        payload: dict[str, Any],
+        identity: MemoryIdentity,
     ) -> None:
         sent, providers = self.turn_context(capability)
         if sent:
-            payload["turn_context"] = {"trusted_providers": list(providers)}
+            context: dict[str, Any] = {"trusted_providers": list(providers)}
+            frame = self._frame_context(identity) if self._frame_context else None
+            if frame is not None:
+                context["frame"] = frame
+            payload["turn_context"] = context
 
     # --- reenvio generico (opaco) -----------------------------------------
 
@@ -290,7 +299,7 @@ class CoreClient:
             payload["model"] = model
         if domain is not None:
             payload["domain"] = domain
-        self._add_turn_context("prompt.run", payload)
+        self._add_turn_context("prompt.run", payload, identity)
         data = self._post_json("/prompt/run", payload)
         if not isinstance(data.get("response"), str):
             raise CoreResponseError("el core no devolvio response como texto")
@@ -385,7 +394,7 @@ class CoreClient:
         if domain is not None:
             payload["domain"] = domain
         if capability is not None:
-            self._add_turn_context(capability, payload)
+            self._add_turn_context(capability, payload, identity)
         connection, response = _open(
             f"{self._base_url}{route}",
             "POST",
@@ -481,7 +490,7 @@ class CoreClient:
         identity: MemoryIdentity,
     ) -> DomainRouteResult:
         payload = {"prompt": prompt, "identity": identity.to_core_dict()}
-        self._add_turn_context("domain.route", payload)
+        self._add_turn_context("domain.route", payload, identity)
         data = self._post_json("/domain/route", payload)
         domain = data.get("domain")
         confidence = data.get("confidence")

@@ -76,7 +76,7 @@ def test_own_catalog_declares_all_implemented_capabilities_and_explicit_gaps():
     entity_names = {name for name in by_name if name.startswith("entity.")}
     assert entity_names == {
         "entity.apply", "entity.get", "entity.history", "entity.list",
-        "entity.put", "entity.refresh", "entity.retire",
+        "entity.put", "entity.refresh", "entity.retire", "entity.unresolved",
     }
     assert all(by_name[name].rest is None for name in entity_names)
     assert all(by_name[name].mcp is None for name in entity_names)

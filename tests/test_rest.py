@@ -433,7 +433,13 @@ def test_own_external_errors_use_their_declared_status(
             raise error
 
     config = _config(tmp_path)
-    service = ExtendedService(ExtendedComposition(config, core=FailingCore()))
+    service = ExtendedService(
+        ExtendedComposition(
+            config,
+            core=FailingCore(),
+            memory_store=InMemoryStore(),
+        )
+    )
     response = _request(
         create_app(config, service),
         "POST",
