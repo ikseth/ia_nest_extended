@@ -102,7 +102,7 @@ class _CoreSpy:
     def __init__(self):
         self.calls = []
 
-    def prompt_run(self, prompt, identity, model=None, domain=None):
+    def prompt_run(self, prompt, identity, model=None, domain=None, turn=False):
         self.calls.append(("prompt_run", prompt))
         return CoreResult(
             response=f"echo:{prompt}",

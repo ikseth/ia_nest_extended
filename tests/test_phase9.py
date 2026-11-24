@@ -20,7 +20,7 @@ class SynthesisCore:
         self.calls = []
         self.counter = 0
 
-    def prompt_run(self, prompt, identity, *, model=None, domain=None):
+    def prompt_run(self, prompt, identity, *, model=None, domain=None, turn=False):
         self.counter += 1
         self.calls.append((prompt, model))
         if prompt.startswith("Extract only literal"):

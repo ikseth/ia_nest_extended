@@ -63,7 +63,7 @@ class FixedGate:
 
 
 class CoreStub:
-    def prompt_run(self, prompt, identity, model=None, domain=None):
+    def prompt_run(self, prompt, identity, model=None, domain=None, turn=False):
         return CoreResult(
             response="OK",
             trace={"request_id": "core-test", "finish_reason": "stop"},

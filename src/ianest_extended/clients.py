@@ -205,11 +205,17 @@ class CoreClient:
         capability: str,
         payload: dict[str, Any],
         identity: MemoryIdentity,
+        *,
+        with_frame: bool = True,
     ) -> None:
         sent, providers = self.turn_context(capability)
         if sent:
             context: dict[str, Any] = {"trusted_providers": list(providers)}
-            frame = self._frame_context(identity) if self._frame_context else None
+            frame = (
+                self._frame_context(identity)
+                if with_frame and self._frame_context
+                else None
+            )
             if frame is not None:
                 context["frame"] = frame
             payload["turn_context"] = context
@@ -290,7 +296,13 @@ class CoreClient:
         identity: MemoryIdentity,
         model: str | None = None,
         domain: str | None = None,
+        turn: bool = False,
     ) -> CoreResult:
+        """`turn=True` solo en el turno del interlocutor: lleva el marco.
+
+        Las llamadas internas (extraccion, sintesis, condensacion) no lo llevan
+        (extended ADR 0017, punto 5; hallazgo de meta H12P8).
+        """
         payload: dict[str, Any] = {
             "prompt": prompt,
             "identity": identity.to_core_dict(),
@@ -299,7 +311,7 @@ class CoreClient:
             payload["model"] = model
         if domain is not None:
             payload["domain"] = domain
-        self._add_turn_context("prompt.run", payload, identity)
+        self._add_turn_context("prompt.run", payload, identity, with_frame=turn)
         data = self._post_json("/prompt/run", payload)
         if not isinstance(data.get("response"), str):
             raise CoreResponseError("el core no devolvio response como texto")

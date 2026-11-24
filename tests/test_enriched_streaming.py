@@ -90,7 +90,7 @@ class StreamingCore:
 
         return ForwardedStream(events(), self._close)
 
-    def prompt_run(self, prompt, identity, model=None, domain=None):
+    def prompt_run(self, prompt, identity, model=None, domain=None, turn=False):
         self.calls.append(("prompt.run", prompt, identity, model, domain))
         return CoreResult(
             response=json.dumps(
