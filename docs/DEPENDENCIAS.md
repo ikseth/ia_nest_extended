@@ -9,7 +9,13 @@ dependencias; el registro de capas del ente es un indice que lo refleja.
 
 ## Depende de
 
-- `ia_nest_core >=0.4.2 <0.7` (desde extended `v0.7.0`). Por que se puede subir
+- `ia_nest_core >=0.7.0 <0.8` (desde extended `v0.8.0`). Sube el suelo:
+  extended normaliza `child` a `restricted` y lo manda en la identidad, y solo
+  el core `v0.7.0` acepta `restricted` (core ADR 0055, D5). Por eso el core se
+  despliega antes. `turn_context.frame` solo va cuando el catalogo del core
+  declara `turn_context`, tambien en `domain.route`.
+
+  Rango anterior, `>=0.4.2 <0.7` (desde extended `v0.7.0`). Por que se puede subir
   el techo: extended solo manda `turn_context` cuando el catalogo del core lo
   declara (core ADR 0054, `v0.6.0`); con un core anterior la peticion es
   identica a la de `v0.6.5`, y eso lo prueba la suite (cuerpo enviado sin el

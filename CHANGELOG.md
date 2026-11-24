@@ -5,6 +5,8 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+## [v0.8.0] - 2026-11-24
+
 ### Anadido
 - Marco versionado de la conversacion de `extended ADR 0017`: identidad con
   `audience` y `frame_facts`, perfil `restricted` con compatibilidad temporal
