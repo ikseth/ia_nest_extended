@@ -58,6 +58,7 @@ class ExtractionCore:
 
     def prompt_run(self, prompt, identity, model=None, domain=None, turn=False):
         self.calls.append((prompt, identity, model, domain))
+        self.turns = [*getattr(self, "turns", []), turn]
         response = next(self._extraction_responses)
         if isinstance(response, Exception):
             raise response
@@ -1033,3 +1034,16 @@ def test_parse_extraction_tolerates_real_qwen_output_defects():
         "confidence": 0.9,
         "mentions": ("openSUSE",),
     }
+
+
+def test_enriched_turn_carries_the_frame_and_extraction_does_not(tmp_path):
+    """Hallazgo de meta H12P8: el turno enriquecido es el del interlocutor."""
+    store = InMemoryStore()
+    core = ExtractionCore(["respuesta", '{"from_user": [], "from_assistant": []}'])
+    core.list_domains = lambda: ("general", "linux")
+    enricher = _write_back_enricher(tmp_path, store, core)
+
+    enricher.enrich(identity(), "hola", write_back=True, auto_domain=False, use_rag=False)
+
+    assert core.turns[0] is True
+    assert all(turn is False for turn in core.turns[1:])
