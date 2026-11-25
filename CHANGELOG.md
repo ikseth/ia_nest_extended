@@ -5,6 +5,11 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+## [v0.9.0] - 2026-11-25
+
+MINOR (ADR 0018, meta H12P9). Requiere core `v0.8.0` para mandar el contexto
+aparte; con un core anterior, sigue pegandolo.
+
 ### Anadido
 - El contexto del turno viaja en `turn_context.context` cuando cada capacidad
   lo declara: `prompt.run`, `prompt.stream` y `domain.route` conservan la frase
