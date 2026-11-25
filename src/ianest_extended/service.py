@@ -43,7 +43,12 @@ from .errors import (
     SessionNotFoundError,
 )
 from .entities import read_seed
-from .enrichment import compose_prompt, interlocutor_context
+from .enrichment import (
+    compose_prompt,
+    context_chars,
+    interlocutor_context,
+    interlocutor_context_blocks,
+)
 from .frames import (
     compose_session_frame,
     frame_telemetry,
@@ -771,6 +776,14 @@ class ExtendedService:
         request_id = str(uuid4())
         started = time.monotonic()
         frame = self._compose_frame(request_identity, prompt, request_id)
+        core = self._composition.core()
+        turn_context_info = (
+            core.turn_context(capability)
+            if capability == "prompt.stream" and hasattr(core, "turn_context")
+            else None
+        )
+        aside = bool(turn_context_info and turn_context_info[0])
+        blocks: tuple[dict[str, str], ...] = ()
         enricher = None
         prepared = None
         try:
@@ -792,27 +805,33 @@ class ExtendedService:
                     use_rag=plan.use_rag,
                     auto_domain=plan.auto_domain,
                     request_id=request_id,
+                    context_aside=aside,
                 )
                 request_identity = prepared.identity
-                outbound_prompt = prepared.enriched_prompt
+                blocks = prepared.bundle.context_blocks
+                outbound_prompt = prompt if aside else prepared.enriched_prompt
             else:
-                outbound_prompt = self._compose_interlocutor_prompt(
-                    request_identity,
-                    prompt,
+                blocks = interlocutor_context_blocks(request_identity, self.config)
+                outbound_prompt = (
+                    prompt
+                    if aside
+                    else self._compose_interlocutor_prompt(request_identity, prompt)
                 )
 
-            core = self._composition.core()
             open_stream = (
                 core.prompt_stream
                 if capability == "prompt.stream"
                 else core.reasoning_stream
             )
-            downstream = open_stream(
-                outbound_prompt,
-                request_identity,
-                model=plan.model,
-                domain=request_identity.domain_tag,
-            )
+            stream_kwargs: dict[str, Any] = {
+                "model": plan.model,
+                "domain": request_identity.domain_tag,
+            }
+            if turn_context_info is not None:
+                stream_kwargs["turn_context_info"] = turn_context_info
+            if aside:
+                stream_kwargs["context"] = blocks
+            downstream = open_stream(outbound_prompt, request_identity, **stream_kwargs)
         except Exception:
             if enricher is not None and prepared is not None:
                 enricher.record_recall(prepared, status="error")
@@ -825,6 +844,11 @@ class ExtendedService:
                 started=started,
                 status="error",
                 frame=frame,
+                context_sent=(
+                    "aside" if aside and blocks else "inline" if blocks else "none"
+                ),
+                context_chars=context_chars(blocks),
+                turn_context_info=turn_context_info,
             )
             raise
 
@@ -866,6 +890,11 @@ class ExtendedService:
                 started=started,
                 status=status,
                 frame=frame,
+                context_sent=(
+                    "aside" if aside and blocks else "inline" if blocks else "none"
+                ),
+                context_chars=context_chars(blocks),
+                turn_context_info=turn_context_info,
             )
 
         return _ObservedStream(
@@ -1049,29 +1078,68 @@ class ExtendedService:
         )
         frame = self._compose_frame(memory_identity, prompt, request_id)
         if not plan.enrich:
+            core = self._composition.core()
+            turn_blocks = interlocutor_context_blocks(identity, self.config)
+            run_context_info = (
+                core.turn_context("task.run")
+                if hasattr(core, "turn_context")
+                else None
+            )
+            run_aside = bool(run_context_info and run_context_info[0])
+            context_sent = (
+                "aside"
+                if run_aside and turn_blocks
+                else "inline" if turn_blocks else "none"
+            )
+            subtasks_enriched = 0
             try:
-                outbound_prompt = self._compose_interlocutor_prompt(identity, prompt)
+                outbound_prompt = (
+                    prompt
+                    if run_aside
+                    else self._compose_interlocutor_prompt(identity, prompt)
+                )
                 outbound_plan = plan_payload
-                subtasks_enriched = 0
-                if interlocutor_context(identity, self.config):
+                if turn_blocks:
                     if outbound_plan is None:
-                        planned = self._composition.core().task_plan(
-                            outbound_prompt,
-                            identity,
-                            effort=effort,
+                        plan_context_info = (
+                            core.turn_context("task.plan")
+                            if hasattr(core, "turn_context")
+                            else None
+                        )
+                        plan_aside = bool(
+                            plan_context_info and plan_context_info[0]
+                        )
+                        plan_prompt = (
+                            prompt
+                            if plan_aside
+                            else self._compose_interlocutor_prompt(identity, prompt)
+                        )
+                        plan_kwargs: dict[str, Any] = {"effort": effort}
+                        if plan_context_info is not None:
+                            plan_kwargs["turn_context_info"] = plan_context_info
+                        if plan_aside:
+                            plan_kwargs["context"] = turn_blocks
+                        planned = core.task_plan(
+                            plan_prompt, identity, **plan_kwargs
                         )
                         outbound_plan = dict(planned.payload)
                     outbound_plan, subtasks_enriched = (
                         self._compose_task_plan_interlocutor(
                             outbound_plan,
                             identity,
+                            aside=run_aside,
                         )
                     )
-                core_result = self._composition.core().task_run(
-                    outbound_prompt,
-                    identity,
-                    plan_payload=outbound_plan,
-                    effort=None if outbound_plan is not None else effort,
+                run_kwargs: dict[str, Any] = {
+                    "plan_payload": outbound_plan,
+                    "effort": None if outbound_plan is not None else effort,
+                }
+                if run_context_info is not None:
+                    run_kwargs["turn_context_info"] = run_context_info
+                if run_aside:
+                    run_kwargs["context"] = turn_blocks
+                core_result = core.task_run(
+                    outbound_prompt, identity, **run_kwargs
                 )
             except Exception:
                 self._record_task_run(
@@ -1085,6 +1153,8 @@ class ExtendedService:
                     condense_trace=condense_trace,
                     plan_retried=plan_retried,
                     frame=frame,
+                    context_sent=context_sent,
+                    context_chars=context_chars(turn_blocks),
                 )
                 raise
             self._record_awaiting_part(memory_identity, core_result.payload)
@@ -1099,12 +1169,15 @@ class ExtendedService:
                 condense_trace=condense_trace,
                 plan_retried=plan_retried,
                 frame=frame,
+                context_sent=context_sent,
+                context_chars=context_chars(turn_blocks),
             )
             return TaskRunResult(
                 payload=core_result.payload,
                 request_id=request_id,
                 enriched=False,
                 downstream_request_id=core_result.request_id,
+                subtasks_enriched=subtasks_enriched,
             )
 
         rag_store = self._composition.rag_store() if plan.use_rag else None
@@ -1118,6 +1191,8 @@ class ExtendedService:
             rag_store=rag_store,
         )
         subtasks_enriched = 0
+        context_sent = "none"
+        turn_blocks: tuple[dict[str, str], ...] = ()
         try:
             memory_bundle = enricher.recall(
                 memory_identity,
@@ -1129,19 +1204,51 @@ class ExtendedService:
                 prompt=prompt,
                 identity=memory_identity,
             )
-            outbound_task_prompt = self._compose_interlocutor_prompt(
-                identity,
-                task_prompt,
+            core = self._composition.core()
+            turn_blocks = interlocutor_context_blocks(identity, self.config)
+            run_context_info = (
+                core.turn_context("task.run")
+                if hasattr(core, "turn_context")
+                else None
+            )
+            run_aside = bool(run_context_info and run_context_info[0])
+            outbound_task_prompt = (
+                task_prompt
+                if run_aside
+                else self._compose_interlocutor_prompt(identity, task_prompt)
+            )
+            context_sent = (
+                "aside"
+                if run_aside and turn_blocks
+                else "inline" if turn_blocks else "none"
             )
             client_supplied_plan = plan_payload is not None
             while True:
                 subtasks_enriched = 0
                 if not client_supplied_plan:
                     try:
-                        planned = self._composition.core().task_plan(
-                            outbound_task_prompt,
-                            identity,
-                            effort=effort,
+                        plan_context_info = (
+                            core.turn_context("task.plan")
+                            if hasattr(core, "turn_context")
+                            else None
+                        )
+                        plan_aside = bool(
+                            plan_context_info and plan_context_info[0]
+                        )
+                        plan_prompt = (
+                            task_prompt
+                            if plan_aside
+                            else self._compose_interlocutor_prompt(
+                                identity, task_prompt
+                            )
+                        )
+                        plan_kwargs: dict[str, Any] = {"effort": effort}
+                        if plan_context_info is not None:
+                            plan_kwargs["turn_context_info"] = plan_context_info
+                        if plan_aside:
+                            plan_kwargs["context"] = turn_blocks
+                        planned = core.task_plan(
+                            plan_prompt, identity, **plan_kwargs
                         )
                     except DownstreamError as exc:
                         if plan_retried or exc.type != "PlanDependencyError":
@@ -1169,6 +1276,7 @@ class ExtendedService:
                     item = dict(original)
                     subtask_prompt = item["prompt"]
                     subtask_context = interlocutor_context(identity, self.config)
+                    subtask_blocks = turn_blocks
                     if plan.use_rag:
                         subtask_domain = item["domain"]
                         rag_identity = replace(
@@ -1191,20 +1299,35 @@ class ExtendedService:
                             include_memory=False,
                             token_budget=self.config.rag_max_tokens,
                             rag_token_budget=self.config.rag_max_tokens,
+                            context_aside=run_aside,
                         )
                         subtask_context = bundle.context
-                    enriched_prompt = compose_prompt(subtask_context, subtask_prompt)
-                    if enriched_prompt != subtask_prompt:
-                        item["prompt"] = enriched_prompt
+                        subtask_blocks = bundle.context_blocks
+                    if run_aside and subtask_blocks:
+                        existing = item.get("context")
+                        item["context"] = [
+                            *[dict(block) for block in subtask_blocks],
+                            *(existing if isinstance(existing, list) else []),
+                        ]
                         subtasks_enriched += 1
+                    elif not run_aside:
+                        enriched_prompt = compose_prompt(
+                            subtask_context, subtask_prompt
+                        )
+                        if enriched_prompt != subtask_prompt:
+                            item["prompt"] = enriched_prompt
+                            subtasks_enriched += 1
                     enriched_plan.append(item)
                 attempt_plan_payload["plan"] = enriched_plan
 
                 try:
-                    core_result = self._composition.core().task_run(
-                        outbound_task_prompt,
-                        identity,
-                        plan_payload=attempt_plan_payload,
+                    run_kwargs = {"plan_payload": attempt_plan_payload}
+                    if run_context_info is not None:
+                        run_kwargs["turn_context_info"] = run_context_info
+                    if run_aside:
+                        run_kwargs["context"] = turn_blocks
+                    core_result = core.task_run(
+                        outbound_task_prompt, identity, **run_kwargs
                     )
                 except DownstreamError as exc:
                     if (
@@ -1236,6 +1359,8 @@ class ExtendedService:
                 condense_trace=condense_trace,
                 plan_retried=plan_retried,
                 frame=frame,
+                context_sent=context_sent,
+                context_chars=context_chars(turn_blocks),
             )
             raise
         self._record_task_run(
@@ -1249,6 +1374,8 @@ class ExtendedService:
             condense_trace=condense_trace,
             plan_retried=plan_retried,
             frame=frame,
+            context_sent=context_sent,
+            context_chars=context_chars(turn_blocks),
         )
         return TaskRunResult(
             payload=core_result.payload,
@@ -1386,7 +1513,18 @@ class ExtendedService:
         plan: EnrichmentPlan,
         dry_run: bool,
     ) -> PromptRunResult:
-        outbound_prompt = self._compose_interlocutor_prompt(identity, prompt)
+        core = self._composition.core()
+        turn_context_info = (
+            core.turn_context("prompt.run")
+            if hasattr(core, "turn_context") and not dry_run
+            else None
+        )
+        blocks = interlocutor_context_blocks(identity, self.config)
+        aside = bool(turn_context_info and turn_context_info[0])
+        outbound_prompt = (
+            prompt if aside else self._compose_interlocutor_prompt(identity, prompt)
+        )
+        sent = "aside" if aside and blocks else "inline" if blocks else "none"
         request_id = str(uuid4())
         started = time.monotonic()
         frame = self._compose_frame(identity, prompt, request_id)
@@ -1399,6 +1537,9 @@ class ExtendedService:
                 started=started,
                 status="dry_run",
                 frame=frame,
+                context_sent="none",
+                context_chars={},
+                turn_context_info=turn_context_info,
             )
             return PromptRunResult(
                 payload={},
@@ -1408,13 +1549,16 @@ class ExtendedService:
                 dry_run=True,
             )
         try:
-            result = self._composition.core().prompt_run(
-                outbound_prompt,
-                identity,
-                model=plan.model,
-                domain=identity.domain_tag,
-                turn=True,
-            )
+            call_kwargs: dict[str, Any] = {
+                "model": plan.model,
+                "domain": identity.domain_tag,
+                "turn": True,
+            }
+            if turn_context_info is not None:
+                call_kwargs["turn_context_info"] = turn_context_info
+            if aside:
+                call_kwargs["context"] = blocks
+            result = core.prompt_run(outbound_prompt, identity, **call_kwargs)
         except Exception:
             self._record_prompt_run(
                 request_id=request_id,
@@ -1424,6 +1568,9 @@ class ExtendedService:
                 started=started,
                 status="error",
                 frame=frame,
+                context_sent=sent,
+                context_chars=context_chars(blocks) if blocks else {},
+                turn_context_info=turn_context_info,
             )
             raise
         self._record_awaiting_part(identity, result.payload)
@@ -1435,6 +1582,9 @@ class ExtendedService:
             started=started,
             status="ok",
             frame=frame,
+            context_sent=sent,
+            context_chars=context_chars(blocks) if blocks else {},
+            turn_context_info=turn_context_info,
         )
         return PromptRunResult(
             payload=result.payload,
@@ -1484,6 +1634,8 @@ class ExtendedService:
         self,
         plan_payload: dict[str, object],
         identity: MemoryIdentity,
+        *,
+        aside: bool = False,
     ) -> tuple[dict[str, object], int]:
         """Anade el hecho de interlocucion a cada subtarea sin tocar su plan."""
         payload = dict(plan_payload)
@@ -1506,10 +1658,19 @@ class ExtendedService:
                 raise EnrichmentParameterError(
                     "el plan suministrado contiene una subtarea sin prompt", "plan"
                 )
-            enriched_prompt = self._compose_interlocutor_prompt(identity, prompt)
-            if enriched_prompt != prompt:
-                item["prompt"] = enriched_prompt
+            blocks = interlocutor_context_blocks(identity, self.config)
+            if aside and blocks:
+                existing = item.get("context")
+                item["context"] = [
+                    *([dict(block) for block in blocks]),
+                    *(existing if isinstance(existing, list) else []),
+                ]
                 composed += 1
+            elif not aside:
+                enriched_prompt = self._compose_interlocutor_prompt(identity, prompt)
+                if enriched_prompt != prompt:
+                    item["prompt"] = enriched_prompt
+                    composed += 1
             composed_plan.append(item)
         payload["plan"] = composed_plan
         return payload, composed
@@ -1554,6 +1715,7 @@ class ExtendedService:
                 started=started,
                 status="error",
                 frame=frame,
+                context_sent="none",
             )
             raise
         if not dry_run:
@@ -1566,6 +1728,9 @@ class ExtendedService:
             started=started,
             status="dry_run" if dry_run else "ok",
             frame=frame,
+            context_sent=result.context_sent,
+            context_chars=result.context_chars,
+            turn_context_info=(None if dry_run else result.turn_context_info),
         )
         payload = dict(result.payload)
         if not dry_run:
@@ -1592,6 +1757,9 @@ class ExtendedService:
         started: float,
         status: str,
         frame: SessionFrame,
+        context_sent: str = "none",
+        context_chars: dict[str, int] | None = None,
+        turn_context_info: tuple[bool, tuple[str, ...]] | None = None,
     ) -> None:
         self._record_run(
             event="prompt.run",
@@ -1602,6 +1770,9 @@ class ExtendedService:
             started=started,
             status=status,
             frame=frame,
+            context_sent=context_sent,
+            context_chars=context_chars,
+            turn_context_info=turn_context_info,
         )
 
     def _record_run(
@@ -1615,20 +1786,23 @@ class ExtendedService:
         started: float,
         status: str,
         frame: SessionFrame,
+        context_sent: str = "none",
+        context_chars: dict[str, int] | None = None,
+        turn_context_info: tuple[bool, tuple[str, ...]] | None = None,
     ) -> None:
         turn_details: dict[str, Any] = {}
+        context_details: dict[str, Any] = {}
         if event.startswith("prompt."):
-            sent = False
-            providers: tuple[str, ...] = ()
-            if status != "dry_run":
-                context = getattr(self._composition.core(), "turn_context", None)
-                if context is not None:
-                    sent, providers = context(event)
+            sent, providers = turn_context_info or (False, ())
             turn_details = (
                 {"trusted_providers": list(providers)}
                 if sent
                 else {"turn_context_sent": False}
             )
+            context_details = {
+                "context_sent": context_sent,
+                "context_chars": context_chars or {},
+            }
         self._composition.telemetry().record(
             event=event,
             request_id=request_id,
@@ -1649,6 +1823,7 @@ class ExtendedService:
                     "composed": bool(interlocutor_context(identity, self.config)),
                 },
                 "frame": frame_telemetry(frame),
+                **context_details,
                 **turn_details,
             },
         )
@@ -1666,6 +1841,8 @@ class ExtendedService:
         condense_trace: _TaskCondenseTrace,
         plan_retried: bool,
         frame: SessionFrame,
+        context_sent: str = "none",
+        context_chars: dict[str, int] | None = None,
     ) -> None:
         self._composition.telemetry().record(
             event="task.run",
@@ -1688,6 +1865,8 @@ class ExtendedService:
                     "composed": bool(interlocutor_context(identity, self.config)),
                 },
                 "frame": frame_telemetry(frame),
+                "context_sent": context_sent,
+                "context_chars": context_chars or {},
                 "question_rewritten": condense_trace.question_rewritten,
                 "condense_model": condense_trace.model,
                 "condense_latency_ms": condense_trace.latency_ms,
@@ -1762,6 +1941,7 @@ class ExtendedService:
             "unresolved": [
                 {
                     "key": item.key,
+                    "reason": item.reason,
                     "first_seen_at": item.first_seen_at.isoformat(),
                     "last_seen_at": item.last_seen_at.isoformat(),
                     "count": item.count,

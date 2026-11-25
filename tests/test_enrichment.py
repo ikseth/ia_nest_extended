@@ -26,6 +26,7 @@ from ianest_extended.enrichment import (
     _lines,
     _parse_extraction,
     _validate_item,
+    estimate_tokens,
 )
 
 from .fakes import InMemoryStore, identity
@@ -1047,3 +1048,55 @@ def test_enriched_turn_carries_the_frame_and_extraction_does_not(tmp_path):
 
     assert core.turns[0] is True
     assert all(turn is False for turn in core.turns[1:])
+
+
+def test_context_blocks_keep_selected_lines_grouped_by_origin():
+    from ianest_extended.enrichment import _compose_context_bundle
+
+    lines = [
+        _ContextLine("interlocutor", "tono", 1.0, permanent=True),
+        _ContextLine("delegated", "identidad", 1.0, permanent=True),
+        _ContextLine("semantic", "hecho", 0.9),
+        _ContextLine("rag", "documento", 0.8),
+        _ContextLine("dialog", "turno", 0.7),
+    ]
+
+    inline, blocks = _compose_context_bundle(
+        lines,
+        token_budget=1_000,
+        rag_token_budget=1_000,
+        include_wrapper=True,
+    )
+
+    assert inline == (
+        "## interlocutor\ntono\n\n## delegated\nidentidad\n\n"
+        "## rag\ndocumento\n\n## semantic\nhecho\n\n## dialog\nturno"
+    )
+    assert blocks == (
+        {"origin": "interlocutor", "text": "### interlocutor\ntono"},
+        {
+            "origin": "memory",
+            "text": "### delegated\nidentidad\n\n### semantic\nhecho",
+        },
+        {"origin": "rag", "text": "### rag\ndocumento"},
+        {"origin": "thread", "text": "### dialog\nturno"},
+    )
+
+
+def test_aside_budget_does_not_charge_the_inline_wrapper():
+    line = _ContextLine("rag", "x" * 40, 1.0)
+    rendered = "## rag\n" + "x" * 40
+    budget = estimate_tokens(rendered)
+
+    inline = _compose_context(
+        [line], token_budget=budget, rag_token_budget=1_000
+    )
+    aside = _compose_context(
+        [line],
+        token_budget=budget,
+        rag_token_budget=1_000,
+        include_wrapper=False,
+    )
+
+    assert inline == ""
+    assert aside == rendered

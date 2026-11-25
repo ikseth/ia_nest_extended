@@ -147,6 +147,61 @@ class CondenseCore(Phase7bCore):
         )
 
 
+class AsideTaskCore(CondenseCore):
+    def __init__(self):
+        super().__init__(rewritten="peticion autonoma")
+        self.context_calls = []
+
+    def turn_context(self, capability):
+        self.context_calls.append(capability)
+        return True, ()
+
+    def task_plan(
+        self, prompt, identity, *, effort=None, context=(), turn_context_info=None
+    ):
+        self.calls.append(
+            ("task.plan.aside", prompt, identity, effort, context, turn_context_info)
+        )
+        return TaskPlanResult(
+            payload=self.plan_payload,
+            plan=tuple(self.plan_payload["plan"]),
+            trace=self.plan_payload["trace"],
+        )
+
+    def task_run(
+        self,
+        prompt,
+        identity,
+        *,
+        plan_payload=None,
+        effort=None,
+        context=(),
+        turn_context_info=None,
+    ):
+        self.calls.append(
+            (
+                "task.run.aside",
+                prompt,
+                identity,
+                plan_payload,
+                effort,
+                context,
+                turn_context_info,
+            )
+        )
+        return CoreResult(
+            response="respuesta combinada",
+            trace={"request_id": "core-task", "stop_reason": "task_done"},
+            payload={
+                "response": "respuesta combinada",
+                "trace": {
+                    "request_id": "core-task",
+                    "stop_reason": "task_done",
+                },
+            },
+        )
+
+
 class PlanRetryCore(CondenseCore):
     def __init__(self, *, plan_errors=(), run_errors=()):
         super().__init__()
@@ -349,6 +404,103 @@ def test_task_plan_and_run_use_condensed_request_without_raw_context(tmp_path):
     assert plan_call[1] == "peticion autonoma resuelta"
     assert run_call[1] == "peticion autonoma resuelta"
     assert "CONTEXTO_CRUDO_NO_REENVIAR" not in run_call[1]
+
+
+def test_task_context_goes_aside_for_plan_run_and_each_subtask(tmp_path):
+    store = InMemoryStore()
+    _remember(store)
+    core = AsideTaskCore()
+    chunks = (
+        _chunk("linux", "contexto linux", 0.9),
+        _chunk("codigo", "contexto codigo", 0.9),
+    )
+    service, _, _, _ = _service(
+        tmp_path,
+        core=core,
+        store=store,
+        rag_store=InMemoryRagStore(chunks),
+    )
+    identity = MemoryIdentity(
+        user_id="u",
+        session_id="s",
+        service="test",
+        audience="general",
+    )
+
+    result = service.task_run(
+        "continua",
+        identity,
+        use_memory=True,
+        use_rag=True,
+        write_back=False,
+    )
+
+    condense = next(call for call in core.calls if call[0] == "prompt.run")
+    planner = next(call for call in core.calls if call[0] == "task.plan.aside")
+    runner = next(call for call in core.calls if call[0] == "task.run.aside")
+    assert "CONTEXTO_CRUDO_NO_REENVIAR" in condense[1]
+    assert planner[1] == "peticion autonoma"
+    assert runner[1] == "peticion autonoma"
+    assert [block["origin"] for block in planner[4]] == ["interlocutor"]
+    assert [block["origin"] for block in runner[5]] == ["interlocutor"]
+    assert all(block["origin"] != "memory" for block in runner[5])
+    sent_plan = runner[3]["plan"]
+    assert [item["prompt"] for item in sent_plan] == [
+        item["prompt"] for item in core.plan_payload["plan"]
+    ]
+    assert all(
+        [block["origin"] for block in item["context"]]
+        == ["interlocutor", "rag"]
+        for item in sent_plan
+    )
+    assert result.subtasks_enriched == 2
+    assert core.context_calls == ["task.run", "task.plan"]
+    event = next(item for item in _events(tmp_path) if item["event"] == "task.run")
+    assert event["context_sent"] == "aside"
+    assert set(event["context_chars"]) == {"interlocutor"}
+    assert "continua" not in json.dumps(event)
+
+
+def test_task_without_enrichment_still_sends_interlocutor_aside(tmp_path):
+    core = AsideTaskCore()
+    service, _, _, _ = _service(tmp_path, core=core)
+    identity = MemoryIdentity(
+        user_id="u",
+        session_id="s",
+        service="test",
+        audience="general",
+    )
+    supplied = {
+        "plan": [
+            {
+                "index": 0,
+                "prompt": "subtarea literal",
+                "domain": "general",
+                "depends_on": [],
+            }
+        ]
+    }
+
+    result = service.task_run(
+        "tarea literal",
+        identity,
+        enrich=False,
+        plan_payload=supplied,
+    )
+
+    assert not [call for call in core.calls if call[0] == "prompt.run"]
+    assert not [call for call in core.calls if call[0] == "task.plan.aside"]
+    runner = next(call for call in core.calls if call[0] == "task.run.aside")
+    assert runner[1] == "tarea literal"
+    assert runner[3]["plan"][0]["prompt"] == "subtarea literal"
+    assert [
+        block["origin"] for block in runner[3]["plan"][0]["context"]
+    ] == ["interlocutor"]
+    assert [block["origin"] for block in runner[5]] == ["interlocutor"]
+    assert result.subtasks_enriched == 1
+    event = next(item for item in _events(tmp_path) if item["event"] == "task.run")
+    assert event["counters"]["subtasks_enriched"] == 1
+    assert event["context_sent"] == "aside"
 
 
 def test_task_with_supplied_plan_uses_condensed_objective_without_raw_context(

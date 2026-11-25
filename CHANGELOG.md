@@ -5,6 +5,18 @@ Sin acentos por convencion.
 
 ## [No publicado]
 
+### Anadido
+- El contexto del turno viaja en `turn_context.context` cuando cada capacidad
+  lo declara: `prompt.run`, `prompt.stream` y `domain.route` conservan la frase
+  sola; `task.plan` y `task.run` conservan la peticion reescrita y cada
+  subtarea lleva su contexto propio. Sin la parte, el payload conserva la
+  composicion inline anterior. Los bloques se agrupan por origen
+  (`interlocutor`, `memory`, `rag`, `thread`), el envoltorio deja de contar en
+  el presupuesto aparte, y la telemetria anade `context_sent` y caracteres por
+  origen sin texto. `entity.unresolved` anade `reason` y detecta `no_home`
+  desde la version de entidad fijada en el marco, sin migracion. Cambio de
+  contrato pre-1.0: **MINOR** (extended ADR 0018).
+
 ## [v0.8.2] - 2026-11-24
 
 ### Corregido

@@ -207,18 +207,25 @@ class CoreClient:
         identity: MemoryIdentity,
         *,
         with_frame: bool = True,
-    ) -> None:
-        sent, providers = self.turn_context(capability)
+        context: tuple[dict[str, str], ...] = (),
+        turn_context_info: tuple[bool, tuple[str, ...]] | None = None,
+    ) -> bool:
+        sent, providers = turn_context_info or self.turn_context(capability)
         if sent:
-            context: dict[str, Any] = {"trusted_providers": list(providers)}
+            turn_context: dict[str, Any] = {
+                "trusted_providers": list(providers)
+            }
             frame = (
                 self._frame_context(identity)
                 if with_frame and self._frame_context
                 else None
             )
             if frame is not None:
-                context["frame"] = frame
-            payload["turn_context"] = context
+                turn_context["frame"] = frame
+            if context:
+                turn_context["context"] = [dict(block) for block in context]
+            payload["turn_context"] = turn_context
+        return sent
 
     # --- reenvio generico (opaco) -----------------------------------------
 
@@ -297,6 +304,8 @@ class CoreClient:
         model: str | None = None,
         domain: str | None = None,
         turn: bool = False,
+        context: tuple[dict[str, str], ...] = (),
+        turn_context_info: tuple[bool, tuple[str, ...]] | None = None,
     ) -> CoreResult:
         """`turn=True` solo en el turno del interlocutor: lleva el marco.
 
@@ -311,7 +320,14 @@ class CoreClient:
             payload["model"] = model
         if domain is not None:
             payload["domain"] = domain
-        self._add_turn_context("prompt.run", payload, identity, with_frame=turn)
+        self._add_turn_context(
+            "prompt.run",
+            payload,
+            identity,
+            with_frame=turn,
+            context=context,
+            turn_context_info=turn_context_info,
+        )
         data = self._post_json("/prompt/run", payload)
         if not isinstance(data.get("response"), str):
             raise CoreResponseError("el core no devolvio response como texto")
@@ -360,6 +376,8 @@ class CoreClient:
         identity: MemoryIdentity,
         model: str | None = None,
         domain: str | None = None,
+        context: tuple[dict[str, str], ...] = (),
+        turn_context_info: tuple[bool, tuple[str, ...]] | None = None,
     ) -> ForwardedStream:
         """Abre `prompt.stream` con una entrada ya compuesta por la capa."""
         return self._inference_stream(
@@ -369,6 +387,8 @@ class CoreClient:
             model=model,
             domain=domain,
             capability="prompt.stream",
+            context=context,
+            turn_context_info=turn_context_info,
         )
 
     def reasoning_stream(
@@ -396,6 +416,8 @@ class CoreClient:
         model: str | None,
         domain: str | None,
         capability: str | None = None,
+        context: tuple[dict[str, str], ...] = (),
+        turn_context_info: tuple[bool, tuple[str, ...]] | None = None,
     ) -> ForwardedStream:
         payload: dict[str, Any] = {
             "prompt": prompt,
@@ -406,7 +428,13 @@ class CoreClient:
         if domain is not None:
             payload["domain"] = domain
         if capability is not None:
-            self._add_turn_context(capability, payload, identity)
+            self._add_turn_context(
+                capability,
+                payload,
+                identity,
+                context=context,
+                turn_context_info=turn_context_info,
+            )
         connection, response = _open(
             f"{self._base_url}{route}",
             "POST",
@@ -442,6 +470,8 @@ class CoreClient:
         identity: MemoryIdentity,
         *,
         effort: str | None = None,
+        context: tuple[dict[str, str], ...] = (),
+        turn_context_info: tuple[bool, tuple[str, ...]] | None = None,
     ) -> TaskPlanResult:
         payload: dict[str, Any] = {
             "prompt": prompt,
@@ -449,6 +479,14 @@ class CoreClient:
         }
         if effort is not None:
             payload["effort"] = effort
+        self._add_turn_context(
+            "task.plan",
+            payload,
+            identity,
+            with_frame=False,
+            context=context,
+            turn_context_info=turn_context_info,
+        )
         data = self._post_json(
             "/task/plan",
             payload,
@@ -482,6 +520,8 @@ class CoreClient:
         *,
         plan_payload: dict[str, Any] | None = None,
         effort: str | None = None,
+        context: tuple[dict[str, str], ...] = (),
+        turn_context_info: tuple[bool, tuple[str, ...]] | None = None,
     ) -> CoreResult:
         payload = dict(plan_payload or {})
         payload.pop("params", None)
@@ -489,6 +529,14 @@ class CoreClient:
         payload["identity"] = identity.to_core_dict()
         if effort is not None:
             payload["effort"] = effort
+        self._add_turn_context(
+            "task.run",
+            payload,
+            identity,
+            with_frame=False,
+            context=context,
+            turn_context_info=turn_context_info,
+        )
         data = self._post_json(
             "/task/run",
             payload,
@@ -500,9 +548,23 @@ class CoreClient:
         self,
         prompt: str,
         identity: MemoryIdentity,
+        *,
+        inline_prompt: str | None = None,
+        context: tuple[dict[str, str], ...] = (),
     ) -> DomainRouteResult:
-        payload = {"prompt": prompt, "identity": identity.to_core_dict()}
-        self._add_turn_context("domain.route", payload, identity)
+        turn_context_info = self.turn_context("domain.route")
+        aside = turn_context_info[0]
+        payload = {
+            "prompt": prompt if aside or inline_prompt is None else inline_prompt,
+            "identity": identity.to_core_dict(),
+        }
+        self._add_turn_context(
+            "domain.route",
+            payload,
+            identity,
+            context=context if aside else (),
+            turn_context_info=turn_context_info,
+        )
         data = self._post_json("/domain/route", payload)
         domain = data.get("domain")
         confidence = data.get("confidence")

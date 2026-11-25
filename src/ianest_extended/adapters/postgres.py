@@ -1247,20 +1247,40 @@ class PostgresMemoryStore:
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT part->>'key' AS key, min(created_at) AS first_seen_at,
+                WITH candidates AS (
+                    SELECT part->>'key' AS key, 'no_entity'::text AS reason,
+                           frame.created_at
+                    FROM session_frames AS frame
+                    CROSS JOIN LATERAL (
+                        VALUES (person), (device), (place)
+                    ) AS parts(part)
+                    WHERE part->>'state' = 'unresolved'
+                    UNION ALL
+                    SELECT part->>'key' AS key, 'no_home'::text AS reason,
+                           frame.created_at
+                    FROM session_frames AS frame
+                    CROSS JOIN LATERAL (
+                        VALUES (person), (device)
+                    ) AS parts(part)
+                    JOIN entity_versions AS version
+                      ON version.entity_id = (part->>'entity_id')::uuid
+                     AND version.version = (part->>'version')::integer
+                    WHERE frame.place->>'state' = 'unknown'
+                      AND part->>'state' = 'known'
+                      AND version.kind IN ('person', 'device')
+                      AND NOT version.curated ? 'home'
+                )
+                SELECT key, reason, min(created_at) AS first_seen_at,
                        max(created_at) AS last_seen_at, count(*) AS count
-                FROM session_frames
-                CROSS JOIN LATERAL (
-                    VALUES (person), (device), (place)
-                ) AS parts(part)
-                WHERE part->>'state' = 'unresolved'
-                GROUP BY part->>'key'
-                ORDER BY first_seen_at, key
+                FROM candidates
+                GROUP BY key, reason
+                ORDER BY first_seen_at, key, reason
                 """
             ).fetchall()
         return tuple(
             UnresolvedEntityKey(
                 key=row["key"],
+                reason=row["reason"],
                 first_seen_at=row["first_seen_at"],
                 last_seen_at=row["last_seen_at"],
                 count=row["count"],

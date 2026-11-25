@@ -11,12 +11,16 @@ pudre; se congela cuando un consumidor la haya ejercido.
 ## El flujo
 
     1. recuperar   memoria / RAG / web, segun la identidad del request
-    2. enriquecer  armar el prompt con lo recuperado, dentro del presupuesto
+    2. enriquecer  componer el contexto recuperado, dentro del presupuesto
     3. ejecutar    prompt.run / task.run del core (core no conoce esta capa)
     4. write-back  persistir lo que corresponda de la respuesta (con politica)
 
-El core recibe un prompt ya enriquecido y responde. La identidad de segmentacion
-del core es la clave con la que esta capa indexa (via 2, core ADR 0031/0035).
+Cuando la capacidad del core declara `turn_context`, recibe la frase como
+`prompt` y el contexto en bloques por origen dentro de `turn_context.context`.
+Si no declara la parte, recibe el prompt enriquecido anterior, delimitado por
+`<enrichment_context>`. La decision es por capacidad y conserva la regla 3 de
+meta ADR 0007. La identidad de segmentacion del core es la clave con la que
+esta capa indexa (via 2, core ADR 0031/0035). Ver ADR 0018.
 
 ## Arquitectura de la capa (via 2, servicio + pieles finas)
 
@@ -74,11 +78,13 @@ infantil, `general` el contexto apto para cualquier persona de la casa y
 `adult` no anade bloque. Se aplica con o sin las fuentes de enriquecimiento y
 queda fuera de write-back. El marco de `frame_facts` vive en `session_frames`,
 se resuelve contra `entities` y solo se proyecta al core dentro de
-`turn_context.frame`; nunca se convierte en un engrama.
+`turn_context.frame`; nunca se convierte en un engrama. Cuando la capacidad
+declara `turn_context.context`, `interlocutor` viaja como bloque separado; en
+el fallback se conserva la seccion inline anterior.
 
 ## Decision 2: composicion y presupuesto
 
-Memoria (varios tipos), RAG y datos web compiten por un prompt FINITO (core
+Memoria (varios tipos), RAG y datos web compiten por un contexto FINITO (core
 ADR 0008). Principios:
 
 1. Recuperar no es volcar: se selecciona top-k RELEVANTE dentro del presupuesto.
@@ -91,6 +97,11 @@ ADR 0008). Principios:
    y orden concretos se reconcilian al existir cada fuente (Fase 3 memoria,
    Fase 5 RAG, Fase 6 web). Los numeros de arranque de la memoria estan en
    `docs/POLITICA_WRITEBACK.md` (composicion del recall).
+
+Los mismos limites y el mismo recorte gobiernan los dos caminos. El coste fijo
+de `<enrichment_context>` cuenta solo en el fallback inline; el interlocutor
+sigue fuera del presupuesto. Los bloques aparte se agrupan por origen en este
+orden: `interlocutor`, `memory`, `rag`, `thread` (ADR 0018).
 
 ## Que puede y que no puede el enriquecimiento
 

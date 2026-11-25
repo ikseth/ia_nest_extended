@@ -156,6 +156,7 @@ class SessionFrame:
 @dataclass(frozen=True, slots=True)
 class UnresolvedEntityKey:
     key: str
+    reason: str
     first_seen_at: datetime
     last_seen_at: datetime
     count: int

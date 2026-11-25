@@ -117,7 +117,11 @@ def test_known_unresolved_unknown_shared_and_device_header_priority():
     assert unresolved.person["key"] == "directory:missing"
     assert absent.person["state"] == "unknown"
     assert absent.device["state"] == "unknown"
-    assert store.unresolved_frame_keys()[0].key == "directory:missing"
+    unresolved_rows = store.unresolved_frame_keys()
+    assert any(
+        row.key == "directory:missing" and row.reason == "no_entity"
+        for row in unresolved_rows
+    )
 
     shared = _put(store, "directory:shared-1", "device", {"shared": True})
     shared_frame = _turn(
@@ -221,6 +225,49 @@ def test_place_prefers_device_and_opening_versions_are_pinned():
     assert following.person["version"] == person.version + 2
     assert following.place["entity_id"] == str(home_person.id)
     assert device.kind == "device"
+
+
+def test_unresolved_reports_no_home_only_when_place_stays_unknown():
+    store = InMemoryStore()
+    home = _put(store, "seed:home-1", "home")
+    _put(store, "directory:person-no-home", "person")
+    _put(store, "account:account-1:device-home", "device", {"home": home.key})
+    _put(store, "account:account-1:device-no-home", "device")
+
+    _turn(
+        store,
+        _identity(
+            "person-no-home",
+            frame_facts=_facts(person="person-no-home", device=None),
+        ),
+    )
+    _turn(
+        store,
+        _identity(
+            "device-supplies-home",
+            frame_facts=_facts(person="person-no-home", device="device-home"),
+        ),
+    )
+    _turn(
+        store,
+        _identity(
+            "device-no-home",
+            frame_facts=_facts(person=None, device="device-no-home"),
+        ),
+    )
+    _turn(
+        store,
+        _identity(
+            "missing-person",
+            frame_facts=_facts(person="missing", device=None),
+        ),
+    )
+
+    rows = {(row.key, row.reason): row for row in store.unresolved_frame_keys()}
+    assert ("directory:person-no-home", "no_home") in rows
+    assert rows[("directory:person-no-home", "no_home")].count == 1
+    assert ("account:account-1:device-no-home", "no_home") in rows
+    assert ("directory:missing", "no_entity") in rows
 
 
 def test_awaiting_part_stores_next_literal_turn_and_then_clears_it():
