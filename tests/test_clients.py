@@ -195,6 +195,71 @@ def test_turn_context_frame_is_declared_only_and_identity_stays_clean(
     }
 
 
+def test_context_blocks_follow_each_capability_catalog_entry(
+    local_service_stub, tmp_path
+):
+    cache = tmp_path / "catalog.json"
+    client = CoreClient(
+        local_service_stub.base_url,
+        connect_timeout_seconds=2,
+        catalog_cache_path=cache,
+    )
+    write_catalog_cache(
+        cache,
+        core_url=local_service_stub.base_url,
+        core_version="next",
+        capabilities=[
+            {"name": name, "params": [{"name": "turn_context"}]}
+            for name in ("prompt.run", "prompt.stream", "domain.route")
+        ],
+    )
+    blocks = ({"origin": "rag", "text": "### rag\ndato"},)
+
+    client.prompt_run("frase", MemoryIdentity(user_id="u"), context=blocks)
+    stream = client.prompt_stream(
+        "frase", MemoryIdentity(user_id="u"), context=blocks
+    )
+    list(stream)
+    client.domain_route(
+        "y manana?",
+        MemoryIdentity(user_id="u"),
+        inline_prompt="CONVERSACION RECIENTE: texto\n\nMENSAJE ACTUAL: y manana?",
+        context=({"origin": "thread", "text": "Usuario: hola\nAsistente: hola"},),
+    )
+
+    payloads = {
+        path: payload
+        for path, payload in local_service_stub.requests
+        if path in {"/prompt/run", "/prompt/stream", "/domain/route"}
+    }
+    assert payloads["/prompt/run"]["prompt"] == "frase"
+    assert payloads["/prompt/run"]["turn_context"]["context"] == list(blocks)
+    assert payloads["/prompt/stream"]["prompt"] == "frase"
+    assert payloads["/prompt/stream"]["turn_context"]["context"] == list(blocks)
+    assert payloads["/domain/route"]["prompt"] == "y manana?"
+    assert payloads["/domain/route"]["turn_context"]["context"] == [
+        {"origin": "thread", "text": "Usuario: hola\nAsistente: hola"}
+    ]
+
+    write_catalog_cache(
+        cache,
+        core_url=local_service_stub.base_url,
+        core_version="old",
+        capabilities=[{"name": "domain.route", "params": []}],
+    )
+    legacy = "CONVERSACION RECIENTE: texto\n\nMENSAJE ACTUAL: y manana?"
+    client.domain_route(
+        "y manana?",
+        MemoryIdentity(user_id="u"),
+        inline_prompt=legacy,
+        context=({"origin": "thread", "text": "no se envia"},),
+    )
+    assert local_service_stub.requests[-1][1] == {
+        "prompt": legacy,
+        "identity": {"user_id": "u"},
+    }
+
+
 def test_core_client_lists_domains_once_per_client(local_service_stub):
     client = CoreClient(local_service_stub.base_url, connect_timeout_seconds=2)
 

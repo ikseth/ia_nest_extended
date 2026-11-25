@@ -113,3 +113,63 @@ def test_postgres_frames_are_append_only_complete_and_idempotently_migrated(
             pass
         else:
             raise AssertionError("session_frames permitio UPDATE")
+
+
+def test_postgres_unresolved_lists_entities_without_home(postgres_store):
+    suffix = uuid4().hex
+    account_id = f"account-{suffix}"
+    home_key = f"seed:home-{suffix}"
+    postgres_store.put_entity(
+        Principal.OPERATOR, home_key, "home",
+        curated={"locality": "Villa Prueba"}, origin="cli",
+    )
+    postgres_store.put_entity(
+        Principal.OPERATOR, f"directory:person-{suffix}", "person",
+        curated={}, origin="cli",
+    )
+    postgres_store.put_entity(
+        Principal.OPERATOR, f"account:{account_id}:device-home-{suffix}", "device",
+        curated={"home": home_key}, origin="cli",
+    )
+    postgres_store.put_entity(
+        Principal.OPERATOR, f"account:{account_id}:device-bare-{suffix}", "device",
+        curated={}, origin="cli",
+    )
+
+    def turn(name, person, device):
+        compose_session_frame(
+            postgres_store,
+            MemoryIdentity(
+                user_id=f"user-{name}-{suffix}",
+                session_id=f"session-{name}-{suffix}",
+                service="test",
+                frame_facts={
+                    "account": {"value": account_id, "origin": "authenticated"},
+                    "person": {
+                        "value": person,
+                        "origin": "absent" if person is None else "validated",
+                    },
+                    "device": {
+                        "value": device,
+                        "origin": "absent" if device is None else "asserted",
+                    },
+                },
+            ),
+            prompt="hola",
+            turn=f"turn-{name}",
+        )
+
+    turn("alone", f"person-{suffix}", None)
+    turn("with-home", f"person-{suffix}", f"device-home-{suffix}")
+    turn("bare", None, f"device-bare-{suffix}")
+    turn("missing", f"missing-{suffix}", None)
+
+    rows = {
+        (row.key, row.reason): row
+        for row in postgres_store.unresolved_frame_keys()
+        if suffix in row.key
+    }
+    assert rows[(f"directory:person-{suffix}", "no_home")].count == 1
+    assert (f"account:{account_id}:device-bare-{suffix}", "no_home") in rows
+    assert (f"account:{account_id}:device-home-{suffix}", "no_home") not in rows
+    assert (f"directory:missing-{suffix}", "no_entity") in rows

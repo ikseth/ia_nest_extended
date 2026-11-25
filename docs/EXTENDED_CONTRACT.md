@@ -1,7 +1,7 @@
 # Contrato de ia_nest_extended
 
 Estado: activo
-Version: 1.4 - 2026-11-24
+Version: 1.5 - 2026-11-25
 
 Frontera publica de la capa de enriquecimiento, VIGENTE desde su primer tag
 (Fase 7d). Lo que aqui se declara es promesa, no objetivo. Que cuenta como
@@ -127,8 +127,9 @@ concreta es la peticion autonoma descrita abajo, no el contexto crudo.
 En `task.run`, el enriquecimiento por subtarea requiere suministrar al core el
 plan obtenido antes con `task.plan`. Ese camino no re-planifica: si EVALUATE lo
 pide, el core corta con `replan_unavailable`. Desactivar el enriquecimiento
-recupera el passthrough sin plan salvo con perfil `child`: entonces la capa pide
-el plan para componer tambien cada subtarea. No hay reintento automatico sin
+recupera el passthrough sin plan salvo cuando hay contexto de interlocutor:
+entonces la capa pide el plan para llevarlo tambien a cada subtarea. No hay
+reintento automatico sin
 plan: seria no determinista y duplicaria coste.
 Unica excepcion acotada: si el plan que esta capa pidio a `task.plan` provoca
 `PlanDependencyError` (el planificador del core emitio dependencias circulares),
@@ -144,6 +145,15 @@ conserva la pregunta literal. Si la llamada falla, devuelve texto vacio o supera
 cuatro veces la longitud de la pregunta mas 400 caracteres, la ejecucion usa la
 pregunta literal sin contexto. Sin contexto, con memoria desactivada o con el
 enriquecimiento desactivado no hay llamada de reescritura.
+
+Si `task.plan` y `task.run` declaran `turn_context`, la peticion autonoma (o la
+frase literal si no se reescribio) viaja sola como `prompt`. El contexto del
+turno de ambas llamadas contiene solo `interlocutor`; la memoria ya alcanzo la
+reescritura y no se repite. Cada subtarea conserva el `prompt` del planificador
+y lleva su propio `context`: `interlocutor` y, si se recupero, `rag` de su
+dominio. `subtasks_enriched` cuenta subtareas con `context`. Si una capacidad no
+declara la parte, su llamada conserva la composicion inline anterior. Ver ADR
+0018.
 
 `prompt.stream` y `reasoning.stream` recuperan y componen antes de abrir el
 flujo. Desde ese momento retransmiten cada evento del core sin anadir, quitar ni
@@ -191,7 +201,8 @@ cada uno con `value` (texto o nulo) y `origin` segun edge ADR 0004. Una forma
 invalida falla como peticion. Ninguno de esos dos campos se reenvia dentro de
 la identidad del core ni entra en claves, consultas o deduplicacion de memoria.
 
-Hacia el core, `prompt.run`, `prompt.stream` y `domain.route` anaden
+Hacia el core, `prompt.run`, `prompt.stream`, `domain.route`, `task.plan` y
+`task.run` anaden
 `turn_context` solo cuando el catalogo cacheado
 del core declara el parametro `turn_context` para esa capacidad. Antes se
 renueva por edad con la politica anterior; si el core falla o deja de declarar
@@ -200,10 +211,20 @@ ordenada y contiene la interseccion de proveedores activos, con
 `curated.trusted=true`, y `IANEST_EXTENDED_PROVIDER_CEILING`. Una lista vacia
 se envia como dato. Sin cache valida o sin parametro declarado no se anade el
 campo y el cuerpo conserva exactamente su forma anterior. Dentro envia
-`trusted_providers` y `frame`. El marco tiene `channel`, `person`, `device`,
+`trusted_providers` y, segun la capacidad, `frame` y `context`. El marco tiene
+`channel`, `person`, `device`,
 `place`, `language`, `missing` y, cuando corresponda, `stated`; no contiene
 claves, ids ni versiones internas. Es `extended CR-0006`: si el core todavia no
 declara la costura, la compatibilidad es por ausencia.
+
+`turn_context.context` contiene un bloque por origen no vacio, en orden
+`interlocutor`, `memory`, `rag`, `thread`. Cada bloque lleva `origin` y `text`;
+el texto conserva las lineas seleccionadas y sus niveles con encabezado
+`### <nivel>`. En `prompt.run` y `prompt.stream`, el `prompt` queda como la frase
+literal. En `domain.route`, el bloque `thread` contiene solo las lineas
+`Usuario:` y `Asistente:` del ultimo intercambio; sin la parte se conserva el
+texto inline con `CONVERSACION RECIENTE` y `MENSAJE ACTUAL`. `reasoning.*` no
+cambia. Ver ADR 0018 y core ADR 0056.
 
 Con `audience=child`, la capa antepone al contexto la seccion permanente
 `## interlocutor` desde `IANEST_EXTENDED_INTERLOCUTOR_CONTEXT_CHILD`, cuyo
@@ -225,6 +246,10 @@ relevancia para ordenarlos. `thread_artifacts` conserva su orden por fuente
 (`user`, `unknown`, `model`) y es el ultimo bloque antes de la pregunta. Este
 orden solo cambia la presentacion: seleccion, contenido, etiquetas y recorte
 por presupuesto conservan su comportamiento.
+
+En el camino de bloques, el envoltorio `<enrichment_context>` no existe y no
+consume presupuesto. En el fallback inline sigue contando como antes. El
+interlocutor no compite con el presupuesto en ninguno de los dos caminos.
 
 ### Parametros de extension del enriquecimiento
 
@@ -268,8 +293,9 @@ cada instalacion los calibra en su `setup.conf`, sin cambiar codigo. El embeddin
 aplican la senal.
 
 Cuando resuelve el dominio automatico y la sesion ya contiene el ultimo par
-completo de `dialog`, `domain.route` recibe exactamente ese turno previo y el
-mensaje actual, con las etiquetas `CONVERSACION RECIENTE`, `Usuario`,
+completo de `dialog`, `domain.route` recibe ese turno previo como bloque
+`thread` si declara `turn_context`; el `prompt` contiene solo el mensaje actual.
+En el fallback inline conserva las etiquetas `CONVERSACION RECIENTE`, `Usuario`,
 `Asistente` y `MENSAJE ACTUAL`. Sin un par completo, o si falla su lectura,
 recibe solo el mensaje literal. Este contexto es exclusivo del enrutador: paso
 cero, RAG, memoria, write-back y modelo conservan el mensaje literal.
@@ -312,6 +338,10 @@ lo admite.
 Los eventos `prompt.*` anaden `trusted_providers` con la lista enviada en
 `turn_context`, incluida la lista vacia, o `turn_context_sent=false` cuando no
 se envio el campo.
+
+Los eventos `prompt.run`, `prompt.stream` y `task.run` anaden `context_sent`
+(`aside`, `inline` o `none`) y `context_chars`, un objeto con los caracteres por
+origen enviado. No contienen el texto del contexto.
 
 Cuando un evento de telemetria con `status=error` corresponde a `prompt.*`,
 `reasoning.*`, `task.*`, `enrich.*` o `rag.retrieve`, anade `error` con
@@ -369,7 +399,7 @@ Estado: `implementada` (existe el mecanismo y su proyeccion declarada) o
 | `entity.history` | lista versiones de solo anadir | CLI |
 | `entity.refresh` | reconcilia proveedores con el techo | CLI |
 | `entity.apply` | valida, planifica o aplica una siembra TOML atomica | CLI |
-| `entity.unresolved` | agrupa claves no resueltas vistas en marcos | CLI |
+| `entity.unresolved` | agrupa claves sin entidad o entidades sin casa vistas en marcos | CLI |
 
 El principal nuevo `operator` ejecuta `put`, `retire` y `apply`; `refresh` usa
 `extended`. La lista de clases vive en un unico registro cerrado del codigo.
@@ -386,6 +416,12 @@ declarado o con otro tipo falla nombrando la entrada.
 cambio, con autor y origen, en la misma transaccion. Retirar crea una version
 `retired`; no borra filas ni claves. Una operacion sin cambio no crea version.
 `entity_versions` rechaza `UPDATE` y `DELETE` tambien en el motor.
+
+Cada fila de `entity.unresolved` incluye `reason`: `no_entity` para una clave
+en estado `unresolved`, o `no_home` para una persona o dispositivo conocidos,
+en la version fijada por el marco, sin hecho `home` cuando `place` queda
+`unknown`. Se agrupa por clave y razon, con primera y ultima vez y contador. Si
+la casa se deriva por la otra parte del marco, no se publica `no_home`.
 
 `profile` se conserva para el camino delegado `profile_lookup`: es una
 proyeccion de compatibilidad de `curated`. La migracion copia en `curated` los

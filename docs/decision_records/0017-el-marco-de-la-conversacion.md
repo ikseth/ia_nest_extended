@@ -177,3 +177,9 @@ marco en `unknown`.
   conscience.
 - Autenticacion de principales entre capas: el registro se sigue escribiendo
   solo por la CLI y la siembra.
+
+## Estado posterior
+
+2026-11-25 (ADR 0018, meta H12P9): `entity.unresolved` (punto 6) lista tambien
+la `person` o el `device` sembrados sin `home` cuando el lugar queda `unknown`,
+con `reason: "no_home"`; las filas de hoy llevan `reason: "no_entity"`.

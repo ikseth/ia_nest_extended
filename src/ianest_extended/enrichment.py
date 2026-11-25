@@ -71,6 +71,7 @@ class RecallBundle:
     thread_summary: tuple[RecallItem, ...]
     dialog: tuple[RecallItem, ...]
     context: str
+    context_blocks: tuple[dict[str, str], ...]
     knowledge_gate: GateDecision
 
 
@@ -85,6 +86,9 @@ class EnrichResult:
     downstream_request_id: str | None = None
     knowledge_gate: GateDecision = field(default_factory=not_applied_decision)
     rag_fragments: int = 0
+    context_sent: str = "none"
+    context_chars: dict[str, int] = field(default_factory=dict)
+    turn_context_info: tuple[bool, tuple[str, ...]] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,6 +158,7 @@ class MemoryEnricher:
             model=model,
             dry_run=dry_run,
             request_id=request_id,
+            core_capability="prompt.run",
             # El turno enriquecido es el turno del interlocutor: lleva el marco.
             core_run=partial(self._core.prompt_run, turn=True),
         )
@@ -182,6 +187,7 @@ class MemoryEnricher:
             model=model,
             dry_run=dry_run,
             request_id=request_id,
+            core_capability=None,
             core_run=self._core.reasoning_run,
         )
 
@@ -198,10 +204,17 @@ class MemoryEnricher:
         dry_run: bool,
         request_id: str | None,
         core_run,
+        core_capability: str | None,
     ) -> EnrichResult:
         write_back_on = (
             self._config.write_back_enabled if write_back is None else write_back
         )
+        turn_context_info = (
+            self._core.turn_context(core_capability)
+            if core_capability is not None and hasattr(self._core, "turn_context")
+            else None
+        )
+        context_aside = bool(turn_context_info and turn_context_info[0])
         prepared = self.prepare(
             identity,
             prompt,
@@ -209,6 +222,7 @@ class MemoryEnricher:
             use_rag=use_rag,
             auto_domain=auto_domain,
             request_id=request_id,
+            context_aside=context_aside,
         )
 
         if dry_run:
@@ -223,15 +237,23 @@ class MemoryEnricher:
                 downstream_request_id=None,
                 knowledge_gate=prepared.bundle.knowledge_gate,
                 rag_fragments=_rag_fragments_in_context(prepared.bundle),
+                context_sent="none",
+                context_chars={},
+                turn_context_info=turn_context_info,
             )
 
         try:
-            core_result = core_run(
-                prepared.enriched_prompt,
-                prepared.identity,
-                model=model,
-                domain=prepared.identity.domain_tag,
-            )
+            call_kwargs: dict[str, Any] = {
+                "model": model,
+                "domain": prepared.identity.domain_tag,
+            }
+            outbound_prompt = prepared.enriched_prompt
+            if turn_context_info is not None:
+                call_kwargs["turn_context_info"] = turn_context_info
+            if context_aside:
+                outbound_prompt = prepared.prompt
+                call_kwargs["context"] = prepared.bundle.context_blocks
+            core_result = core_run(outbound_prompt, prepared.identity, **call_kwargs)
         except Exception:
             self.record_recall(prepared, status="error")
             raise
@@ -253,6 +275,9 @@ class MemoryEnricher:
                 downstream_request_id=core_result.request_id,
                 knowledge_gate=prepared.bundle.knowledge_gate,
                 rag_fragments=_rag_fragments_in_context(prepared.bundle),
+                context_sent=_context_sent(prepared.bundle, context_aside),
+                context_chars=context_chars(prepared.bundle.context_blocks),
+                turn_context_info=turn_context_info,
             )
 
         self.write_back(
@@ -271,6 +296,9 @@ class MemoryEnricher:
             downstream_request_id=core_result.request_id,
             knowledge_gate=prepared.bundle.knowledge_gate,
             rag_fragments=_rag_fragments_in_context(prepared.bundle),
+            context_sent=_context_sent(prepared.bundle, context_aside),
+            context_chars=context_chars(prepared.bundle.context_blocks),
+            turn_context_info=turn_context_info,
         )
 
     def prepare(
@@ -282,6 +310,7 @@ class MemoryEnricher:
         use_rag: bool | None = None,
         auto_domain: bool | None = None,
         request_id: str | None = None,
+        context_aside: bool = False,
     ) -> PreparedEnrichment:
         """Reusa el preambulo de `prompt.run` para llamadas bloqueantes o SSE."""
         memory_on = (
@@ -317,6 +346,7 @@ class MemoryEnricher:
                 rag=rag,
                 knowledge_gate=gate_decision,
                 include_memory=memory_on,
+                context_aside=context_aside,
             )
         except Exception:
             self._telemetry.record(
@@ -365,6 +395,7 @@ class MemoryEnricher:
         include_memory: bool = True,
         token_budget: int | None = None,
         rag_token_budget: int | None = None,
+        context_aside: bool = False,
     ) -> RecallBundle:
         delegated: list[RecallItem] = []
         semantic: tuple[RecallItem, ...] = ()
@@ -458,7 +489,7 @@ class MemoryEnricher:
             + _lines("dialog", visible_dialog)
             + _lines("thread_artifacts", visible_thread_artifacts)
         )
-        context = _compose_context(
+        context, context_blocks = _compose_context_bundle(
             lines,
             token_budget=(
                 self._config.memory_budget_tokens
@@ -470,6 +501,7 @@ class MemoryEnricher:
                 if rag_token_budget is None
                 else rag_token_budget
             ),
+            include_wrapper=not context_aside,
         )
         return RecallBundle(
             delegated=tuple(delegated),
@@ -479,6 +511,7 @@ class MemoryEnricher:
             thread_summary=thread_summary,
             dialog=dialog,
             context=context,
+            context_blocks=context_blocks,
             knowledge_gate=knowledge_gate or not_applied_decision(),
         )
 
@@ -509,10 +542,27 @@ class MemoryEnricher:
             return identity, False, None, False, False
         if not auto_domain:
             return identity, False, None, False, False
-        route_prompt, route_with_thread, route_thread_read_failed = (
+        (
+            route_prompt,
+            route_thread_context,
+            route_with_thread,
+            route_thread_read_failed,
+        ) = (
             self._route_prompt(identity, prompt)
         )
-        route = self._core.domain_route(route_prompt, identity)
+        if hasattr(self._core, "turn_context"):
+            route = self._core.domain_route(
+                prompt,
+                identity,
+                inline_prompt=route_prompt,
+                context=(
+                    ({"origin": "thread", "text": route_thread_context},)
+                    if route_thread_context
+                    else ()
+                ),
+            )
+        else:
+            route = self._core.domain_route(route_prompt, identity)
         if route.confidence < self._config.auto_domain_min_confidence:
             return (
                 identity,
@@ -541,23 +591,27 @@ class MemoryEnricher:
         self,
         identity: MemoryIdentity,
         prompt: str,
-    ) -> tuple[str, bool, bool]:
+    ) -> tuple[str, str, bool, bool]:
         try:
             recent = tuple(self._store.recent_dialogs(identity, limit=2))
         except Exception:
-            return prompt, False, True
+            return prompt, "", False, True
         turns = tuple(reversed(recent))
         if (
             len(turns) != 2
             or turns[0].stated_by is not StatedBy.USER
             or turns[1].stated_by is not StatedBy.MODEL
         ):
-            return prompt, False, False
+            return prompt, "", False, False
+        thread_context = (
+            f"Usuario: {turns[0].content}\n"
+            f"Asistente: {turns[1].content}"
+        )
         return (
             "CONVERSACION RECIENTE:\n"
-            f"Usuario: {turns[0].content}\n"
-            f"Asistente: {turns[1].content}\n\n"
+            f"{thread_context}\n\n"
             f"MENSAJE ACTUAL: {prompt}",
+            thread_context,
             True,
             False,
         )
@@ -1187,11 +1241,31 @@ def _compose_context(
     *,
     token_budget: int,
     rag_token_budget: int,
+    include_wrapper: bool = True,
 ) -> str:
+    context, _ = _compose_context_bundle(
+        lines,
+        token_budget=token_budget,
+        rag_token_budget=rag_token_budget,
+        include_wrapper=include_wrapper,
+    )
+    return context
+
+
+def _compose_context_bundle(
+    lines: list[_ContextLine],
+    *,
+    token_budget: int,
+    rag_token_budget: int,
+    include_wrapper: bool,
+) -> tuple[str, tuple[dict[str, str], ...]]:
     selected = list(lines)
     _trim_tier_to_budget(selected, "rag", rag_token_budget)
     while (
-        estimate_tokens(_render_context(selected), extra_chars=CONTEXT_WRAPPER_CHARS)
+        estimate_tokens(
+            _render_context(selected),
+            extra_chars=CONTEXT_WRAPPER_CHARS if include_wrapper else 0,
+        )
         > token_budget
     ):
         removable = _next_removable_tier(selected)
@@ -1208,7 +1282,7 @@ def _compose_context(
             ),
         )
         selected.pop(worst_index)
-    return _render_context(selected)
+    return _render_context(selected), context_blocks(selected)
 
 
 def _trim_tier_to_budget(
@@ -1274,6 +1348,36 @@ def _render_context(lines: list[_ContextLine]) -> str:
     return "\n\n".join(sections)
 
 
+def context_blocks(lines: list[_ContextLine]) -> tuple[dict[str, str], ...]:
+    """Agrupa las lineas seleccionadas por el origen declarado al core."""
+    origins = (
+        ("interlocutor", ("interlocutor",)),
+        ("memory", ("delegated", "semantic")),
+        ("rag", ("rag",)),
+        ("thread", ("thread_summary", "dialog", "thread_artifacts")),
+    )
+    blocks: list[dict[str, str]] = []
+    for origin, tiers in origins:
+        sections = [
+            rendered
+            for tier in tiers
+            if (rendered := _render_tier(lines, tier, heading="###"))
+        ]
+        if sections:
+            blocks.append({"origin": origin, "text": "\n\n".join(sections)})
+    return tuple(blocks)
+
+
+def context_chars(blocks: tuple[dict[str, str], ...]) -> dict[str, int]:
+    return {block["origin"]: len(block["text"]) for block in blocks}
+
+
+def _context_sent(bundle: RecallBundle, aside: bool) -> str:
+    if not bundle.context_blocks:
+        return "none"
+    return "aside" if aside else "inline"
+
+
 def interlocutor_context(identity: MemoryIdentity, config: ExtendedConfig) -> str:
     """Devuelve el hecho de interlocucion que no compite con el presupuesto."""
     audience = _effective_audience(identity)
@@ -1284,6 +1388,12 @@ def interlocutor_context(identity: MemoryIdentity, config: ExtendedConfig) -> st
     else:
         return ""
     return "## interlocutor\n" + text
+
+
+def interlocutor_context_blocks(
+    identity: MemoryIdentity, config: ExtendedConfig
+) -> tuple[dict[str, str], ...]:
+    return context_blocks(_interlocutor_lines(identity, config))
 
 
 def _interlocutor_lines(
@@ -1317,9 +1427,11 @@ def _effective_audience(identity: MemoryIdentity) -> str | None:
     }.get(identity.interlocutor_profile)
 
 
-def _render_tier(lines: list[_ContextLine], tier: str) -> str:
+def _render_tier(
+    lines: list[_ContextLine], tier: str, *, heading: str = "##"
+) -> str:
     tier_lines = [line.text for line in lines if line.tier == tier]
-    return "" if not tier_lines else f"## {tier}\n" + "\n".join(tier_lines)
+    return "" if not tier_lines else f"{heading} {tier}\n" + "\n".join(tier_lines)
 
 
 def estimate_tokens(text: str, *, extra_chars: int = 0) -> int:

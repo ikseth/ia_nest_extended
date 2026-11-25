@@ -1,6 +1,6 @@
 from dataclasses import replace
 from datetime import UTC, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from ianest_extended import (
     Engram,
@@ -468,11 +468,23 @@ class InMemoryStore:
                     if part["state"] != "unresolved":
                         continue
                     key = part["key"]
-                    seen = grouped.setdefault(key, [])
+                    seen = grouped.setdefault((key, "no_entity"), [])
+                    seen.append(frame.created_at)
+                if frame.place["state"] != "unknown":
+                    continue
+                for part in (frame.person, frame.device):
+                    if part["state"] != "known":
+                        continue
+                    version = self.get_entity_version(
+                        UUID(part["entity_id"]), int(part["version"])
+                    )
+                    if "home" in version.curated:
+                        continue
+                    seen = grouped.setdefault((part["key"], "no_home"), [])
                     seen.append(frame.created_at)
         return tuple(
-            UnresolvedEntityKey(key, min(seen), max(seen), len(seen))
-            for key, seen in sorted(grouped.items())
+            UnresolvedEntityKey(key, reason, min(seen), max(seen), len(seen))
+            for (key, reason), seen in sorted(grouped.items())
         )
 
     @staticmethod

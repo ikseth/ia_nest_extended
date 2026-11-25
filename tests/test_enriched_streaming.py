@@ -119,6 +119,43 @@ class StreamingCore:
         self.closed += 1
 
 
+class AsideStreamingCore(StreamingCore):
+    def __init__(self):
+        super().__init__()
+        self.catalog_checks = []
+
+    def turn_context(self, capability):
+        self.catalog_checks.append(capability)
+        return True, ()
+
+    def prompt_stream(
+        self,
+        prompt,
+        identity,
+        model=None,
+        domain=None,
+        context=(),
+        turn_context_info=None,
+    ):
+        self.calls.append(
+            (
+                "prompt.stream.aside",
+                prompt,
+                identity,
+                model,
+                domain,
+                context,
+                turn_context_info,
+            )
+        )
+
+        def events():
+            yield _event("token", {"text": "respuesta"})
+            yield _event("done", {"text": "respuesta", "finish_reason": "stop"})
+
+        return ForwardedStream(events(), self._close)
+
+
 def _chunk():
     return RagChunk(
         id=uuid4(),
@@ -185,6 +222,26 @@ def test_prompt_stream_is_enriched_and_passthrough_is_not(tmp_path):
     assert core.calls[1][1] == "pregunta"
     assert rag.domains == ["linux"]
     assert store.engrams == []
+
+
+def test_prompt_stream_sends_literal_phrase_and_interlocutor_aside(tmp_path):
+    core = AsideStreamingCore()
+    service, _, _ = _service(tmp_path, core)
+    identity = MemoryIdentity(
+        user_id="u", session_id="s", service="test", audience="general"
+    )
+
+    list(service.prompt_stream("frase literal", identity, enrich=False))
+
+    call = core.calls[0]
+    assert call[1] == "frase literal"
+    assert [block["origin"] for block in call[5]] == ["interlocutor"]
+    assert core.catalog_checks == ["prompt.stream"]
+    event = next(
+        item for item in _telemetry(tmp_path) if item["event"] == "prompt.stream"
+    )
+    assert event["context_sent"] == "aside"
+    assert set(event["context_chars"]) == {"interlocutor"}
 
 
 def test_first_event_arrives_before_slow_stream_finishes_and_shape_is_intact(

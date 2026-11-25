@@ -1,6 +1,8 @@
 """Criterios 4-7 y 13: sobreescritura, passthrough, contradiccion, RAG y traza."""
 
 import json
+from datetime import UTC, datetime
+from uuid import uuid4
 
 import pytest
 import ianest_extended.catalog_cache as catalog_cache
@@ -11,6 +13,7 @@ from ianest_extended import (
     ExtendedConfig,
     ExtendedService,
     MemoryIdentity,
+    RagChunk,
     RagUnavailableError,
     write_catalog_cache,
 )
@@ -161,6 +164,105 @@ def test_prompt_telemetry_records_trusted_providers_sent(
         "frame": _unknown_frame(),
     }
     assert _events(tmp_path)[0]["trusted_providers"] == ["casa_ha", "zeta"]
+
+
+def test_passthrough_sends_only_interlocutor_aside_and_traces_size(
+    tmp_path, local_service_stub
+):
+    store = InMemoryStore()
+    store.trusted_providers = lambda ceiling: ()
+    service = _service(tmp_path, local_service_stub, store=store)
+    write_catalog_cache(
+        service.config.catalog_cache_path,
+        core_url=service.config.core_url,
+        core_version="next",
+        capabilities=[
+            {"name": "prompt.run", "params": [{"name": "turn_context"}]}
+        ],
+    )
+    identity = MemoryIdentity(
+        user_id="u",
+        session_id="A",
+        service="local_cli",
+        audience="general",
+    )
+
+    service.prompt_run("frase exacta", identity, enrich=False)
+
+    payload = next(
+        body for path, body in local_service_stub.requests if path == "/prompt/run"
+    )
+    assert payload["prompt"] == "frase exacta"
+    blocks = payload["turn_context"]["context"]
+    assert [block["origin"] for block in blocks] == ["interlocutor"]
+    assert "### interlocutor" in blocks[0]["text"]
+    event = _events(tmp_path)[0]
+    assert event["context_sent"] == "aside"
+    assert event["context_chars"] == {
+        "interlocutor": len(blocks[0]["text"])
+    }
+    assert "frase exacta" not in json.dumps(event)
+
+
+def test_enriched_prompt_sends_recall_blocks_aside_without_text_in_telemetry(
+    tmp_path, local_service_stub
+):
+    store = InMemoryStore()
+    store.trusted_providers = lambda ceiling: ()
+    chunk = RagChunk(
+        id=uuid4(),
+        corpus_id=uuid4(),
+        corpus_name="manual-test",
+        domains=("linux",),
+        content="dato exclusivo del documento",
+        source_ref="manual.md",
+        ordinal=0,
+        score=0.9,
+        created_at=datetime.now(UTC),
+    )
+    service = _service(
+        tmp_path,
+        local_service_stub,
+        store=store,
+        rag_store=InMemoryRagStore((chunk,)),
+    )
+    write_catalog_cache(
+        service.config.catalog_cache_path,
+        core_url=service.config.core_url,
+        core_version="next",
+        capabilities=[
+            {"name": "prompt.run", "params": [{"name": "turn_context"}]}
+        ],
+    )
+    identity = MemoryIdentity(
+        user_id="u",
+        session_id="A",
+        service="local_cli",
+        audience="general",
+        domain_tag="linux",
+    )
+
+    service.prompt_run(
+        "frase literal",
+        identity,
+        use_memory=False,
+        use_rag=True,
+        write_back=False,
+    )
+
+    payload = next(
+        body for path, body in local_service_stub.requests if path == "/prompt/run"
+    )
+    assert payload["prompt"] == "frase literal"
+    blocks = payload["turn_context"]["context"]
+    assert [block["origin"] for block in blocks] == ["interlocutor", "rag"]
+    assert "dato exclusivo del documento" in blocks[1]["text"]
+    event = next(item for item in _events(tmp_path) if item["event"] == "prompt.run")
+    assert event["context_sent"] == "aside"
+    assert set(event["context_chars"]) == {"interlocutor", "rag"}
+    serialized = json.dumps(event)
+    assert "dato exclusivo del documento" not in serialized
+    assert "frase literal" not in serialized
 
 
 def test_turn_context_refreshes_catalog_when_ttl_elapsed(
